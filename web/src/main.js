@@ -188,7 +188,7 @@ function connect(){
       }
       if(state.modalRunId===d.run.run_id) scheduleRunModalRender();
       scheduleSseRefresh("urgent");   /* run_end 是状态跃迁（角标 / 节点选择 / 参数清空）：立即重绘 */
-      loadState();
+      resyncAfterRun();               /* 兜底再同步：只在整批跑完时拉一次（见函数注释） */
       return;
     }
     if(d.type==="todo"){
@@ -361,6 +361,20 @@ function loadState(){
   }).catch(function(){ state.connected = false; renderHeader(); });
 }
 
+/* run_end 之后的「兜底再同步」——只在整批跑完（队列排空）时拉一次 /api/state。
+
+   run_end / history / queue 三个事件已经把这轮变化都推过来了（history 事件本身就会重建
+   state.history 与 state.last，queue 事件会更新 state.queuedIds），所以批量执行时每完成一个
+   任务再各拉一次 /api/state 是纯冗余：20 个任务就是 20 次往返。
+   这里改成「队列排空时才同步一次」，权威状态一次拉齐；单任务运行（队列当场为空）依旧立即同步，
+   所以可见延迟为零、也不会少同步。
+   安全性：SSE 断开时 state.connected=false，下方 8 秒轮询那条分支会继续兜底 loadState()，
+   即使队列快照因任何原因停在旧值，也不会永久失去再同步。 */
+function resyncAfterRun(){
+  if(state.queuedIds && state.queuedIds.length) return;   // 这一批还没跑完 → 等最后一个 run_end
+  loadState();
+}
+
 /* --- 事件绑定（DOM 就绪后一次性绑定） --- */
 function bindEvents(){
   bindConfirmUI();   // 确认弹窗按钮接线（confirmCb 为 behavior.js 私有）
@@ -526,4 +540,4 @@ if(document.readyState === "loading"){
 }
 
 /* 自动导出：供其他模块导入的内部顶层符号 */
-export { COOKIE_POLL_BASE, COOKIE_POLL_JITTER, COOKIE_POLL_MIN, SSE_REFRESH_COARSE_MS, SSE_REFRESH_MIN_MS, _es, _sseAttempt, _sseClose, bindEvents, checkCookieStatus, connect, init, loadState, nextCookieDelay, onCookieVisibilityChange, refreshAll, refreshByUser, scheduleRefresh, scheduleSseRefresh, scheduleCookieCheck, startCookiePolling, state, stopCookiePolling, syncCurrentLog, syncHeaderHeight };
+export { COOKIE_POLL_BASE, COOKIE_POLL_JITTER, COOKIE_POLL_MIN, SSE_REFRESH_COARSE_MS, SSE_REFRESH_MIN_MS, _es, _sseAttempt, _sseClose, bindEvents, checkCookieStatus, connect, init, loadState, nextCookieDelay, onCookieVisibilityChange, refreshAll, refreshByUser, resyncAfterRun, scheduleRefresh, scheduleSseRefresh, scheduleCookieCheck, startCookiePolling, state, stopCookiePolling, syncCurrentLog, syncHeaderHeight };
