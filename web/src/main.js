@@ -1,5 +1,3 @@
-import { Tabulator } from "tabulator-tables";
-import * as echarts from "echarts";
 "use strict";
 import { TK, TK_MAP, RISK_LABEL, RISK_CLS, STATUS_CLS, STATUS_TXT, ICON } from "./tokens.js";
 import { store, groupOf, taskById, countInGroup, producerOf, missingText, visibleTasks, taskState, argValue } from "./store.js";

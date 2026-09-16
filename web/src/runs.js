@@ -1,5 +1,4 @@
 // 自动生成的模块头：统一依赖（未使用的导入会被打包器摇树移除）
-import { Tabulator } from "tabulator-tables";
 import { store, groupOf, taskById, countInGroup, producerOf, missingText, visibleTasks, taskState, argValue } from "./store.js";
 import { api, savePrefs, loadPrefs, readTokens, withToken } from "./api.js";
 import { svg, esc, hexA, toast, debounce, viewHead } from "./ui.js";
@@ -265,25 +264,37 @@ export function toTabulatorColumns(headers){
 }
 export function mountTabulator(hostId, headers, rows){
   var host = document.getElementById(hostId);
-  if(!host || host.classList.contains("tabulator")) return; // 已初始化则跳过（避免重复实例；Tabulator 6.x 把 .tabulator 类加在 host 自身）
-  new Tabulator("#"+hostId, {
-    data: toTabulatorData(headers, rows),
-    columns: toTabulatorColumns(headers),
-    layout: "fitColumns",
-    height: "100%",
-    virtualDom: false,
-    pagination: true,
-    paginationSize: 50,
-    paginationSizeSelector: [25, 50, 100, 200],
-    movableColumns: true,
-    tooltipsHeader: true,
-    tooltips: function(cell){ var v = cell.getValue(); return (v && String(v).length>40) ? String(v) : false; },
-    rowFormatter: function(row){
-      var el = row.getElement();
-      el.classList.remove("zebra");
-      if(row.getPosition() % 2 === 1) el.classList.add("zebra");
-    },
-    placeholder: "（空表）"
+  if(!host || host.classList.contains("tabulator") || host.dataset.tabInit) return; // 已初始化/初始化中则跳过
+  host.dataset.tabInit = "1";
+  /* Tabulator 仅「产物预览」用到 → 动态 import 懒加载，不拖累首屏
+     （原为顶层 import，把整个表格库拽进主包）。 */
+  import("tabulator-tables").then(function(mod){
+    var T = mod.Tabulator || mod.default;
+    var h = document.getElementById(hostId);
+    if(!h || !h.dataset.tabInit) return;   // 异步加载期间宿主已被移除/重渲染
+    new T("#"+hostId, {
+      data: toTabulatorData(headers, rows),
+      columns: toTabulatorColumns(headers),
+      layout: "fitColumns",
+      height: "100%",
+      virtualDom: false,
+      pagination: true,
+      paginationSize: 50,
+      paginationSizeSelector: [25, 50, 100, 200],
+      movableColumns: true,
+      tooltipsHeader: true,
+      tooltips: function(cell){ var v = cell.getValue(); return (v && String(v).length>40) ? String(v) : false; },
+      rowFormatter: function(row){
+        var el = row.getElement();
+        el.classList.remove("zebra");
+        if(row.getPosition() % 2 === 1) el.classList.add("zebra");
+      },
+      placeholder: "（空表）"
+    });
+  }).catch(function(e){
+    var h = document.getElementById(hostId);
+    if(h) delete h.dataset.tabInit;
+    console.error("[tabulator] 加载失败：", e);
   });
 }
 export function renderTable(heads, rows, name, bytes){

@@ -2018,9 +2018,14 @@ export function _stdTableLoader(text, sub){
          (sub?('<div class="sub">'+esc(sub)+'</div>'):'')+'</div>';
 }
 export function _stdYMD(d){ var y=d.getFullYear(),m=("0"+(d.getMonth()+1)).slice(-2),g=("0"+d.getDate()).slice(-2); return y+"-"+m+"-"+g; }
+/* echarts 体积大（~1MB）且仅「标准达成」图表用到 → 改为动态 import 懒加载：
+   首次需要时才拉取，不拖累首屏；加载过则复用同一模块实例（失败回调 null）。 */
+var _echartsMod = null, _echartsP = null;
 export function _stdEnsureECharts(cb){
-  // echarts 已通过 import 同步加载，直接回调（保留原调用约定，避免大范围改动）
-  cb();
+  if(_echartsMod){ cb(_echartsMod); return; }
+  if(!_echartsP){ _echartsP = import("echarts"); }
+  _echartsP.then(function(m){ _echartsMod = m; cb(m); })
+           .catch(function(e){ console.error("[echarts] 加载失败：", e); cb(null); });
 }
 
 /* 自动导出：供其他模块导入的内部顶层符号 */

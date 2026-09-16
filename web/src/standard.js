@@ -5,7 +5,6 @@ import { TK, TK_MAP, RISK_LABEL, RISK_CLS, STATUS_CLS, STATUS_TXT, ICON } from "
 import { bus } from "./bus.js";
 import { refreshLan, bindLanToggle, setArg, openSide, closeSide, askConfirm, closeConfirm, bindConfirmUI, lockScroll, unlockScroll } from "./behavior.js";
 import { _stdEnsureStyle, _stdYMD, _stdTableLoader, _stdEnsureECharts, _std, _STD_ALL_TEAM, _stdCoolKey } from "./attend-period.js";
-import * as echarts from "echarts";
 const state = store.state;
 /* _stdFillRiders 是视图设置函数内的闭包，模块级的 _stdRenderRiders 引用不到它；
    用模块级引用承接，加载完骑手后据此刷新下拉输入框（原先靠 typeof 守卫成了静默空操作）。 */
@@ -651,9 +650,9 @@ export function _stdRender(j,cards,att,tblWrap,chart){
   var names=Object.keys(byDay), actA=[],predA=[],actO=[],predO=[];
   names.forEach(function(n){ var b=byDay[n];
     actA.push(b.a); predA.push(b.p); actO.push(b.ao); predO.push(b.po); });
-  _stdEnsureECharts(function(){
-    if(!echarts){ chart.innerHTML='<div style="color:var(--muted);padding:20px">图表库未加载</div>'; return; }
-    var ec=echarts.init(chart);
+  _stdEnsureECharts(function(echartsMod){
+    if(!echartsMod){ chart.innerHTML='<div style="color:var(--muted);padding:20px">图表库未加载</div>'; return; }
+    var ec=echartsMod.init(chart);
     ec.setOption({ tooltip:{trigger:"axis"}, legend:{data:["实际排班人数","预测人数","实际单量","预测单量"]},
       grid:{left:55,right:60,top:40,bottom:70},
       xAxis:{type:"category",data:names,axisLabel:{interval:0,rotate:30}},
