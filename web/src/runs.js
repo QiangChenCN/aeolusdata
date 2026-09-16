@@ -44,6 +44,17 @@ export function renderRunModal(){
   if(state.modalAutoScroll) body.scrollTop = body.scrollHeight;
   renderModalDiag(run);
 }
+/* 日志增量渲染的合帧调度 —— SSE 每来一行日志都会请求渲染。单行 appendChild 本身很便宜，
+   但「追加 + 自动滚到底」会强制一次同步重排，上百行/秒就是上百次重排；
+   renderRunModal 只追加新增行（state.modalCount 记进度），所以合并到「每帧至多一次」
+   行为完全等价，重排降到 ≤60 次/秒（实际远低于此）。
+   注：openRunModal 的首帧渲染仍直接调用 —— 弹窗要立刻有内容，不能等下一帧。 */
+var _modalRenderQueued = false;
+export function scheduleRunModalRender(){
+  if(_modalRenderQueued) return;
+  _modalRenderQueued = true;
+  requestAnimationFrame(function(){ _modalRenderQueued = false; renderRunModal(); });
+}
 export function openRunModal(runId){
   state.modalRunId = runId;
   // 提交后立即开弹窗：此时服务端已入队、但 run_start 尚未推来，run 对象还不存在。
@@ -97,7 +108,7 @@ export function syncRunLog(rid, autoFollow){
     if(res.task_id) cur.task_id = res.task_id;
     if(res.name) cur.name = res.name;
     state.runs[rid] = cur;
-    if(state.modalRunId===rid) renderRunModal();
+    if(state.modalRunId===rid) scheduleRunModalRender();
     if(autoFollow && cur.status==="running" && state.sseBroken){
       setTimeout(function(){
         if(state.modalRunId===rid) syncRunLog(rid, true);

@@ -10,7 +10,7 @@ import { renderAttendPeriodView } from "./attend-period.js";
 import { renderStandardView } from "./standard.js";
 import { renderTaskView, commitParamsForm, fillDefaultToForm, _dpkState, openConfigDialog, closeConfigDialog, commitDateRangeGroup, resetDateRangeGroup, cfCurrent } from "./task.js";
 import { renderTodoView, loadTodo, todoReload, todoOpenCount, openTodoEditor, closeTodoEditor } from "./todo.js";
-import { renderRunModal, openRunModal, openArtifacts, closeArtModal, mountTabulator, fallbackCopy, closeRunModal, closeRunDrawer } from "./runs.js";
+import { renderRunModal, scheduleRunModalRender, openRunModal, openArtifacts, closeArtModal, mountTabulator, fallbackCopy, closeRunModal, closeRunDrawer } from "./runs.js";
 import { renderHomeView, skeletonCards } from "./home.js";
 const state = store.state;
 
@@ -42,6 +42,32 @@ function scheduleRefresh(){
   if(_refreshQueued) return;
   _refreshQueued = true;
   requestAnimationFrame(function(){ _refreshQueued = false; refreshAll(); });
+}
+
+/* SSE 派生刷新节流 —— 与 scheduleRefresh 的分工：
+   · scheduleRefresh：用户主动操作的路径（点按钮 / 切导航 / 保存配置），当帧即重绘，延迟最低。
+   · scheduleSseRefresh：服务端事件（run_start / run_end / queue / history）驱动的路径。
+     批量执行时这类事件每秒会来十几次，而 rAF 只能合并「同一帧内」的多个请求 —— 跨帧的事件
+     仍各触发一次全量重绘（实测 40 个事件/2s → 49 次 nav+main 重建）。这里再叠加一个最小间隔
+     做滑动合并，并保证「最后一次一定生效」（尾部补一次），把高频事件摊平成 ~3 次/秒。
+     状态类事件（角标 / 队列 / 历史）本就无需更快；日志事件不走这里（见 log 分支）。 */
+var SSE_REFRESH_MIN_MS = 300;
+var _sseRefreshLast = 0, _sseRefreshTimer = null;
+function scheduleSseRefresh(){
+  if(_sseRefreshTimer) return;                      /* 已有排期 → 合并进这一次 */
+  var wait = SSE_REFRESH_MIN_MS - (Date.now() - _sseRefreshLast);
+  if(wait <= 0){ _sseRefreshLast = Date.now(); refreshAll(); return; }
+  _sseRefreshTimer = setTimeout(function(){
+    _sseRefreshTimer = null;
+    _sseRefreshLast = Date.now();
+    refreshAll();
+  }, wait);
+}
+/* 用户主动操作：立即重绘，并取消排期中的 SSE 重绘、重置节流时钟（避免紧随其后再来一次） */
+function refreshByUser(){
+  if(_sseRefreshTimer){ clearTimeout(_sseRefreshTimer); _sseRefreshTimer = null; }
+  _sseRefreshLast = Date.now();
+  refreshAll();
 }
 
 
@@ -107,7 +133,8 @@ function connect(){
       var r = state.runs[d.run_id];
       if(!r) return;
       r.lines.push(d.line);
-      if(state.modalRunId===d.run_id) renderRunModal();
+      /* 日志保持逐行实时：只做合帧（每帧至多渲染一次），不参与下面的 SSE 全量重绘节流 */
+      if(state.modalRunId===d.run_id) scheduleRunModalRender();
       return;
     }
     if(d.type==="run_start"){
@@ -120,7 +147,7 @@ function connect(){
       if(state.modalRunId){          // 弹窗已开：跟随切到当前任务（批量/流水线逐个显示）
         openRunModal(d.run.run_id);
       }
-      scheduleRefresh();
+      scheduleSseRefresh();
       return;
     }
     if(d.type==="run_end"){
@@ -139,8 +166,8 @@ function connect(){
         state.args[d.run.task_id] = {};
         savePrefs();
       }
-      if(state.modalRunId===d.run.run_id) renderRunModal();
-      scheduleRefresh();
+      if(state.modalRunId===d.run.run_id) scheduleRunModalRender();
+      scheduleSseRefresh();
       loadState();
       return;
     }
@@ -156,7 +183,7 @@ function connect(){
     }
     if(d.type==="queue"){
       state.queuedIds = d.queue.map(function(q){ return q.task_id; });
-      scheduleRefresh();
+      scheduleSseRefresh();
       return;
     }
     if(d.type==="history"){
@@ -165,7 +192,7 @@ function connect(){
       state.history.forEach(function(h){
         if(!state.last[h.task_id]) state.last[h.task_id] = h;
       });
-      scheduleRefresh();
+      scheduleSseRefresh();
       return;
     }
   };
@@ -309,7 +336,8 @@ function loadState(){
     state.queuedIds = s.queuedIds || [];
     state.last = s.last || {};
     state.connected = true;
-    scheduleRefresh();
+    /* 首屏（_sseRefreshLast=0）立即重绘；run_end 追拉的这一次并入 SSE 节流 */
+    scheduleSseRefresh();
   }).catch(function(){ state.connected = false; renderHeader(); });
 }
 
@@ -445,7 +473,7 @@ function init(){
   bindEvents();
   /* 功能模块通过 bus.emit("refresh") 请求重渲染（导航切换 / 数据更新 / todo 变更等），
      统一在此订阅 —— 模块化提取时该订阅曾丢失，导致点击导航只改 state 不重绘。 */
-  bus.on("refresh", refreshAll);
+  bus.on("refresh", refreshByUser);
   syncHeaderHeight();
   window.addEventListener("resize", syncHeaderHeight);
   state.sseBroken = false;  // SSE 状态旗标：true = 已断，重连中
@@ -478,4 +506,4 @@ if(document.readyState === "loading"){
 }
 
 /* 自动导出：供其他模块导入的内部顶层符号 */
-export { COOKIE_POLL_BASE, COOKIE_POLL_JITTER, COOKIE_POLL_MIN, _es, _sseAttempt, _sseClose, bindEvents, checkCookieStatus, connect, init, loadState, nextCookieDelay, onCookieVisibilityChange, refreshAll, scheduleRefresh, scheduleCookieCheck, startCookiePolling, state, stopCookiePolling, syncCurrentLog, syncHeaderHeight };
+export { COOKIE_POLL_BASE, COOKIE_POLL_JITTER, COOKIE_POLL_MIN, _es, _sseAttempt, _sseClose, bindEvents, checkCookieStatus, connect, init, loadState, nextCookieDelay, onCookieVisibilityChange, refreshAll, refreshByUser, scheduleRefresh, scheduleSseRefresh, scheduleCookieCheck, startCookiePolling, state, stopCookiePolling, syncCurrentLog, syncHeaderHeight };
