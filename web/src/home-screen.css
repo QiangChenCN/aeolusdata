@@ -82,3 +82,31 @@
 .scr-note{ font-size:12px; color:var(--muted); line-height:1.7 }
 .scr-note b{ color:var(--c-ink,#1a1a1a) }
 .scr-warn{ color:#B9770E }
+
+/* ---------- 标准达成（今日 · 各站标准等级分布） ---------- */
+.scr-std{ display:flex; flex-direction:column }
+.scr-std-sum{ display:flex; flex-wrap:wrap; gap:6px 18px; font-size:12px; color:var(--muted);
+  padding:9px 12px; background:var(--surface-sunken,#f6f7f9); border-radius:10px; margin-bottom:10px;
+  font-variant-numeric:tabular-nums }
+.scr-std-sum b{ color:var(--c-ink,#1a1a1a) }
+.scr-std-row{ padding:12px 0; border-top:1px solid var(--c-border,#eee) }
+.scr-std-row:first-child{ border-top:none; padding-top:2px }
+.scr-std-row .h{ display:flex; align-items:baseline; gap:8px; font-size:13px; margin-bottom:7px }
+.scr-std-row .nm{ font-weight:600; color:var(--c-ink,#1a1a1a) }
+.scr-std-row .sum{ margin-left:auto; color:var(--muted); font-variant-numeric:tabular-nums }
+.scr-std-row .sum b{ color:var(--c-ink,#1a1a1a) }
+.scr-std-row .rt{ font-weight:700; margin-left:6px }
+.scr-std-row .rt.ok{ color:#0F9D58 } .scr-std-row .rt.low{ color:#B9770E } .scr-std-row .rt.bad{ color:#E02020 }
+.scr-std-bar{ height:16px; border-radius:999px; background:var(--surface-sunken,#f0f1f3);
+  overflow:hidden; display:flex; gap:2px }
+.scr-std-bar i{ display:block; height:100%; transition:width .5s ease }
+.scr-std-bar i.s1,.scr-std-legend i.s1{ background:#FFD8BF }
+.scr-std-bar i.s2,.scr-std-legend i.s2{ background:#FFB27A }
+.scr-std-bar i.s3,.scr-std-legend i.s3{ background:#FF8A3D }
+.scr-std-bar i.s4,.scr-std-legend i.s4{ background:#FF6A1A }
+.scr-std-bar i.s5,.scr-std-legend i.s5{ background:var(--brand,#FF5000) }
+.scr-std-row .f{ font-size:12px; color:var(--muted); margin-top:6px; line-height:1.6;
+  font-variant-numeric:tabular-nums }
+.scr-std-legend{ display:flex; flex-wrap:wrap; gap:6px 14px; font-size:12px; color:var(--muted); margin-top:12px }
+.scr-std-legend i{ display:inline-block; width:10px; height:10px; border-radius:3px; margin-right:5px;
+  vertical-align:-1px }

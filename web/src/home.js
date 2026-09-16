@@ -5,8 +5,10 @@
      · 站点对比：条形长度 = 接单量，深色段 = 其中配送完成的部分
      · 日趋势：逐日对比接单量与配送完成量（纯 CSS 柱，不引图表库）
      · 站点明细表：站点 × 接单量 / 完成量 / 完成率 / 有效单量 / 有效占比
+     · 标准达成（今日）：各站达标人数 / 出勤 / 规模目标 / 门槛封顶 + 标准1~5 等级分布条
    数据来自 GET /api/overview/site-orders（后端 site_orders.py，口径单一来源 order_rules：
-   归属日 = 骑手接单时间的北京时间自然日，跨午夜单归接单当天）。 */
+   归属日 = 骑手接单时间的北京时间自然日，跨午夜单归接单当天）与 GET /api/overview/standard
+   （后端 station_report.py，与「标准达成」视图同一来源，单日口径）。 */
 import { api } from "./api.js";
 import { esc, viewHead } from "./ui.js";
 import { TK } from "./tokens.js";
@@ -32,6 +34,8 @@ var _rangeKey = "7d";
 var _cache = {};      // 已完成结果：区间 key -> 响应
 var _inflight = {};   // 进行中请求：启动期会连续重绘多次，同区间必须复用同一个请求
                       //（否则每次重绘都触发一次全量聚合 —— 服务端要重读 24 个大 JSON，首屏也被拖慢）
+var _stdCache = null;     // 标准达成（今日，单日口径 → 与区间选择无关，只取一次）
+var _stdInflight = null;
 
 function ymd(d){
   var p = function(n){ return (n<10?"0":"")+n; };
@@ -71,8 +75,15 @@ function draw(root){
   root.innerHTML = "";
   root.appendChild(toolbar(root));
   var mount = document.createElement("div");
-  mount.style.cssText = "display:flex;flex-direction:column;gap:16px";
+  mount.style.cssText = "display:flex;flex-direction:column;gap:16px;order:2";
   root.appendChild(mount);
+
+  // 标准达成（今日）单独一块：单日口径、与区间选择无关，独立取数 → 用 order 排在区间块之前，
+  // 且不因区间切换而重取（_stdCache 只存一份）。
+  var stdMount = document.createElement("div");
+  stdMount.style.cssText = "display:flex;flex-direction:column;gap:16px;order:1";
+  root.appendChild(stdMount);
+  loadStandard(stdMount);
 
   var rg = rangeOf(_rangeKey);
   var key = rg.start + "_" + rg.end;
@@ -102,6 +113,87 @@ function draw(root){
     if(!document.contains(mount)) return;
     mount.innerHTML = '<div class="scr-panel"><div class="scr-empty">加载失败：'+esc(String(e))+'</div></div>';
   });
+}
+
+/* ---------- 标准达成（今日 · 单日口径） ----------
+   数据来自 GET /api/overview/standard（后端 station_report 站点维度报表，与「标准达成」视图同一来源，
+   口径不会漂）。该报表只看单日，所以固定标「今日」；三源（排班目标 / 运单明细 / 考勤）缺任一则该站
+   不返回，由 note 说明缺哪几站 —— 不把缺失当 0。 */
+function pctv(x){ return (x === null || x === undefined) ? "—" : (Math.round(x*10)/10)+"%"; }
+
+function loadStandard(mount){
+  if(_stdCache){ paintStandard(mount, _stdCache); return; }
+  if(!_stdInflight){
+    _stdInflight = api("/api/overview/standard")
+      .then(function(j){ if(j && j.ok) _stdCache = j; _stdInflight = null; return j; })
+      .catch(function(e){ _stdInflight = null; throw e; });
+  }
+  mount.innerHTML = '<div class="scr-panel"><div class="scr-empty">正在汇总标准达成…</div></div>';
+  _stdInflight.then(function(j){
+    if(!document.contains(mount)) return;      // 视图已重绘 → 丢弃（新视图复用同一请求再画）
+    if(!j || !j.ok){
+      mount.innerHTML = '<div class="scr-panel"><div class="scr-empty">加载失败：'+esc((j && j.error) || "未知错误")+'</div></div>';
+      return;
+    }
+    paintStandard(mount, j);
+  }).catch(function(e){
+    if(!document.contains(mount)) return;
+    mount.innerHTML = '<div class="scr-panel"><div class="scr-empty">加载失败：'+esc(String(e))+'</div></div>';
+  });
+}
+
+function paintStandard(mount, j){
+  mount.innerHTML = "";
+  var rows = j.rows || [];
+  var p = panel("标准达成 · 今日",
+    "每站一行：条形按「标准1 → 标准5」分段（越靠右档位越高），段宽 = 该档人数 / 实际出勤；"+
+    "条形没填满的部分就是未达任何标准的人。达标人数 / 规模目标 / 门槛 / 封顶沿用「标准达成」视图口径。",
+    (j.date || "") + " 单日");
+  if(!rows.length){
+    p.body.innerHTML =
+      '<div class="scr-empty">今日站点数据尚未落盘，无法计算标准达成。<br>'+
+      '请到「数据看板 → 标准达成」点「刷新数据」拉取排班目标 / 运单明细 / 考勤后再回来看。</div>'+
+      (j.note ? '<div class="scr-note">'+esc(j.note)+'</div>' : '');
+    mount.appendChild(p.el);
+    return;
+  }
+  var sum = function(k){ return rows.reduce(function(a, r){ return a + (r[k] || 0); }, 0); };
+  var att = sum("attended_num"), ach = sum("achieved_num");
+  var wrap = document.createElement("div"); wrap.className = "scr-std";
+  var head = document.createElement("div"); head.className = "scr-std-sum";
+  head.innerHTML =
+    '全部站点：达标 <b>'+fmt(ach)+'</b> / 出勤 <b>'+fmt(att)+'</b>'+
+    '　·　总体达标率 <b>'+pctv(att ? ach/att*100 : null)+'</b>'+
+    '　·　规模目标合计 <b>'+fmt(sum("scale_target"))+'</b>'+
+    '　·　门槛合计 <b>'+fmt(sum("threshold_count"))+'</b>'+
+    '　·　封顶合计 <b>'+fmt(sum("cap_count"))+'</b>';
+  wrap.appendChild(head);
+  rows.forEach(function(r){
+    var a = r.attended_num || 0;
+    var levels = [r.std1, r.std2, r.std3, r.std4, r.std5];
+    var seg = levels.map(function(n, i){
+      var w = a ? ((n || 0)/a*100) : 0;
+      return '<i class="s'+(i+1)+'" style="width:'+w.toFixed(2)+'%" title="标准'+(i+1)+'：'+(n || 0)+' 人"></i>';
+    }).join("");
+    var rc = r.achieved_rate != null ? rateCls(r.achieved_rate/100) : "";
+    var row = document.createElement("div"); row.className = "scr-std-row";
+    row.innerHTML =
+      '<div class="h"><span class="nm">'+esc(r.team_name)+'</span>'+
+        '<span class="sum">达标 <b>'+fmt(r.achieved_num)+'</b> / 出勤 <b>'+fmt(r.attended_num)+'</b>　'+
+        '<span class="rt '+(rc || "ok")+'">'+pctv(r.achieved_rate)+'</span></span></div>'+
+      '<div class="scr-std-bar">'+seg+'</div>'+
+      '<div class="f">标准1~5 人数：'+levels.map(function(n){ return fmt(n || 0); }).join(" / ")+
+        '　·　规模目标 '+fmt(r.scale_target)+'　排班 '+fmt(r.scheduled_num)+
+        '　门槛 '+fmt(r.threshold_count)+'　封顶 '+fmt(r.cap_count)+
+        (r.peak_incentive != null ? '　·　标准2+ 覆盖 '+pctv(r.peak_incentive) : '')+
+      '</div>';
+    wrap.appendChild(row);
+  });
+  p.body.appendChild(wrap);
+  var lg = document.createElement("div"); lg.className = "scr-std-legend";
+  lg.innerHTML = [1,2,3,4,5].map(function(i){ return '<span><i class="s'+i+'"></i>标准'+i+'</span>'; }).join("");
+  p.body.appendChild(lg);
+  mount.appendChild(p.el);
 }
 
 /* ---------- 工具条 ---------- */

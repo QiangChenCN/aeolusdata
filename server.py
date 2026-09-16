@@ -2297,6 +2297,29 @@ def _get_ov_site_orders(self, qs):
     self._json(payload)
 
 
+def _get_ov_standard(self, qs):
+    """数据大屏 —— 站点维度「标准达成」（今日）。
+
+    直接复用 station_report（站点维度报表）这一单一来源：规模目标 / 排班 / 出勤 / 达标人数 /
+    标准1~5 等级分布 / 门槛人数 / 封顶人数，口径与「标准达成」视图完全一致。
+    注意该报表是**单日**口径（只看 date 那一天，不看区间），所以大屏上固定标「今日」。
+    三源（排班目标 / 运单明细 / 考勤）缺任一则该站落 need_refresh，被排除在 rows 外并给出 note。
+    """
+    if ROOT not in sys.path:
+        sys.path.insert(0, ROOT)
+    from dashboard.standard import cache as CACHE
+    date = (qs.get("date") or [""])[0].strip() or CACHE.today_ymd()
+    month = (qs.get("month") or [""])[0].strip() or None
+    try:
+        from dashboard.standard import station_report as SR
+        payload = SR.build_all(_configured_teams(), date, date, month)
+    except Exception as e:
+        payload = {"ok": False, "error": "%s: %s" % (type(e).__name__, e),
+                   "start": date, "end": date, "rows": []}
+    payload["date"] = date
+    self._json(payload)
+
+
 GET_ROUTES = {
     "/api/state": _get_state,
     "/api/lan/status": _get_lan_status,
@@ -2328,6 +2351,7 @@ GET_ROUTES = {
     "/api/todo": _get_todo,
     "/api/todo/runs": _get_todo_runs,
     "/api/overview/site-orders": _get_ov_site_orders,
+    "/api/overview/standard": _get_ov_standard,
 }
 
 POST_ROUTES = {
