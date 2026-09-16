@@ -49,7 +49,15 @@ export const store = {
     taskViewMode:   "list",                                            // 「全部任务」列表 / 看板
     expandedGroups: {},                                                // 「全部任务」各分组展开态
     cfDateMode:     "single",                                          // 配置弹窗日期范围模式（single/range）
-    sessionDangerOK: {}                                                // 本会话已确认的危险开关（--reinit 等），避免重复弹确认
+    sessionDangerOK: {},                                               // 本会话已确认的危险开关（--reinit 等），避免重复弹确认
+    std: {                                                             // 「标准达成」视图状态（standard.js 与 standard-settings.js 共享）
+      teams:[], names:{}, team:"__all__", start:"", end:"", mode:"station",
+      rider:"",            // 骑手筛选："" = 全部骑手；切站点时自动重置
+      riderPool:[],        // 骑手候选池（最近一次 riders 接口返回的 rows 精简版）
+      sort:{key:null,dir:0}, // 表头排序：{key=列名, dir:1 升序 / -1 降序 / 0 默认}
+      page:1,              // 骑手表当前页码（切站点 / 切骑手 / 重新查询时归 1）
+      pageSize:20          // 骑手表每页条数（10/15/20/25/30 可选，默认 20）
+    }
   },
   /** 浅合并顶层字段并通知订阅者 */
   set(patch){ if(patch && typeof patch === "object") Object.assign(state, patch); notify(); },
