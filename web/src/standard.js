@@ -4,7 +4,7 @@ import { svg, esc, hexA, toast, viewHead } from "./ui.js";
 import { TK, TK_MAP, RISK_LABEL, RISK_CLS, STATUS_CLS, STATUS_TXT, ICON } from "./tokens.js";
 import { bus } from "./bus.js";
 import { refreshLan, bindLanToggle, setArg, openSide, closeSide, askConfirm, closeConfirm, bindConfirmUI, lockScroll, unlockScroll } from "./behavior.js";
-import { _stdEnsureStyle, _stdYMD, _stdTableLoader } from "./attend-period.js";
+import "./standard.css";   /* 标准达成视图样式（原 _stdEnsureStyle 运行时注入 <style>，改为静态引入） */
 const state = store.state;
 
 /* 标准达成视图状态（原误放在 attend-period.js；仅本模块使用 → 归位到唯一使用者） */
@@ -21,8 +21,16 @@ var _stdCoolKey = "stdQueryCooldownV1";    // 查询按钮冷却的存储键
    用模块级引用承接，加载完骑手后据此刷新下拉输入框（原先靠 typeof 守卫成了静默空操作）。 */
 var _stdRiderFill = null;
 
+/* 日期 → YYYY-MM-DD（原在 attend-period.js，随标准达成视图归位） */
+function _stdYMD(d){ var y=d.getFullYear(),m=("0"+(d.getMonth()+1)).slice(-2),g=("0"+d.getDate()).slice(-2); return y+"-"+m+"-"+g; }
+/* 表格区大 Loading 占位（原在 attend-period.js） */
+function _stdTableLoader(text, sub){
+  return '<div class="std-table-loader"><span class="dots"><i></i><i></i><i></i></span>'+
+         '<div class="txt">'+esc(text||"加载中…")+'</div>'+
+         (sub?('<div class="sub">'+esc(sub)+'</div>'):'')+'</div>';
+}
+
 export function renderStandardView(host){
-  _stdEnsureStyle();
   // 默认当天（无日期选择框），仅看今日实时数据
   if(!_std.start){ var t=new Date(); _std.start=_stdYMD(t); _std.end=_stdYMD(t); }
 
