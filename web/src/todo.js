@@ -10,7 +10,8 @@ import { TODO_KEY, todoDefaultLists, todoLocalClone, todoDropLocal, todoReload, 
 export { TODO_KEY, todoReload, loadTodo, todoOpenCount, tdFmt, tdIsToday, tdOverdue, todoToggle };
 /* 编辑器已拆到 todo-editors.js（重复规则 / 任务 / 清单三类弹窗 + 运行记录区块）。
    这里导入本模块用到的，并把 openTodoEditor / closeTodoEditor 再导出给 main.js。 */
-import { TD_WEEK, TD_RUN_COLOR, TD_RUN_NAME, todoRepeatEditor, todoTaskEditor, todoRunRow, todoRunsBlock, openTodoEditor, closeTodoEditor, openListEditor } from "./todo-editors.js";
+import { openTodoEditor, closeTodoEditor, openListEditor } from "./todo-editors.js";
+import { TD_WEEK, TD_RUN_COLOR, TD_RUN_NAME } from "./todo-editor-parts.js";
 export { openTodoEditor, closeTodoEditor };
 const state = store.state;
 
