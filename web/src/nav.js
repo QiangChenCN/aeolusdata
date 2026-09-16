@@ -218,9 +218,37 @@ export function renderNav(){
 }
 
 /* --- 内容区：按导航切换，内部排版自由 --- */
+/* 内容区滚动容器（#viewHost 的最近可滚动祖先，通常是 main.main） */
+function _scrollParent(el){
+  var p = el && el.parentElement;
+  while(p){
+    var oy = getComputedStyle(p).overflowY;
+    if(oy === "auto" || oy === "scroll") return p;
+    p = p.parentElement;
+  }
+  return document.scrollingElement || document.documentElement;
+}
+
+/* 上次渲染的视图键：用于区分「切视图」与「同视图内重绘」 */
+var _lastViewKey = null;
+
 export function renderMain(){
   var host = document.getElementById("viewHost");
   _gpReap();                 /* 卡片里的 combobox 会被这次重渲染丢弃，先回收它们的孤儿浮层 */
+  /* 全量重绘会重建 DOM：切视图时回到顶部；同一视图内重绘（SSE / 数据更新）时
+     保留输入焦点/光标与滚动位置 —— 否则正在搜索的输入框会失焦、光标归零、列表跳回顶部。 */
+  var key = state.nav.kind + "|" + state.nav.id;
+  var sameView = (key === _lastViewKey);
+  var scroller = _scrollParent(host);
+  var scrollTop = (sameView && scroller) ? scroller.scrollTop : 0;
+  var focusId = null, selS = null, selE = null;
+  if(sameView){
+    var ae = document.activeElement;
+    if(ae && ae.id && host.contains(ae)){
+      focusId = ae.id;
+      if(typeof ae.selectionStart === "number"){ selS = ae.selectionStart; selE = ae.selectionEnd; }
+    }
+  }
   host.innerHTML = "";
   if(state.nav.kind==="home")         renderHomeView(host);
   else if(state.nav.kind==="todo")    renderTodoView(host);
@@ -229,6 +257,17 @@ export function renderMain(){
   else if(state.nav.kind==="attendPeriod") renderAttendPeriodView(host);
   else if(state.nav.kind==="history") renderHistoryView(host);
   else renderTaskView(host);   // 兜底（hub / logs 等旧导航值统一回落到任务视图）
+  _lastViewKey = key;
+  if(scroller) scroller.scrollTop = scrollTop;
+  if(focusId){
+    var el = document.getElementById(focusId);
+    if(el && el.focus){
+      el.focus();
+      if(selS != null && typeof el.setSelectionRange === "function"){
+        try{ el.setSelectionRange(selS, selE); }catch(e){ /* 非文本输入，忽略 */ }
+      }
+    }
+  }
 }
 
 /* 自动导出：供其他模块导入的内部顶层符号 */

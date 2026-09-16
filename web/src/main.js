@@ -22,6 +22,17 @@ function refreshAll(){
   renderMain();
 }
 
+/* 刷新调度：把同一帧内的多次 refresh 请求合并成一次全量重绘。
+   SSE 突发（run_start / queue / history…）或一次交互里多个模块同时 emit 时，
+   各自立即重绘会连续重建 nav+main —— 既丢输入焦点/滚动位置又浪费。
+   注：requestAnimationFrame 在标签页隐藏时自动暂停，天然做到「后台不重绘、回前台补一次」。 */
+var _refreshQueued = false;
+function scheduleRefresh(){
+  if(_refreshQueued) return;
+  _refreshQueued = true;
+  requestAnimationFrame(function(){ _refreshQueued = false; refreshAll(); });
+}
+
 /* --- 执行 --- */
 function runTasks(items){
   if(!items.length) return;
@@ -177,7 +188,7 @@ function connect(){
       if(state.modalRunId){          // 弹窗已开：跟随切到当前任务（批量/流水线逐个显示）
         openRunModal(d.run.run_id);
       }
-      refreshAll();
+      scheduleRefresh();
       return;
     }
     if(d.type==="run_end"){
@@ -197,7 +208,7 @@ function connect(){
         savePrefs();
       }
       if(state.modalRunId===d.run.run_id) renderRunModal();
-      refreshAll();
+      scheduleRefresh();
       loadState();
       return;
     }
@@ -213,7 +224,7 @@ function connect(){
     }
     if(d.type==="queue"){
       state.queuedIds = d.queue.map(function(q){ return q.task_id; });
-      refreshAll();
+      scheduleRefresh();
       return;
     }
     if(d.type==="history"){
@@ -222,7 +233,7 @@ function connect(){
       state.history.forEach(function(h){
         if(!state.last[h.task_id]) state.last[h.task_id] = h;
       });
-      refreshAll();
+      scheduleRefresh();
       return;
     }
   };
@@ -366,7 +377,7 @@ function loadState(){
     state.queuedIds = s.queuedIds || [];
     state.last = s.last || {};
     state.connected = true;
-    refreshAll();
+    scheduleRefresh();
   }).catch(function(){ state.connected = false; renderHeader(); });
 }
 
@@ -392,7 +403,7 @@ function bindEvents(){
     commitDateRangeGroup(t);   /* 单日/多日分组：按当前模式只写对应 flag */
     closeConfigDialog();
     /* 摘要因 param 改动要重新展示 mod 角标；节点区间在改动 begin/end 后也会变 */
-    refreshAll();
+    scheduleRefresh();
     toast("「" + t.name + "」配置已保存");
   };
   document.getElementById("cfDefault").onclick = function(){
@@ -535,4 +546,4 @@ if(document.readyState === "loading"){
 }
 
 /* 自动导出：供其他模块导入的内部顶层符号 */
-export { COOKIE_POLL_BASE, COOKIE_POLL_JITTER, COOKIE_POLL_MIN, _es, _sseAttempt, _sseClose, bindEvents, checkCookieStatus, connect, init, loadState, nextCookieDelay, onCookieVisibilityChange, refreshAll, runTasks, scheduleCookieCheck, startCookiePolling, state, stopCookiePolling, syncCurrentLog, syncHeaderHeight };
+export { COOKIE_POLL_BASE, COOKIE_POLL_JITTER, COOKIE_POLL_MIN, _es, _sseAttempt, _sseClose, bindEvents, checkCookieStatus, connect, init, loadState, nextCookieDelay, onCookieVisibilityChange, refreshAll, scheduleRefresh, runTasks, scheduleCookieCheck, startCookiePolling, state, stopCookiePolling, syncCurrentLog, syncHeaderHeight };
