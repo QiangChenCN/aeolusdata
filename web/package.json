@@ -10,7 +10,6 @@
     "lint": "eslint src"
   },
   "dependencies": {
-    "echarts": "^5.5.1",
     "tabulator-tables": "^6.3.1"
   },
   "devDependencies": {

@@ -4,7 +4,7 @@ import { svg, esc, hexA, toast, viewHead } from "./ui.js";
 import { TK, TK_MAP, RISK_LABEL, RISK_CLS, STATUS_CLS, STATUS_TXT, ICON } from "./tokens.js";
 import { bus } from "./bus.js";
 import { refreshLan, bindLanToggle, setArg, openSide, closeSide, askConfirm, closeConfirm, bindConfirmUI, lockScroll, unlockScroll } from "./behavior.js";
-import { _stdEnsureStyle, _stdYMD, _stdTableLoader, _stdEnsureECharts, _std, _STD_ALL_TEAM, _stdCoolKey } from "./attend-period.js";
+import { _stdEnsureStyle, _stdYMD, _stdTableLoader, _std, _STD_ALL_TEAM, _stdCoolKey } from "./attend-period.js";
 const state = store.state;
 /* _stdFillRiders 是视图设置函数内的闭包，模块级的 _stdRenderRiders 引用不到它；
    用模块级引用承接，加载完骑手后据此刷新下拉输入框（原先靠 typeof 守卫成了静默空操作）。 */
@@ -552,118 +552,11 @@ export function _stdBtnCool(btn, sec){
   if(left >= 0) _stdCoolTimer = setInterval(tick, 1000);
 }
 
-export function _stdQuery(cards,att,tblWrap,chart,refresh,done){
-  refresh = !!refresh;
-  cards.innerHTML='<div class="std-loading"><span class="dots"><i></i><i></i><i></i></span>加载中…</div>';
-  att.innerHTML="";
-  tblWrap.innerHTML=_stdTableLoader("数据加载中…"); chart.innerHTML="";
-  var url="/api/standard/achievement?team="+encodeURIComponent(_std.team)+
-    "&start="+encodeURIComponent(_std.start)+"&end="+encodeURIComponent(_std.end)+
-    (refresh?"&refresh=1":"");
-  api(url).then(function(j){
-    if(j&&j.code==="RATE_LIMITED"){   // 后端频控：用服务端剩余秒数校正本地倒计时
-      var w = parseInt(j.retry_after||60, 10);
-      _stdCoolMark(w);
-      _stdRenderEmpty(cards,att,tblWrap,chart);
-      cards.innerHTML='<div class="std-banner" style="display:block;background:rgba(89,107,120,.10);color:#5A6B78">'+
-        esc(j.error || ("请 "+w+" 秒后再试"))+'</div>';
-      return; }
-    if(j&&j.need_refresh){ _stdRenderEmpty(cards,att,tblWrap,chart);
-      cards.innerHTML='<div class="std-banner" style="display:block;background:rgba(89,107,120,.10);color:#5A6B78">'+
-        "今日尚无落盘数据，请点「查询（实时数据已刷新）」拉取"+(j.teamName?(" · "+esc(j.teamName)):"")+'</div>';
-      return; }
-    if(!j||!j.ok||!j.rows||!j.rows.length){ _stdRenderEmpty(cards,att,tblWrap,chart);
-      cards.innerHTML='<div class="std-banner" style="display:block">无数据返回（接口异常或当日无排班）：'+
-        (j&&j.error?esc(j.error):"")+'</div>';
-      return; }
-    _stdRender(j,cards,att,tblWrap,chart);
-  }).catch(function(e){ _stdRenderEmpty(cards,att,tblWrap,chart);
-    cards.innerHTML='<div class="std-banner" style="display:block">请求失败：'+esc(String(e))+'</div>';
-  }).then(function(){ if(done) done(); });   // 成功 / 失败 / 被限流都收尾，恢复按钮状态
-}
-
 export function _stdRateBadge(rate){
   if(rate===null||rate===undefined) return '<span class="rate rate-none">—</span>';
   var rt=rate/100;
   var cls= rt>=1.0?"rate-ok":(rt>=0.9?"rate-warn":"rate-bad");
   return '<span class="rate '+cls+'">'+rate+'%</span>';
-}
-
-export function _stdRender(j,cards,att,tblWrap,chart){
-  var s=j.summary||{}, rows=j.rows||[];
-
-  cards.innerHTML="";
-  function card(k,v,sub,cyan){ var c=document.createElement("div"); c.className="std-card";
-    c.innerHTML='<div class="k">'+esc(k)+'</div><div class="v'+(cyan?" cyan":"")+'">'+esc(v)+'</div>'+(sub?'<div class="sub">'+esc(sub)+'</div>':''); cards.appendChild(c); }
-  card("人数达成率", s.person_rate==null?"—":s.person_rate+"%", "全天实际排班 ÷ 全天预测人数", true);
-  card("单量达成率", s.order_rate==null?"—":s.order_rate+"%", "全天有效单量 ÷ 全天预测单量");
-  card("综合达成率", s.combined_rate==null?"—":s.combined_rate+"%", "人数 & 单量均值");
-  card("总预测/实际单量", (s.total_predict_order==null?"—":s.total_predict_order)+" / "+(s.total_actual_order==null?"—":s.total_actual_order), "区间内合计");
-  // 边界提示：无数据 / 数据不完整时明确告知，不让「—」被误读为 0
-  if(j.data_note){
-    var dn=document.createElement("div"); dn.className="std-banner"; dn.style.display="block";
-    dn.style.background="rgba(89,107,120,.10)"; dn.style.color="#5A6B78";
-    dn.style.gridColumn="1 / -1";
-    dn.textContent="数据状态："+esc(j.data_note)
-      + (j.data_status==="no_target"||j.data_status==="no_orders"
-         ? "（该维度记为「无数据」，不计为 0，也不判未达成）" : "");
-    cards.appendChild(dn);
-  }
-
-  att.innerHTML="";
-  var a=j.attendance;
-  function acard(k,v,sub){ var c=document.createElement("div"); c.className="std-card";
-    c.innerHTML='<div class="k">'+esc(k)+'</div><div class="v">'+esc(v)+'</div>'+(sub?'<div class="sub">'+esc(sub)+'</div>':''); att.appendChild(c); }
-  if(!a){ acard("当前排班未上线","—","实时数据已刷新后显示"); }
-  else if(a.note){ acard("当前排班未上线","—",a.note); }
-  else { acard("当前排班未上线", a.offline==null?"—":a.offline,
-    "考勤时段快照："+esc(a.time_name||"")+(a.sched!=null?("  排班 "+a.sched+" / 在线 "+a.online+" / 小休 "+a.rest):"")); }
-
-  tblWrap.innerHTML="";
-  var table=document.createElement("table"); table.className="std-table";
-  table.innerHTML='<thead><tr><th>日期</th><th>实际排班</th><th>预测人数</th>'+
-    '<th>人数达成率</th><th>预测单量</th><th>实际单量</th><th>单量达成率</th>'+
-    '<th>综合达成率</th><th>达成状态</th></tr></thead>';
-  var tb=document.createElement("tbody");
-  rows.forEach(function(r){
-    var tr=document.createElement("tr");
-    var sc=r.achieved==null?"rate-none":(r.achieved?"rate-ok":"rate-bad");
-    tr.innerHTML='<td>'+esc(r.shift_date||"")+'</td>'+
-      '<td>'+(r.actual_num==null?"—":r.actual_num)+'</td>'+
-      '<td>'+(r.predict_num==null?"—":r.predict_num)+'</td>'+
-      '<td>'+_stdRateBadge(r.person_rate)+'</td>'+
-      '<td>'+(r.predict_order==null?"—":r.predict_order)+'</td>'+
-      '<td>'+(r.actual_order==null?"—":r.actual_order)+'</td>'+
-      '<td>'+_stdRateBadge(r.order_rate)+'</td>'+
-      '<td>'+_stdRateBadge(r.combined_rate)+'</td>'+
-      '<td><span class="rate '+sc+'">'+esc(r.status_label||"—")+'</span></td>';
-    tb.appendChild(tr);
-  });
-  table.appendChild(tb); tblWrap.appendChild(table);
-
-  // 全天口径：一行 = 一天，直接按日期对比（不再按 time_name 分时段累加）
-  var byDay={};
-  rows.forEach(function(r){ var n=r.shift_date||"—";
-    if(!byDay[n]) byDay[n]={a:0,p:0,ao:0,po:0};
-    byDay[n].a+=(r.actual_num||0); byDay[n].p+=(r.predict_num||0);
-    byDay[n].ao+=(r.actual_order||0); byDay[n].po+=(r.predict_order||0); });
-  var names=Object.keys(byDay), actA=[],predA=[],actO=[],predO=[];
-  names.forEach(function(n){ var b=byDay[n];
-    actA.push(b.a); predA.push(b.p); actO.push(b.ao); predO.push(b.po); });
-  _stdEnsureECharts(function(echartsMod){
-    if(!echartsMod){ chart.innerHTML='<div style="color:var(--muted);padding:20px">图表库未加载</div>'; return; }
-    var ec=echartsMod.init(chart);
-    ec.setOption({ tooltip:{trigger:"axis"}, legend:{data:["实际排班人数","预测人数","实际单量","预测单量"]},
-      grid:{left:55,right:60,top:40,bottom:70},
-      xAxis:{type:"category",data:names,axisLabel:{interval:0,rotate:30}},
-      yAxis:[ {type:"value",name:"人数"}, {type:"value",name:"单量"} ],
-      series:[
-        {name:"实际排班人数",type:"bar",data:actA,itemStyle:{color:"#FF5000"}},
-        {name:"预测人数",type:"bar",data:predA,itemStyle:{color:"#0891B2"}},
-        {name:"实际单量",type:"bar",yAxisIndex:1,data:actO,itemStyle:{color:"#F5A623"}},
-        {name:"预测单量",type:"bar",yAxisIndex:1,data:predO,itemStyle:{color:"#7A5CFF"}}
-      ] });
-  });
 }
 
 /* ============ 骑手维度表头排序 ============
@@ -1565,13 +1458,6 @@ export function _stdRenderSettings(host, opts){
 
   monthEl.addEventListener("change", function(){ syncHist(); load(); _thLoad(); });
   load();
-}
-
-export function _stdRenderEmpty(cards,att,tblWrap,chart){
-  cards.innerHTML='<div class="std-card"><div class="k">无数据</div><div class="v">—</div><div class="sub">所选区间/站点无返回</div></div>';
-  att.innerHTML="";
-  tblWrap.innerHTML='<div style="color:var(--muted);padding:20px">暂无数据</div>';
-  chart.innerHTML="";
 }
 
 

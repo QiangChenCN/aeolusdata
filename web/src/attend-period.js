@@ -1637,7 +1637,7 @@ export function renderAttendPeriodView(host){
 
 /* 标准达成（一级菜单「数据看板」→ 子页「标准达成」）。
    数据源：后端 /api/standard/achievement（走真实风神接口，三源聚合）。
-   图表库 ECharts 本地化在 web/vendor/echarts.min.js（青色主题，呼应数据看板）。 */
+   纯 HTML 表格展示（原 ECharts 图表链路已废弃删除，图表库不再随包分发）。 */
 var _std = { teams:[], names:{}, team:"__all__", start:"", end:"", mode:"station",
   rider:"",            // 骑手筛选："" = 全部骑手；切站点时自动重置
   riderPool:[],        // 骑手候选池（最近一次 riders 接口返回的 rows 精简版）
@@ -2018,15 +2018,5 @@ export function _stdTableLoader(text, sub){
          (sub?('<div class="sub">'+esc(sub)+'</div>'):'')+'</div>';
 }
 export function _stdYMD(d){ var y=d.getFullYear(),m=("0"+(d.getMonth()+1)).slice(-2),g=("0"+d.getDate()).slice(-2); return y+"-"+m+"-"+g; }
-/* echarts 体积大（~1MB）且仅「标准达成」图表用到 → 改为动态 import 懒加载：
-   首次需要时才拉取，不拖累首屏；加载过则复用同一模块实例（失败回调 null）。 */
-var _echartsMod = null, _echartsP = null;
-export function _stdEnsureECharts(cb){
-  if(_echartsMod){ cb(_echartsMod); return; }
-  if(!_echartsP){ _echartsP = import("echarts"); }
-  _echartsP.then(function(m){ _echartsMod = m; cb(m); })
-           .catch(function(e){ console.error("[echarts] 加载失败：", e); cb(null); });
-}
-
 /* 自动导出：供其他模块导入的内部顶层符号 */
 export { LS_DS_KEY, _STD_ALL_TEAM, _ap, _apDataset, _apRiderData, _apRiderFilter, _std, _stdCoolKey, state };
