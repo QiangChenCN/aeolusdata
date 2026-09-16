@@ -61,7 +61,9 @@ last_teams.txt
 # 前端 Vite 工程（P1 拆分）：依赖与构建产物本地重建，不提交
 web/node_modules/
 web/dist/
-web/package-lock.json
+# 注：web/package-lock.json **要提交** —— 它是「可复现安装」的凭据（锁定精确版本 + 完整性哈希），
+# 与 node_modules 不同，属于源码的一部分。package.json 里全是 ^ 浮动范围，
+# 不锁版本会让换机安装到不同（甚至不兼容的）依赖。
 
 # 后端 API token —— 真实密钥（server.py 的 _API_TOKEN_PATH 落在项目根）
 .api_token
