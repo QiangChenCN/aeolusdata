@@ -1,4 +1,8 @@
 // 自动生成的模块头：统一依赖（未使用的导入会被打包器摇树移除）
+/* Tabulator 基础 + Simple 主题样式。此前**从未加载**（index.html 只链了 tokens/apple.css，
+   npm 包也不自带 CSS 导入）→ 产物预览的表格表头错乱、列不对齐（已截图确认）。
+   JS 已改为按需 import()，但样式必须随页面一起加载，否则表格没有布局。 */
+import "tabulator-tables/dist/css/tabulator_simple.min.css";
 import { store, groupOf, taskById, countInGroup, producerOf, missingText, visibleTasks, taskState, argValue } from "./store.js";
 import { api, savePrefs, loadPrefs, readTokens, withToken } from "./api.js";
 import { svg, esc, hexA, toast, debounce, viewHead } from "./ui.js";
