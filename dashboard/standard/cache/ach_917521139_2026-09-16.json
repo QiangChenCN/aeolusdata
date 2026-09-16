@@ -8,14 +8,14 @@
   "end": "2026-09-16",
   "summary": {
     "person_rate": 106.4,
-    "order_rate": 45.5,
-    "combined_rate": 76.0,
+    "order_rate": 48.8,
+    "combined_rate": 77.6,
     "achieved": false,
     "status_label": "未达成",
     "total_predict_num": 47,
     "total_actual_num": 50,
     "total_predict_order": 1887,
-    "total_actual_order": 858,
+    "total_actual_order": 920,
     "day_count": 1
   },
   "rows": [
@@ -28,10 +28,10 @@
       "person_rate": 106.4,
       "person_achieved": true,
       "predict_order": 1887.0,
-      "actual_order": 858,
-      "order_rate": 45.5,
+      "actual_order": 920,
+      "order_rate": 48.8,
       "order_achieved": false,
-      "combined_rate": 76.0,
+      "combined_rate": 77.6,
       "achieved": false,
       "status_label": "未达成"
     }
@@ -40,8 +40,8 @@
     "time_code": 131,
     "time_name": "下午茶2",
     "sched": 29,
-    "online": 28,
-    "offline": 1,
+    "online": 18,
+    "offline": 11,
     "rest": 0,
     "note": null
   },
