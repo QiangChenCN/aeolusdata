@@ -55,7 +55,10 @@ function scheduleRefresh(){
      窗口内只保留「最早到期的那个」，所以急档不会被钝档拖慢。
    注：日志事件不走这里（见 log 分支），它只做弹窗内合帧追加，必须保持逐行实时。 */
 var SSE_REFRESH_MIN_MS = 300;         /* 默认档：run_start / history / loadState 回填 */
-var SSE_REFRESH_COARSE_MS = 600;      /* 钝档：queue（纯队列 / 角标快照） */
+/* 钝档：queue（纯队列 / 角标快照）。后端已有 250ms 去抖 + 内容去重（每任务仅 ~1 条），
+   这里再叠 400ms：最坏端到端 ≈650ms，仍落在「即时反馈」感知内；取出 600 是为了给
+   组合延迟留余量（原 600ms 时最坏 ≈850ms，逼近 1s 的「系统状态」感知边界）。 */
+var SSE_REFRESH_COARSE_MS = 400;
 var _sseRefreshLast = 0, _sseRefreshTimer = null, _sseRefreshWait = 0;
 function scheduleSseRefresh(kind){
   var minMs = (kind === "coarse") ? SSE_REFRESH_COARSE_MS

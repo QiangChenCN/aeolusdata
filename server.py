@@ -493,6 +493,7 @@ class RunManager:
         self._q_lock = threading.Lock()
         self._q_timer = None            # 待发的合并窗口定时器
         self._q_pushed_at = 0.0         # 上次真正推送的时刻（time.monotonic）
+        self._q_last_sig = None         # 上次推送的快照签名（内容去重用）
         self.proc = None
         self.stop_flag = False
         self.killed_pids = set()
@@ -543,13 +544,21 @@ class RunManager:
                 pass
 
     def emit_queue(self):
-        """合并推送 queue 快照（250ms 去抖 + 尾部补发）。
+        """合并推送 queue 快照（内容去重 + 250ms 去抖 + 尾部补发）。
 
-        队列的入队 / 出队 / 取消都会改它；批量执行时几秒内能有几十次变化，每次都广播给所有
-        客户端，前端就得跟着重建界面。这里把窗口内的多次变化合并成一次推送，且推的一定是
-        「当下最新」的快照（emit 前才取 queue_state），末尾还有一次补发 —— 所以既降频又不丢最终状态。
+        队列的入队 / 出队 / 取消都会改它，每次变化都广播给所有客户端，前端就得跟着重建界面。
+        这里两层收敛：
+          · 内容去重：与上次推送的快照一致就不发 —— _worker 跑完那次推送（队列其实没变）
+            原本是纯重复，每个任务白多发一条；批量 N 个任务就是 N 条无用广播。
+          · 时间合并：窗口内的多次变化合并成一次，且推的永远是「当下最新」快照（flush 时重新取），
+            末尾必补发一次 —— 既降频又不丢最终状态。
         """
+        snap = self.queue_state()
+        sig = tuple(r["run_id"] for r in snap)
         with self._q_lock:
+            if sig == self._q_last_sig:
+                return                       # 内容没变 → 一条都不用发
+            self._q_last_sig = sig
             now = time.monotonic()
             wait = QUEUE_PUSH_MIN_S - (now - self._q_pushed_at)
             if wait <= 0:
@@ -562,13 +571,17 @@ class RunManager:
                     self._q_timer.start()
                 due_now = False
         if due_now:
-            self.emit({"type": "queue", "queue": self.queue_state()})
+            self.emit({"type": "queue", "queue": snap})
 
     def _q_flush(self):
+        """合并窗口到期：重新取「当下最新」快照推送（而非窗口开始时的旧数据）。"""
         with self._q_lock:
             self._q_timer = None
             self._q_pushed_at = time.monotonic()
-        self.emit({"type": "queue", "queue": self.queue_state()})
+        snap = self.queue_state()
+        with self._q_lock:
+            self._q_last_sig = tuple(r["run_id"] for r in snap)
+        self.emit({"type": "queue", "queue": snap})
 
     # ---- 构建命令 ----
     def build_cmd(self, task_id, args):
