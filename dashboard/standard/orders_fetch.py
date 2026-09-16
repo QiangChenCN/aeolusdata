@@ -378,15 +378,17 @@ class Session:
                 attempt += 1
 
 
-def _fetch_segment(sess, s_ms, e_ms, period, sleep_max=None, first=None, total=None):
+def _fetch_segment(sess, s_ms, e_ms, period, sleep_max=None, first=None, total=None,
+                   time_field=None):
     """抓单个时段切片的全部页，页间 page_sleep。返回 (rows, total)。
 
     first / total 可选：调用方若已请求过第 1 页（探总数那次），把结果传进来复用，
     避免第 1 页被打两次 —— 在严格限流下每一次请求额度都很贵。
+    time_field：时间筛选维度，透传给接口（见 get_data.delivery.TIME_FIELDS）。
     """
     rows = []
     if first is None or total is None:
-        first, total = sess.call(s_ms, e_ms, 1, PAGE_SIZE, period)
+        first, total = sess.call(s_ms, e_ms, 1, PAGE_SIZE, period, time_field=time_field)
     if not total or not first:
         return [], total or 0
     rows.extend(first)
@@ -394,7 +396,7 @@ def _fetch_segment(sess, s_ms, e_ms, period, sleep_max=None, first=None, total=N
     if pages > PAGE_INDEX_CAP:
         log(f"  !! 时段 {period} total={total} 超页码上限({PAGE_INDEX_CAP})，需更细切片")
     for cur in range(2, min(pages, PAGE_INDEX_CAP) + 1):
-        page, total = sess.call(s_ms, e_ms, cur, PAGE_SIZE, period)
+        page, total = sess.call(s_ms, e_ms, cur, PAGE_SIZE, period, time_field=time_field)
         if not page:
             break
         rows.extend(page)
@@ -417,14 +419,15 @@ def _dedup(rows):
     return out
 
 
-def fetch_orders(sess, start_ms, end_ms, sleep_max=None):
+def fetch_orders(sess, start_ms, end_ms, sleep_max=None, time_field=None):
     """按时段切片节奏拉取时间窗内全部运单明细，返回去重后的行列表。
 
     先取第 1 页拿 total：total>SEG_SPLIT_THRESHOLD 就拆 4 个时段分别抓，
     段间 coarse_sleep()；最后按 trackingId 去重（切片边界可能重复）。
+    time_field 决定按哪个时间维度筛选（缺省 trackingFinish）。
     """
     pace_reset()          # 新一次抓取重置节奏，不继承上次的惩罚/加速状态
-    first, total = sess.call(start_ms, end_ms, 1, PAGE_SIZE, FULL_DAY)
+    first, total = sess.call(start_ms, end_ms, 1, PAGE_SIZE, FULL_DAY, time_field=time_field)
     log(f"接口 total={total}")
     if not total:
         return []
@@ -433,20 +436,20 @@ def fetch_orders(sess, start_ms, end_ms, sleep_max=None):
         log(f"单量超 {SEG_SPLIT_THRESHOLD}，按 {len(segs)} 时段切片抓取")
         all_rows = []
         for seg in segs:
-            rows, _ = _fetch_segment(sess, start_ms, end_ms, seg, sleep_max)
+            rows, _ = _fetch_segment(sess, start_ms, end_ms, seg, sleep_max, time_field=time_field)
             all_rows.extend(rows)
             coarse_sleep()          # 时段之间
     else:
         # 单段：第 1 页（探总数那次）已拿到，直接续拉，不重复请求
         all_rows, _ = _fetch_segment(sess, start_ms, end_ms, FULL_DAY, sleep_max,
-                                     first=first, total=total)
+                                     first=first, total=total, time_field=time_field)
     dedup = _dedup(all_rows)
     log(f"抓取完成 {len(dedup)}/{total} 条")
     _save_pace_floor(_pace["floor"])      # 本次学到的下限存下来，下次刷新直接沿用
     return dedup
 
 
-def _fetch_all_rows(sess, start_ms, end_ms, sleep_max=None):
+def _fetch_all_rows(sess, start_ms, end_ms, sleep_max=None, time_field=None):
     """取全量运单行：导出优先（异步导出，零分页请求、无限流），失败/超时/空则回落分页。
 
     导出路径见 get_data/delivery_export.py：异步触发 Aeolus 运单导出 → 轮询任务
@@ -458,7 +461,8 @@ def _fetch_all_rows(sess, start_ms, end_ms, sleep_max=None):
         import get_data.delivery_export as DE
         log("尝试运单导出（异步导出，替代 125 页分页，零限流风险）...")
         rows = DE.export_orders(start_ms, end_ms, cookie=sess.cookie,
-                               poll_timeout=DE.DEFAULT_POLL_TIMEOUT)
+                               poll_timeout=DE.DEFAULT_POLL_TIMEOUT,
+                               time_field=time_field)
         if rows:
             log(f"导出成功：拿回 {len(rows)} 行（0 次分页请求）")
             return rows
@@ -466,10 +470,10 @@ def _fetch_all_rows(sess, start_ms, end_ms, sleep_max=None):
     except Exception as e:
         log(f"导出失败，回落分页取数：{type(e).__name__}: {e}")
     # 兜底：现有分页路径（带 AIMD 限流退避 + 自动重登）
-    return fetch_orders(sess, start_ms, end_ms, sleep_max=sleep_max)
+    return fetch_orders(sess, start_ms, end_ms, sleep_max=sleep_max, time_field=time_field)
 
 
-def fetch_orders_grouped(sess, start_ms, end_ms, sleep_max=None):
+def fetch_orders_grouped(sess, start_ms, end_ms, sleep_max=None, time_field=None):
     """一次拉全量运单，按 teamId 分组返回 {team_id_str: [rows]}。
 
     关键事实（2026-09-09 实测）：运单明细接口 `queryTracking/2.0` 的请求体
@@ -486,7 +490,7 @@ def fetch_orders_grouped(sess, start_ms, end_ms, sleep_max=None):
 
     返回：{teamId: [rows]}；teamId 缺失的行归入键 "_unknown"（调用方可忽略）。
     """
-    rows = _fetch_all_rows(sess, start_ms, end_ms, sleep_max)
+    rows = _fetch_all_rows(sess, start_ms, end_ms, sleep_max, time_field=time_field)
     grouped = {}
     for r in rows:
         tid = r.get("teamId")

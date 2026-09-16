@@ -32,16 +32,40 @@ HEADERS_BASE = {
 PAGE_SIZE = 50
 BJ = datetime.timezone(datetime.timedelta(hours=8))
 
+# 时间筛选字段：接口只支持这三个（风神前端「运单数据」页的时间下拉就是这三项，2026-09-16 抓包确认）。
+#   trackingCreated  运单生成时间
+#   platformBooked   用户下单时间
+#   trackingFinish   运单终态时间（完成时间）
+# 参数名规律：`${字段}Start` / `${字段}End` / `${字段}TimePeriodList`（平铺在 request 内）。
+# 实测：时段键必须与时间字段同名 —— 用 trackingCreated 配 trackingFinishTimePeriodList 会报
+# TIME_PERIOD_IS_NULL「运单查询时间区间不能为空」。
+# 注意：接口**没有「骑手接单时间」维度**；按接单日归属时需用 trackingCreated（必然 <= 接单时间）取超集，
+# 详见 dashboard/standard/site_orders.py 的归属说明。
+TIME_FIELD = "trackingFinish"
+TIME_FIELDS = ("trackingCreated", "platformBooked", "trackingFinish")
+
+
+def check_time_field(time_field):
+    f = time_field or TIME_FIELD
+    if f not in TIME_FIELDS:
+        raise ValueError("未知 time_field: %r（可用 %s）" % (f, "/".join(TIME_FIELDS)))
+    return f
+
 
 class AuthError(Exception):
     """会话失效（单点登录被顶号 / cookie 过期）。"""
 
 
-def build_body(start_ms, end_ms, current, page_size, period="0-86400"):
-    """组装单次分页请求体。period 为时段切片（如 "0-21600"），由调用方决定。"""
+def build_body(start_ms, end_ms, current, page_size, period="0-86400", time_field=None):
+    """组装单次分页请求体。period 为时段切片（如 "0-21600"），由调用方决定。
+
+    time_field 选择按哪个时间维度筛选（见 TIME_FIELDS）；缺省 trackingFinish，
+    与既有调用语义完全一致（默认行为不变）。
+    """
+    f = check_time_field(time_field)
     return {"params": {"request": {
-        "trackingFinishStart": start_ms,
-        "trackingFinishEnd": end_ms,
+        f + "Start": start_ms,
+        f + "End": end_ms,
         "merchantConsumerDistanceStart": "0",
         "merchantConsumerDistanceEnd": "999999",
         "payAmountStart": "0",
@@ -52,14 +76,15 @@ def build_body(start_ms, end_ms, current, page_size, period="0-86400"):
         "pageSize": page_size,
         "trackingStateKey": "all",
         "trackingLabelKey": "all",
-        "trackingFinishTimePeriodList": [period],
+        f + "TimePeriodList": [period],
     }}}
 
 
 def query(start_ms, end_ms, current, page_size=PAGE_SIZE,
-          period="0-86400", retries=8, cookie=None):
+          period="0-86400", retries=8, cookie=None, time_field=None):
     """单次分页请求，返回 (rows, total)。
 
+    time_field 选择时间筛选维度（TIME_FIELDS），缺省 trackingFinish。
     cookie 可选，不传则自动 ensure_cookies() 登录。
     网络抖动按 retries 重试（不 sleep，节奏由调用方在页间控制）。
     会话失效（result 为 null / 401 / 账户下线）抛 AuthError，由调用方重登重试。
@@ -71,7 +96,7 @@ def query(start_ms, end_ms, current, page_size=PAGE_SIZE,
     for attempt in range(retries):
         h = dict(HEADERS_BASE)
         h["cookie"] = cookie
-        body = build_body(start_ms, end_ms, current, page_size, period)
+        body = build_body(start_ms, end_ms, current, page_size, period, time_field=time_field)
         req = urllib.request.Request(API, data=json.dumps(body).encode(),
                                      headers=h, method="POST")
         try:
@@ -97,10 +122,11 @@ def query(start_ms, end_ms, current, page_size=PAGE_SIZE,
     raise RuntimeError(f"重试 {retries} 次仍失败: {last}")
 
 
-def fetch(start_ms, end_ms, page_size=PAGE_SIZE, period="0-86400", pace=0.0, cookie=None):
+def fetch(start_ms, end_ms, page_size=PAGE_SIZE, period="0-86400", pace=0.0, cookie=None,
+          time_field=None):
     """分页拉取时间段内全部运单明细，返回行列表（list[dict]）。
 
-    参数：时间窗 start_ms/end_ms、时段切片 period、每页大小 page_size；cookie 可选，不传则自动登录。
+    参数：时间窗 start_ms/end_ms、时段切片 period、每页大小 page_size、时间筛选维度 time_field；cookie 可选，不传则自动登录。
     pace 为页间停顿秒数（默认 0 不休眠；调用方按接口限流需要自行设定，如 0.5）。
     不含自动重登 / 落盘 / 限流退避 / limit 截断；会话失效抛 AuthError 交由调用方处理。
     """
@@ -110,7 +136,8 @@ def fetch(start_ms, end_ms, page_size=PAGE_SIZE, period="0-86400", pace=0.0, coo
     all_rows = []
     current = 1
     while True:
-        rows, total = query(start_ms, end_ms, current, page_size, period, cookie=cookie)
+        rows, total = query(start_ms, end_ms, current, page_size, period, cookie=cookie,
+                            time_field=time_field)
         if not rows:
             break
         all_rows.extend(rows)
@@ -123,5 +150,5 @@ def fetch(start_ms, end_ms, page_size=PAGE_SIZE, period="0-86400", pace=0.0, coo
     return all_rows
 
 
-__all__ = ["API", "HEADERS_BASE", "PAGE_SIZE", "BJ", "AuthError",
-           "build_body", "query", "fetch"]
+__all__ = ["API", "HEADERS_BASE", "PAGE_SIZE", "BJ", "TIME_FIELD", "TIME_FIELDS", "AuthError",
+           "check_time_field", "build_body", "query", "fetch"]

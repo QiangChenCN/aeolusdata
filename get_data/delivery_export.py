@@ -52,6 +52,7 @@ import urllib.request
 import urllib.error
 
 from aeolus_sdk import login as L
+from get_data.delivery import TIME_FIELD, TIME_FIELDS, check_time_field   # 时间字段单一来源
 import openpyxl
 
 # 注意前缀差异（前端 base path 多拼了一次 agencyTrackingFs，实测已验证）：
@@ -191,11 +192,16 @@ class AuthError(Exception):
     """会话失效（单点登录被顶号 / cookie 过期）。"""
 
 
-def build_export_body(start_ms, end_ms):
-    """组装导出查询条件（与 queryTracking 同构，无 teamId=全站）。"""
+def build_export_body(start_ms, end_ms, time_field=None):
+    """组装导出查询条件（与 queryTracking 同构，无 teamId=全站）。
+
+    time_field 与分页接口同一套（见 delivery.TIME_FIELDS）；**必须与分页路径取同一个字段**，
+    否则「导出优先、分页兜底」两条路会取到不同口径的数据（导出成功就用导出那份，口径会漂）。
+    """
+    f = check_time_field(time_field)
     return {"params": {"request": {
-        "trackingFinishStart": start_ms,
-        "trackingFinishEnd": end_ms,
+        f + "Start": start_ms,
+        f + "End": end_ms,
         "merchantConsumerDistanceStart": "0",
         "merchantConsumerDistanceEnd": "999999",
         "payAmountStart": "0",
@@ -204,7 +210,7 @@ def build_export_body(start_ms, end_ms):
         "weightEnd": "999999",
         "trackingStateKey": "all",
         "trackingLabelKey": "all",
-        "trackingFinishTimePeriodList": ["0-86400"],
+        f + "TimePeriodList": ["0-86400"],
     }}}
 
 
@@ -304,9 +310,11 @@ def parse_xlsx_bytes(data):
     return out
 
 
-def export_orders(start_ms, end_ms, cookie=None, poll_timeout=DEFAULT_POLL_TIMEOUT):
+def export_orders(start_ms, end_ms, cookie=None, poll_timeout=DEFAULT_POLL_TIMEOUT,
+                  time_field=None):
     """完整链路：触发 → 轮询认领 → 拿URL → 下载 → 解析，返回 dict 列表。
 
+    time_field 与分页接口同一套（缺省 trackingFinish）。
     失败（会话失效 / 任务超时 / 网络）抛异常，交由调用方回落到分页 fetch_orders。
     """
     if cookie is None:
@@ -317,7 +325,7 @@ def export_orders(start_ms, end_ms, cookie=None, poll_timeout=DEFAULT_POLL_TIMEO
     except Exception:
         max_id = 0
     # 2) 触发导出
-    body = build_export_body(start_ms, end_ms)
+    body = build_export_body(start_ms, end_ms, time_field=time_field)
     if not trigger_export(body, cookie):
         raise RuntimeError("导出触发未受理（data 非 true）")
     # 3) 轮询认领 id>max_id 且 status=1 的任务

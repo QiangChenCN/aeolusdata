@@ -12,6 +12,16 @@ dashboard/data/orders_<teamId>_<date>.json —— 等价于 cache.load_raw("orde
 ------------------------------------------------------------------------------
   归属日 = 骑手接单时间（acceptAtLast，缺失兜底创建时间）的北京时间日期；
            跨午夜的订单归到「接单那一天」，不会被两天各计一次。
+
+抓取口径与归属口径的配合（重要）
+------------------------------
+  接口没有「接单时间」维度，只有 运单生成 / 用户下单 / 运单终态 三个
+  （见 get_data.delivery.TIME_FIELDS）；落盘的运单缓存按**运单生成时间**抓
+  （refresh_all._fetch_shared_orders 显式传 trackingCreated）。
+  生成必然早于/等于接单，所以「接单日在 D」的单，生成时间落在 [D-1, D]
+  —— 本模块据此读 D 与 D-1 两个文件（LOOKBACK_DAYS）。
+  历史遗留：早期缓存是按「运单终态时间」抓的，跨午夜单（今天接、次日完成）落在次日文件里，
+  今天算不到、次日又归属不符 → 两天都丢，属系统性少计。要修正历史区间需按新口径重新刷新那几天。
   接单量     accepted      = 归属日落在 [start, end] 内的运单条数（不论最终是否完成）
   配送完成量 completed     = 其中 is_completed() 为真（stateDesc=配送成功 / state=40）
   有效单量   valid         = 其中 is_valid_order() 为真（完成 + 非作弊 + 非逆向 + 非改派）
@@ -39,6 +49,13 @@ _RAW_KIND = "orders"
 _DATA_DIR = os.path.join(_ROOT, "dashboard", "data")
 _FNAME_RE = re.compile(r"^orders_(?P<team>[^_]+)_(?P<date>\d{4}-\d{2}-\d{2})\.json$")
 NAME_KEYS = ("teamName", "团队/站点名称", "团队名称")
+# 「接单日在 D」的单，其运单生成时间最早落在 D-1（生成 <= 接单，且两者通常只隔几分钟）
+LOOKBACK_DAYS = 1
+
+
+def _prev_date(date):
+    """归属日往前推 LOOKBACK_DAYS 天：用于读取「生成时间落在前一天」的运单。"""
+    return (datetime.date.fromisoformat(date) - datetime.timedelta(days=LOOKBACK_DAYS)).isoformat()
 
 
 def _daterange(start, end):
@@ -61,12 +78,21 @@ def _cached_teams(date):
 
 
 def _count_day(team_id, date):
-    """单站点单日聚合；无缓存返回 None。
+    """单站点单日聚合（只计「接单日 = date」的运单）；两份文件都为空时返回 None。
 
-    归属日必须恰好等于该文件对应日期 —— 文件按日抓取，正常不会跨日；
-    显式再判一次是为了避免上游写入错日数据时把量算到别的日子上。
+    读 D 与 D-1 两份缓存：抓取按**运单生成时间**落盘，而生成 <= 接单，
+    所以「接单日在 D」的单其生成时间可能落在 D-1（深夜生成、凌晨接单）—— 只看 D 会漏。
+    两文件按 trackingId 去重（分页抖动会产生整行完全相同的重复）。
     """
-    rows = CACHE.load_raw(_RAW_KIND, team_id, date)
+    rows, seen = [], set()
+    for d in (date, _prev_date(date)):
+        for o in (CACHE.load_raw(_RAW_KIND, team_id, d) or []):
+            tid = o.get("trackingId")
+            if tid is not None:
+                if tid in seen:
+                    continue
+                seen.add(tid)
+            rows.append(o)
     if not rows:
         return None
     acc = comp = val = 0

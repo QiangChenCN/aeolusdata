@@ -181,12 +181,19 @@ def _fetch_shared_orders(teams, start_date, end_date):
     3 倍请求数、3 倍耗时、3 倍限流风险。改为一次拉全量 + 内存里按 teamId 分组。
 
     失败不导致整个刷新中止：返回 (False, 原因)，调用方降级为「各站点自行拉取」。
+
+    时间维度按**运单生成时间(trackingCreated)**抓，而不是接口默认的运单终态时间：
+    看板一律按「骑手接单时间」归属日期（order_rules 单一来源），而接口没有「接单时间」维度
+    （只有 运单生成 / 用户下单 / 运单终态 三个，见 get_data.delivery.TIME_FIELDS）。
+    接单必然晚于生成 → 按生成时间抓得到的是「接单日 ⊆ 生成日」的超集：
+    今天接单、次日完成的跨午夜单不会再落进次日的文件里造成两天都归不进（系统性少计）。
+    聚合侧配合读取 D 与 D-1 两个文件，见 site_orders.py。
     """
     try:
         sess = OF.Session()
         s_ms = AC._ymd_to_ms(start_date, False)
         e_ms = AC._ymd_to_ms(end_date, True)
-        grouped = OF.fetch_orders_grouped(sess, s_ms, e_ms)
+        grouped = OF.fetch_orders_grouped(sess, s_ms, e_ms, time_field="trackingCreated")
     except Exception as e:
         return False, "%s: %s" % (type(e).__name__, e)
     hit = 0
