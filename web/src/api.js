@@ -46,6 +46,13 @@ function loadPrefs(){
     }else if(p.filter && p.filter !== "all"){
       state.nav = { kind:"tasks", id:p.filter };
     }
+    /* 一次性迁移（2026-09-16）：首页改造成数据大屏后设为默认落地页。
+       老存档里存的是「上次停留的视图」，会盖掉新默认值 —— 这里强制切一次，
+       之后标记落盘、尊重用户自己的选择（不反复抢焦点）。 */
+    if(p.homeDefault !== 1){
+      state.nav = { kind:"home", id:"" };
+    }
+    state.homeDefault = 1;
     // 手风琴约束：防止旧存档里残留多个一级菜单同时为展开态
     var _open = Object.keys(state.navOpen).filter(function(k){ return state.navOpen[k] === true; });
     if(_open.length > 1){ _open.slice(1).forEach(function(k){ state.navOpen[k] = false; }); }
@@ -56,7 +63,8 @@ function savePrefs(){
   try{
     localStorage.setItem(LS_KEY, JSON.stringify({
       nav: state.nav, navOpen: state.navOpen, args: state.args,
-      taskDefaultGroup: state.taskDefaultGroup
+      taskDefaultGroup: state.taskDefaultGroup,
+      homeDefault: state.homeDefault || 0
     }));
   }catch(e){}
 }

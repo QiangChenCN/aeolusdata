@@ -167,8 +167,7 @@ button:active{ transform:scale(.97) }
 /* ---------- 视图标题 / 区块标题（大字号 + 负字距） ---------- */
 .view-h b{ font-size:var(--fs-view); font-weight:600; letter-spacing:-.022em }
 .view-h .vh-ic{ border-radius:11px }
-.section-head b, .home-sec b{ font-size:var(--fs-section); font-weight:600; letter-spacing:-.012em }
-.home-sec{ margin:34px 0 14px }
+.section-head b{ font-size:var(--fs-section); font-weight:600; letter-spacing:-.012em }
 
 /* ---------- 卡片（Apple 卡：大圆角 + 柔阴影 + 悬浮微抬升） ---------- */
 .card{
@@ -182,10 +181,6 @@ button:active{ transform:scale(.97) }
 .card::before{ width:4px; border-radius:0 }   /* 状态条收窄为 4px 细线，避免压住大圆角 */
 .card .c-title, .card b{ letter-spacing:-.01em }
 
-/* ---------- 首页盒子 ---------- */
-.home-box{ border-radius:var(--r-card); box-shadow:var(--shadow-1) }
-.home-row{ border-radius:12px; transition:background var(--dur-base) }
-.home-row:hover{ background:#F5F5F7 }
 
 /* ---------- 分段控件（Apple Segmented） ---------- */
 .view-switch{ background:#F5F5F7; border-radius:999px; padding:3px; border:none }
@@ -259,23 +254,20 @@ input:focus, select:focus, textarea:focus{
 @keyframes apple-rise{ from{ opacity:0; transform:translateY(18px) } to{ opacity:1; transform:none } }
 
 /* 卡片 / 首页盒子：滚动逐条浮现（由 JS 加 .in 触发；无 JS 时 reveal-ready 未置，保持可见） */
-html.reveal-ready .card,
-html.reveal-ready .home-box{
+html.reveal-ready .card{
   opacity:0; transform:translateY(18px);
   transition:opacity .6s var(--ease-apple), transform .6s var(--ease-apple);
   will-change:opacity, transform;
 }
-html.reveal-ready .card.in,
-html.reveal-ready .home-box.in{ opacity:1; transform:none }
+html.reveal-ready .card.in{ opacity:1; transform:none }
 
 /* 首屏固定元素（标题 / 分区头 / Hero）保留入场淡入，不依赖滚动 */
-.view-h, .home-sec, .hero{ animation:apple-rise .55s var(--ease-apple) both }
+.view-h{ animation:apple-rise .55s var(--ease-apple) both }
 
 /* 尊重系统「减少动态效果」：内联 <style> 已重置 transition；此处一并关掉入场动画与揭示隐藏态 */
 @media(prefers-reduced-motion:reduce){
-  html.reveal-ready .card,
-  html.reveal-ready .home-box{ opacity:1 !important; transform:none !important; transition:none !important }
-  .view-h, .home-sec,
+  html.reveal-ready .card{ opacity:1 !important; transform:none !important; transition:none !important }
+  .view-h,
   .mask.show .modal, .artmask.show .artmodal, .cf-mask.show .cfmodal, .logmask.show .logmodal{
     animation:none !important;
   }

@@ -8,7 +8,8 @@ const state = {
   registry: { groups: [], tasks: [], presets: [] },
   groups: [],           // [{id,name,color}]
   tasks: [],            // 任务数组
-  nav: { kind:"tasks", id:"all" },   // kind: tasks | preset | history | home | hub | todo
+  nav: { kind:"home", id:"" },       // 默认落地页 = 首页数据大屏；kind: home | tasks | preset | history | hub | todo
+  homeDefault: 1,                    // 「首页为默认页」迁移标记：默认已是首页 → 新用户无需迁移；老存档缺此标记时强制切一次
   navOpen: { hub:true },             // 一级菜单展开状态（只对带子项的一级有意义）
   todo: null,                        // 工作内容（提醒事项）：{lists:[],items:[]}，由 loadTodo() 填充
   args: {},             // taskId -> {flag: value}

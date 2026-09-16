@@ -29,7 +29,9 @@ var RANGES = [
   { k:"14d",   label:"近 14 天", days:14 }
 ];
 var _rangeKey = "7d";
-var _cache = {};
+var _cache = {};      // 已完成结果：区间 key -> 响应
+var _inflight = {};   // 进行中请求：启动期会连续重绘多次，同区间必须复用同一个请求
+                      //（否则每次重绘都触发一次全量聚合 —— 服务端要重读 24 个大 JSON，首屏也被拖慢）
 
 function ymd(d){
   var p = function(n){ return (n<10?"0":"")+n; };
@@ -76,21 +78,30 @@ function draw(root){
   var key = rg.start + "_" + rg.end;
   if(_cache[key]){ paint(mount, _cache[key]); return; }
 
+  if(!_inflight[key]){
+    _inflight[key] = api("/api/overview/site-orders?start="+rg.start+"&end="+rg.end)
+      .then(function(j){
+        if(j && j.ok) _cache[key] = j;
+        _inflight[key] = null;
+        return j;
+      })
+      .catch(function(e){
+        _inflight[key] = null;
+        throw e;
+      });
+  }
   mount.innerHTML = '<div class="scr-panel"><div class="scr-empty">正在汇总运单数据…</div></div>';
-  api("/api/overview/site-orders?start="+rg.start+"&end="+rg.end)
-    .then(function(j){
-      if(!document.contains(mount)) return;          // 期间视图已重绘 → 丢弃本次结果，避免写到废弃节点
-      if(!j || !j.ok){
-        mount.innerHTML = '<div class="scr-panel"><div class="scr-empty">加载失败：'+esc((j && j.error) || "未知错误")+'</div></div>';
-        return;
-      }
-      _cache[key] = j;
-      paint(mount, j);
-    })
-    .catch(function(e){
-      if(!document.contains(mount)) return;
-      mount.innerHTML = '<div class="scr-panel"><div class="scr-empty">加载失败：'+esc(String(e))+'</div></div>';
-    });
+  _inflight[key].then(function(j){
+    if(!document.contains(mount)) return;          // 期间视图已重绘 → 丢弃；新视图会复用同一请求再画
+    if(!j || !j.ok){
+      mount.innerHTML = '<div class="scr-panel"><div class="scr-empty">加载失败：'+esc((j && j.error) || "未知错误")+'</div></div>';
+      return;
+    }
+    paint(mount, j);
+  }).catch(function(e){
+    if(!document.contains(mount)) return;
+    mount.innerHTML = '<div class="scr-panel"><div class="scr-empty">加载失败：'+esc(String(e))+'</div></div>';
+  });
 }
 
 /* ---------- 工具条 ---------- */
