@@ -1,4 +1,4 @@
-import { store, groupOf, taskById, countInGroup, producerOf, missingText, visibleTasks, taskState, argValue } from "./store.js";
+import { store, groupOf, taskById, countInGroup, producerOf, missingText, visibleTasks, taskState, argValue, navExpandOnly } from "./store.js";
 import { api, savePrefs, loadPrefs, readTokens, withToken, ensureTeams } from "./api.js";
 import { svg, esc, hexA, toast, debounce, viewHead } from "./ui.js";
 import { TK, TK_MAP, RISK_LABEL, RISK_CLS, STATUS_CLS, STATUS_TXT, ICON } from "./tokens.js";
@@ -128,14 +128,6 @@ export function navSections(){
                count:todoOpenCount(), color:TK.brand });
 
   return items;
-}
-
-/* 手风琴：展开某一个带 children 的一级菜单，同时收起其它所有带 children 的一级菜单。
-   保证「同时只有一个一级菜单展开」。 */
-export function navExpandOnly(kind){
-  navSections().forEach(function(o){
-    if(o.children && o.children.length) state.navOpen[o.kind] = (o.kind === kind);
-  });
 }
 
 /* 某个导航项（或它的任意子项）下是否有任务正在跑 */

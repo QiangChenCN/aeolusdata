@@ -111,6 +111,14 @@ export function argValue(tid, p){
   return p.default !== undefined ? p.default : "";
 }
 
+/* 一级菜单手风琴：只展开指定一级菜单，收起其它（只作用于 state.navOpen 的现有键）。
+   原在 nav.js；因 home.js 也要用、而 nav.js 又 import home.js（renderHomeView）→
+   移到状态归属处（store），打断 nav↔home 循环依赖。 */
+export function navExpandOnly(kind){
+  Object.keys(state.navOpen).forEach(function(k){ state.navOpen[k] = (k === kind); });
+  state.navOpen[kind] = true;   /* 指定项可能尚未出现在 navOpen（首次展开）→ 补上 */
+}
+
 /* ---- 任务列表过滤/排序（原在 standard.js；移来与 store.ui.taskFilter 同处，供 task.js 单一来源导入） ---- */
 var _STATUS_PRIORITY = { running:0, queued:1, failed:2, success:3 };
 function _statusKey(t){ var s = taskState(t.id); return _STATUS_PRIORITY[s]==null ? 4 : _STATUS_PRIORITY[s]; }

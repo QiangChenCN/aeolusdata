@@ -1,11 +1,11 @@
 // 自动生成的模块头：统一依赖（未使用的导入会被打包器摇树移除）
-import { store, groupOf, taskById, countInGroup, producerOf, missingText, visibleTasks, taskState, argValue } from "./store.js";
+import { store, groupOf, taskById, countInGroup, producerOf, missingText, visibleTasks, taskState, argValue, navExpandOnly } from "./store.js";
 import { api, savePrefs, loadPrefs, readTokens, withToken } from "./api.js";
 import { svg, esc, hexA, toast, debounce, viewHead } from "./ui.js";
 import { TK, TK_MAP, RISK_LABEL, RISK_CLS, STATUS_CLS, STATUS_TXT, ICON } from "./tokens.js";
 import { bus } from "./bus.js";
 import { refreshLan, bindLanToggle, setArg, openSide, closeSide, askConfirm, closeConfirm, bindConfirmUI, lockScroll, unlockScroll } from "./behavior.js";
-import { navExpandOnly } from "./nav.js";
+
 import { openRunDrawer } from "./runs.js";
 import { todoOpenCount, tdIsToday, todoToggle, tdOverdue, tdFmt } from "./todo.js";
 const state = store.state;
