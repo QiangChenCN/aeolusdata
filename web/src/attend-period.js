@@ -1635,20 +1635,8 @@ export function renderAttendPeriodView(host){
   _apSwitchTab(last==="rider" || last==="settings" ? last : "station");
 }
 
-/* 标准达成（一级菜单「数据看板」→ 子页「标准达成」）。
-   数据源：后端 /api/standard/achievement（走真实风神接口，三源聚合）。
-   纯 HTML 表格展示（原 ECharts 图表链路已废弃删除，图表库不再随包分发）。 */
-var _std = { teams:[], names:{}, team:"__all__", start:"", end:"", mode:"station",
-  rider:"",            // 骑手筛选："" = 全部骑手；切站点时自动重置
-  riderPool:[],        // 骑手候选池（最近一次 riders 接口返回的 rows 精简版）
-  sort:{key:null,dir:0}, // 表头排序：{key=列名, dir:1 升序 / -1 降序 / 0 默认}
-  page:1,              // 骑手表当前页码（切站点 / 切骑手 / 重新查询时归 1）
-  pageSize:20          // 骑手表每页条数（10/15/20/25/30 可选，默认 20）
-};
-var _STD_ALL_TEAM = "__all__";   // 站点下拉「全部站点」的 value（后端合并取数）
-// 查询按钮冷却的存储键（提到与 _std 同级：渲染入口可能早于下方 var 赋值执行，
-// 若此时 _stdCoolKey 还是 undefined，localStorage 会读写到 "undefined" 键）
-var _stdCoolKey = "stdQueryCooldownV1";
+/* 标准达成（数据看板 → 标准达成）的共享渲染辅助：_stdEnsureStyle / _stdYMD / _stdTableLoader。
+   入口 renderStandardView 在 standard.js；视图状态 _std / _STD_ALL_TEAM / _stdCoolKey 已归位到 standard.js。 */
 
 export function _stdEnsureStyle(){
   if(document.getElementById("std-css")) return;
@@ -2019,4 +2007,4 @@ export function _stdTableLoader(text, sub){
 }
 export function _stdYMD(d){ var y=d.getFullYear(),m=("0"+(d.getMonth()+1)).slice(-2),g=("0"+d.getDate()).slice(-2); return y+"-"+m+"-"+g; }
 /* 自动导出：供其他模块导入的内部顶层符号 */
-export { LS_DS_KEY, _STD_ALL_TEAM, _ap, _apDataset, _apRiderData, _apRiderFilter, _std, _stdCoolKey, state };
+export { LS_DS_KEY, _ap, _apDataset, _apRiderData, _apRiderFilter, state };

@@ -1,15 +1,15 @@
-import { store, groupOf, taskById, countInGroup, producerOf, missingText, visibleTasks, taskState, argValue } from "./store.js";
+import { store, groupOf, taskById, countInGroup, producerOf, missingText, visibleTasks, taskState, argValue, applyTaskFilter } from "./store.js";
 import { api, savePrefs, loadPrefs, readTokens, withToken, ensureTeams } from "./api.js";
 import { svg, esc, hexA, toast, debounce, viewHead } from "./ui.js";
 import { TK, TK_MAP, RISK_LABEL, RISK_CLS, STATUS_CLS, STATUS_TXT, ICON } from "./tokens.js";
 import { bus } from "./bus.js";
 import { refreshLan, bindLanToggle, setArg, openSide, closeSide, askConfirm, closeConfirm, bindConfirmUI, lockScroll, unlockScroll } from "./behavior.js";
-import { applyTaskFilter, _taskFilter, _expandedGroups } from "./standard.js";
 import { skeletonCards } from "./home.js";
 const state = store.state;
-/* 列表/看板视图模式：运行期会被重新赋值（见 renderTaskView 里视图切换），
-   ES 模块导入绑定只读，故在本地声明，不能从 standard.js import。 */
-var _taskViewMode = "list";
+/* 视图层共享状态统一归 store.ui（单一归属）；此处取别名，既有 `_taskFilter.q` 等写法不变。
+   taskViewMode 是标量且会被重新赋值，无法别名，统一走 store.ui.taskViewMode。 */
+var _taskFilter = store.ui.taskFilter;
+var _expandedGroups = store.ui.expandedGroups;
 
 import { openConfigDialog, taskCard } from "./config.js";
 import { openRunModal } from "./runs.js";
@@ -44,8 +44,8 @@ export function renderTaskView(host){
     (isAll ? '<select id="tfGroup" class="tf-sel"><option value="all">全部分组</option>'+ state.groups.map(function(g){ return '<option value="'+esc(g.id)+'">'+esc(g.name)+'</option>'; }).join("") +'</select>' : "")+
     '<select id="tfSort" class="tf-sel"><option value="last">排序：最近运行</option><option value="name">排序：名称</option><option value="status">排序：状态</option></select>'+
     '<div class="view-switch" id="tfView">'+
-      '<button type="button" data-m="list" class="'+( _taskViewMode==="list"?"on":"")+'">'+svg("list","ic-sm")+'列表</button>'+
-      '<button type="button" data-m="board" class="'+( _taskViewMode==="board"?"on":"")+'">'+svg("grid","ic-sm")+'看板</button>'+
+      '<button type="button" data-m="list" class="'+( store.ui.taskViewMode==="list"?"on":"")+'">'+svg("list","ic-sm")+'列表</button>'+
+      '<button type="button" data-m="board" class="'+( store.ui.taskViewMode==="board"?"on":"")+'">'+svg("grid","ic-sm")+'看板</button>'+
     '</div>';
   host.appendChild(bar);
 
@@ -68,7 +68,7 @@ export function renderTaskView(host){
   sortEl.addEventListener("change", function(){ _taskFilter.sort = sortEl.value; renderTaskGrid(grid, isAll); });
   bar.querySelectorAll("#tfView button").forEach(function(b){
     b.addEventListener("click", function(){
-      _taskViewMode = b.dataset.m;
+      store.ui.taskViewMode = b.dataset.m;
       bar.querySelectorAll("#tfView button").forEach(function(x){ x.classList.toggle("on", x===b); });
       renderTaskGrid(grid, isAll);
     });
@@ -99,7 +99,7 @@ export function renderTaskGrid(grid, isAll){
   }
 
   /* 看板视图：按运行结果状态分列（只读可视化） */
-  if(_taskViewMode === "board"){
+  if(store.ui.taskViewMode === "board"){
     grid.className = "board";
     var order = [["running","运行中"],["queued","排队中"],["success","成功"],["failed","失败"],["none","未运行"]];
     order.forEach(function(pair){
@@ -1600,11 +1600,6 @@ export function _dpkDayBtn(y, m, d, muted, sel, today){
   return b;
 }
 
-var cfDateMode = "single";   /* 当前弹窗里日期分组所选模式 */
-/* 供 config.js（commitDateRangeGroup/resetDateRangeGroup）写回：
-   导入绑定只读，标量重赋值必须走 setter。 */
-export function setCfDateMode(m){ cfDateMode = m; }
-
 /* 取本地「昨天」的 YYYY-MM-DD 字符串；与 Python 端 _resolve_days() 默认行为保持一致 */
 export function _yesterdayStr(){
   var d = new Date();
@@ -1632,9 +1627,9 @@ export function renderDateRangeGroup(task){
      让 UI 与脚本默认行为同步（避免「脚本跑昨天，配置界面却空着」让人误以为漏配） */
   if(!curDate && !curStart && !curEnd){
     curDate = _yesterdayStr();
-    cfDateMode = "single";
+    store.ui.cfDateMode = "single";
   } else {
-    cfDateMode = curDate ? "single" : "range";
+    store.ui.cfDateMode = curDate ? "single" : "range";
   }
 
   var wrap = document.createElement("div");
@@ -1652,8 +1647,8 @@ export function renderDateRangeGroup(task){
     lab.className = "cf-radio";
     var r = document.createElement("input");
     r.type = "radio"; r.name = "cfDrMode"; r.value = pair[0];
-    r.checked = (cfDateMode === pair[0]);
-    r.onchange = function(){ cfDateMode = pair[0]; syncDrPanels(); };
+    r.checked = (store.ui.cfDateMode === pair[0]);
+    r.onchange = function(){ store.ui.cfDateMode = pair[0]; syncDrPanels(); };
     lab.appendChild(r);
     lab.appendChild(document.createTextNode(" " + pair[1]));
     radios.appendChild(lab);
@@ -1687,12 +1682,12 @@ export function renderDateRangeGroup(task){
   wrap.appendChild(pRange);
 
   function syncDrPanels(){
-    pSingle.style.display = (cfDateMode==="single") ? "" : "none";
-    pRange.style.display  = (cfDateMode==="range")  ? "" : "none";
+    pSingle.style.display = (store.ui.cfDateMode==="single") ? "" : "none";
+    pRange.style.display  = (store.ui.cfDateMode==="range")  ? "" : "none";
   }
   syncDrPanels();
   return wrap;
 }
 
 /* 自动导出：供其他模块导入的内部顶层符号 */
-export { DANGER_TOGGLE, GP_DEBOUNCE, _GP_ALL, _GP_BOUND, _MTP_ALL, _MTP_BOUND, _dpkDocHandler, _sessionDangerOK, cfDateMode, state };
+export { DANGER_TOGGLE, GP_DEBOUNCE, _GP_ALL, _GP_BOUND, _MTP_ALL, _MTP_BOUND, _dpkDocHandler, _sessionDangerOK, state };

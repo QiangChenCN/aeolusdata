@@ -4,8 +4,19 @@ import { svg, esc, hexA, toast, viewHead } from "./ui.js";
 import { TK, TK_MAP, RISK_LABEL, RISK_CLS, STATUS_CLS, STATUS_TXT, ICON } from "./tokens.js";
 import { bus } from "./bus.js";
 import { refreshLan, bindLanToggle, setArg, openSide, closeSide, askConfirm, closeConfirm, bindConfirmUI, lockScroll, unlockScroll } from "./behavior.js";
-import { _stdEnsureStyle, _stdYMD, _stdTableLoader, _std, _STD_ALL_TEAM, _stdCoolKey } from "./attend-period.js";
+import { _stdEnsureStyle, _stdYMD, _stdTableLoader } from "./attend-period.js";
 const state = store.state;
+
+/* 标准达成视图状态（原误放在 attend-period.js；仅本模块使用 → 归位到唯一使用者） */
+var _std = { teams:[], names:{}, team:"__all__", start:"", end:"", mode:"station",
+  rider:"",            // 骑手筛选："" = 全部骑手；切站点时自动重置
+  riderPool:[],        // 骑手候选池（最近一次 riders 接口返回的 rows 精简版）
+  sort:{key:null,dir:0}, // 表头排序：{key=列名, dir:1 升序 / -1 降序 / 0 默认}
+  page:1,              // 骑手表当前页码（切站点 / 切骑手 / 重新查询时归 1）
+  pageSize:20          // 骑手表每页条数（10/15/20/25/30 可选，默认 20）
+};
+var _STD_ALL_TEAM = "__all__";             // 站点下拉「全部站点」的 value（后端合并取数）
+var _stdCoolKey = "stdQueryCooldownV1";    // 查询按钮冷却的存储键
 /* _stdFillRiders 是视图设置函数内的闭包，模块级的 _stdRenderRiders 引用不到它；
    用模块级引用承接，加载完骑手后据此刷新下拉输入框（原先靠 typeof 守卫成了静默空操作）。 */
 var _stdRiderFill = null;
@@ -1461,42 +1472,7 @@ export function _stdRenderSettings(host, opts){
 }
 
 
-/* 任务视图工具条状态（跨重渲染保持） */
-var _taskFilter = { q:"", status:"all", group:"all", sort:"last" };
-var _taskViewMode = "list";
-var _expandedGroups = {};   /* 记住「全部任务」里各分组的展开/折叠态，避免每次键入都重置 */
-
 export function debounce(fn, ms){ var t; return function(){ var a=arguments, c=this; clearTimeout(t); t=setTimeout(function(){ fn.apply(c,a); }, ms); }; }
 
-var _STATUS_PRIORITY = { running:0, queued:1, failed:2, success:3 };
-export function _statusKey(t){ var s = taskState(t.id); return _STATUS_PRIORITY[s]==null ? 4 : _STATUS_PRIORITY[s]; }
-export function _lastCmp(a,b){
-  var la = state.last[a.id], lb = state.last[b.id];
-  var sa = la ? (la.start||"") : "", sb = lb ? (lb.start||"") : "";
-  if(sa===sb) return 0;
-  if(!sa) return 1;
-  if(!sb) return -1;
-  return sb.localeCompare(sa);   /* 最近运行在前 */
-}
-
-export function applyTaskFilter(base, isAll){
-  var q = (_taskFilter.q||"").trim().toLowerCase();
-  var list = base.filter(function(t){
-    if(isAll && _taskFilter.group!=="all" && t.group!==_taskFilter.group) return false;
-    if(_taskFilter.status !== "all"){
-      var st = taskState(t.id);
-      if(_taskFilter.status === "none"){ if(st) return false; }
-      else if(st !== _taskFilter.status) return false;
-    }
-    if(q && (t.name||"").toLowerCase().indexOf(q) < 0) return false;
-    return true;
-  });
-  var s = _taskFilter.sort || "last";
-  if(s==="name")        list.sort(function(a,b){ return (a.name||"").localeCompare(b.name||""); });
-  else if(s==="status") list.sort(function(a,b){ return _statusKey(a) - _statusKey(b); });
-  else                  list.sort(_lastCmp);
-  return list;
-}
-
 /* 自动导出：供其他模块导入的内部顶层符号 */
-export { _STATUS_PRIORITY, _expandedGroups, _stdCoolTimer, _stdGradeCache, _stdOpenGradeEditorFor, _stdQuerying, _taskFilter, _taskViewMode, state };
+export { _stdCoolTimer, _stdGradeCache, _stdOpenGradeEditorFor, _stdQuerying, state };

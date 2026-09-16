@@ -41,6 +41,15 @@ function notify(){
 
 export const store = {
   get state(){ return state; },
+  /* 视图层共享可变状态（单一归属）：被多个模块读写 —— 任务视图(task) ↔ 标准达成(standard)
+     ↔ 配置弹窗(config)。放在任一使用方都会造成互相 import（甚至循环），统一归 store 持有，
+     各方只读同一份引用，不再跨模块互相导入状态。 */
+  ui: {
+    taskFilter:     { q:"", status:"all", group:"all", sort:"last" },  // 「全部任务」工具条筛选/排序
+    taskViewMode:   "list",                                            // 「全部任务」列表 / 看板
+    expandedGroups: {},                                                // 「全部任务」各分组展开态
+    cfDateMode:     "single"                                           // 配置弹窗日期范围模式（single/range）
+  },
   /** 浅合并顶层字段并通知订阅者 */
   set(patch){ if(patch && typeof patch === "object") Object.assign(state, patch); notify(); },
   /** 命令式变更：fn(state) 内直接改 state，改完统一通知 */
@@ -99,6 +108,37 @@ export function argValue(tid, p){
   var m = state.args[tid];
   if(m && Object.prototype.hasOwnProperty.call(m, p.flag)) return m[p.flag];
   return p.default !== undefined ? p.default : "";
+}
+
+/* ---- 任务列表过滤/排序（原在 standard.js；移来与 store.ui.taskFilter 同处，供 task.js 单一来源导入） ---- */
+var _STATUS_PRIORITY = { running:0, queued:1, failed:2, success:3 };
+function _statusKey(t){ var s = taskState(t.id); return _STATUS_PRIORITY[s]==null ? 4 : _STATUS_PRIORITY[s]; }
+function _lastCmp(a,b){
+  var la = state.last[a.id], lb = state.last[b.id];
+  var sa = la ? (la.start||"") : "", sb = lb ? (lb.start||"") : "";
+  if(sa===sb) return 0;
+  if(!sa) return 1;
+  if(!sb) return -1;
+  return sb.localeCompare(sa);   /* 最近运行在前 */
+}
+export function applyTaskFilter(base, isAll){
+  var f = store.ui.taskFilter;
+  var q = (f.q||"").trim().toLowerCase();
+  var list = base.filter(function(t){
+    if(isAll && f.group!=="all" && t.group!==f.group) return false;
+    if(f.status !== "all"){
+      var st = taskState(t.id);
+      if(f.status === "none"){ if(st) return false; }
+      else if(st !== f.status) return false;
+    }
+    if(q && (t.name||"").toLowerCase().indexOf(q) < 0) return false;
+    return true;
+  });
+  var s = f.sort || "last";
+  if(s==="name")        list.sort(function(a,b){ return (a.name||"").localeCompare(b.name||""); });
+  else if(s==="status") list.sort(function(a,b){ return _statusKey(a) - _statusKey(b); });
+  else                  list.sort(_lastCmp);
+  return list;
 }
 
 /* 自动导出：供其他模块导入的内部顶层符号 */

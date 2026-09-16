@@ -7,7 +7,7 @@ import { refreshLan, bindLanToggle, setArg, openSide, closeSide, askConfirm, clo
 import { openArtifacts, viewRunLog } from "./runs.js";
 const state = store.state;
 
-import { commitParamsForm, fillDefaultToForm, dateRangeGroupFlags, getDateValue, _yesterdayStr, setDateValue, visibleParams, paramIsModified, renderDateRangeGroup, renderParamRow, closeAllGroupPickers, nodesBlock, _gpReap, cfDateMode, setCfDateMode } from "./task.js";
+import { commitParamsForm, fillDefaultToForm, dateRangeGroupFlags, getDateValue, _yesterdayStr, setDateValue, visibleParams, paramIsModified, renderDateRangeGroup, renderParamRow, closeAllGroupPickers, nodesBlock, _gpReap } from "./task.js";
 import { runTasks } from "./main.js";
 
 export function commitDateRangeGroup(task){
@@ -16,7 +16,7 @@ export function commitDateRangeGroup(task){
   var dateEl = document.getElementById("cfDrDate");
   var startEl = document.getElementById("cfDrStart");
   var endEl = document.getElementById("cfDrEnd");
-  if(cfDateMode === "single"){
+  if(store.ui.cfDateMode === "single"){
     setArg(task.id, g.single, getDateValue(dateEl));
     setArg(task.id, g.start, "");
     setArg(task.id, g.end, "");
@@ -30,7 +30,7 @@ export function commitDateRangeGroup(task){
 export function resetDateRangeGroup(task){
   var g = dateRangeGroupFlags(task);
   if(!g) return;
-  setCfDateMode("single");
+  store.ui.cfDateMode = "single";
   var yest = _yesterdayStr();
   var dateEl = document.getElementById("cfDrDate");
   var startEl = document.getElementById("cfDrStart");
