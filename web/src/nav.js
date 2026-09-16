@@ -233,11 +233,22 @@ export function renderMain(){
   var sameView = (key === _lastViewKey);
   var scroller = _scrollParent(host);
   var scrollTop = (sameView && scroller) ? scroller.scrollTop : 0;
-  var focusId = null, selS = null, selE = null;
+  var focusId = null, focusPath = null, selS = null, selE = null;
   if(sameView){
     var ae = document.activeElement;
-    if(ae && ae.id && host.contains(ae)){
-      focusId = ae.id;
+    if(ae && ae !== host && host.contains(ae)){
+      if(ae.id){
+        focusId = ae.id;
+      } else {
+        /* 无 id 的输入框兜底：同一视图内重绘结构不变，按「子节点下标」回走一条路径即可精确定位
+           （例如「工作内容」的「添加提醒事项…」输入框没有 id，原先会直接失焦）。 */
+        var path = [], node = ae;
+        while(node && node !== host){
+          path.unshift(Array.prototype.indexOf.call(node.parentNode.children, node));
+          node = node.parentNode;
+        }
+        if(node === host) focusPath = path;
+      }
       if(typeof ae.selectionStart === "number"){ selS = ae.selectionStart; selE = ae.selectionEnd; }
     }
   }
@@ -251,13 +262,18 @@ export function renderMain(){
   else renderTaskView(host);   // 兜底（hub / logs 等旧导航值统一回落到任务视图）
   _lastViewKey = key;
   if(scroller) scroller.scrollTop = scrollTop;
+  var el = null;
   if(focusId){
-    var el = document.getElementById(focusId);
-    if(el && el.focus){
-      el.focus();
-      if(selS != null && typeof el.setSelectionRange === "function"){
-        try{ el.setSelectionRange(selS, selE); }catch(e){ /* 非文本输入，忽略 */ }
-      }
+    el = document.getElementById(focusId);
+    if(el && !host.contains(el)) el = null;   /* 防止 id 重名命中视图外的元素 */
+  } else if(focusPath){
+    el = host;
+    for(var pi=0; pi<focusPath.length && el; pi++){ el = (el.children && el.children[focusPath[pi]]) || null; }
+  }
+  if(el && el.focus){
+    el.focus();
+    if(selS != null && typeof el.setSelectionRange === "function"){
+      try{ el.setSelectionRange(selS, selE); }catch(e){ /* 非文本输入，忽略 */ }
     }
   }
 }
