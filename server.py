@@ -474,6 +474,9 @@ def diagnose(log_text, exit_code):
 
 
 # ---------------------------------------------------------------- 运行管理
+QUEUE_PUSH_MIN_S = 0.25   # queue 事件的最小推送间隔：窗口内的多次变化合并成一次（尾部补发）
+
+
 class RunManager:
     def __init__(self):
         self.lock = threading.Lock()
@@ -485,6 +488,11 @@ class RunManager:
         self.runs = {}                  # run_id -> run dict（含 lines）
         self.history = load_history()
         self.subscribers = []
+        # queue 事件合并推送状态。单独用一把锁：self.lock 是普通 Lock（不可重入），
+        # 而合并逻辑里要先算 queue_state()（它自己会取 self.lock）再 emit（也会取）。
+        self._q_lock = threading.Lock()
+        self._q_timer = None            # 待发的合并窗口定时器
+        self._q_pushed_at = 0.0         # 上次真正推送的时刻（time.monotonic）
         self.proc = None
         self.stop_flag = False
         self.killed_pids = set()
@@ -533,6 +541,34 @@ class RunManager:
                 q.put_nowait(evt)
             except queue.Full:
                 pass
+
+    def emit_queue(self):
+        """合并推送 queue 快照（250ms 去抖 + 尾部补发）。
+
+        队列的入队 / 出队 / 取消都会改它；批量执行时几秒内能有几十次变化，每次都广播给所有
+        客户端，前端就得跟着重建界面。这里把窗口内的多次变化合并成一次推送，且推的一定是
+        「当下最新」的快照（emit 前才取 queue_state），末尾还有一次补发 —— 所以既降频又不丢最终状态。
+        """
+        with self._q_lock:
+            now = time.monotonic()
+            wait = QUEUE_PUSH_MIN_S - (now - self._q_pushed_at)
+            if wait <= 0:
+                self._q_pushed_at = now
+                due_now = True
+            else:
+                if self._q_timer is None:
+                    self._q_timer = threading.Timer(wait, self._q_flush)
+                    self._q_timer.daemon = True
+                    self._q_timer.start()
+                due_now = False
+        if due_now:
+            self.emit({"type": "queue", "queue": self.queue_state()})
+
+    def _q_flush(self):
+        with self._q_lock:
+            self._q_timer = None
+            self._q_pushed_at = time.monotonic()
+        self.emit({"type": "queue", "queue": self.queue_state()})
 
     # ---- 构建命令 ----
     def build_cmd(self, task_id, args):
@@ -630,7 +666,7 @@ class RunManager:
                 self.runs[run_id] = run
                 self.queue.append(run)
             run_ids.append(run_id)
-        self.emit({"type": "queue", "queue": self.queue_state()})
+        self.emit_queue()
         return run_ids
 
     def queue_state(self):
@@ -646,7 +682,7 @@ class RunManager:
             self.queue = [r for r in self.queue if r["run_id"] != run_id]
             removed = len(self.queue) < before
         if removed:
-            self.emit({"type": "queue", "queue": self.queue_state()})
+            self.emit_queue()
         return removed
 
     def stop_current(self):
@@ -669,7 +705,7 @@ class RunManager:
         if proc and proc.poll() is None:
             self._kill_tree(proc.pid)
         # 队列已变化，立即广播，否则前端还显示着已被取消的排队项
-        self.emit({"type": "queue", "queue": self.queue_state()})
+        self.emit_queue()
         return True if run else False
 
     def _kill_tree(self, pid):
@@ -706,12 +742,12 @@ class RunManager:
             if run is None:
                 time.sleep(0.25)
                 continue
-            self.emit({"type": "queue", "queue": self.queue_state()})
+            self.emit_queue()
             self._execute(run)
             with self.lock:
                 self.current = None
                 self.proc = None
-            self.emit({"type": "queue", "queue": self.queue_state()})
+            self.emit_queue()
             self.emit({"type": "run_end", "run": self.public_run(run)})
             time.sleep(0.2)
 

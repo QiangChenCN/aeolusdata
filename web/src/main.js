@@ -46,19 +46,36 @@ function scheduleRefresh(){
 
 /* SSE 派生刷新节流 —— 与 scheduleRefresh 的分工：
    · scheduleRefresh：用户主动操作的路径（点按钮 / 切导航 / 保存配置），当帧即重绘，延迟最低。
-   · scheduleSseRefresh：服务端事件（run_start / run_end / queue / history）驱动的路径。
-     批量执行时这类事件每秒会来十几次，而 rAF 只能合并「同一帧内」的多个请求 —— 跨帧的事件
-     仍各触发一次全量重绘（实测 40 个事件/2s → 49 次 nav+main 重建）。这里再叠加一个最小间隔
-     做滑动合并，并保证「最后一次一定生效」（尾部补一次），把高频事件摊平成 ~3 次/秒。
-     状态类事件（角标 / 队列 / 历史）本就无需更快；日志事件不走这里（见 log 分支）。 */
-var SSE_REFRESH_MIN_MS = 300;
-var _sseRefreshLast = 0, _sseRefreshTimer = null;
-function scheduleSseRefresh(){
-  if(_sseRefreshTimer) return;                      /* 已有排期 → 合并进这一次 */
-  var wait = SSE_REFRESH_MIN_MS - (Date.now() - _sseRefreshLast);
-  if(wait <= 0){ _sseRefreshLast = Date.now(); refreshAll(); return; }
+   · scheduleSseRefresh(kind)：服务端事件驱动的路径。批量执行时这类事件会连着来，而 rAF 只能
+     合并「同一帧内」的请求 —— 跨帧的事件仍各触发一次全量重绘（实测 97 个事件 → 每次都重建
+     header+nav+main）。这里按事件「紧急度」分三档做滑动合并，并保证尾部一定补一次（最后状态不丢）：
+       urgent —— run_end：任务状态跃迁（角标 / 节点选择 / 参数清空），必须立即体现；
+       default —— run_start / history / loadState 回填：300ms 足够；
+       coarse —— queue：纯队列快照，肉眼对 600ms 内的变化无感。
+     窗口内只保留「最早到期的那个」，所以急档不会被钝档拖慢。
+   注：日志事件不走这里（见 log 分支），它只做弹窗内合帧追加，必须保持逐行实时。 */
+var SSE_REFRESH_MIN_MS = 300;         /* 默认档：run_start / history / loadState 回填 */
+var SSE_REFRESH_COARSE_MS = 600;      /* 钝档：queue（纯队列 / 角标快照） */
+var _sseRefreshLast = 0, _sseRefreshTimer = null, _sseRefreshWait = 0;
+function scheduleSseRefresh(kind){
+  var minMs = (kind === "coarse") ? SSE_REFRESH_COARSE_MS
+            : (kind === "urgent") ? 0
+            : SSE_REFRESH_MIN_MS;
+  var wait = minMs - (Date.now() - _sseRefreshLast);
+  if(wait <= 0){                                   /* 该档静默期已过 → 立即重绘 */
+    if(_sseRefreshTimer){ clearTimeout(_sseRefreshTimer); _sseRefreshTimer = null; _sseRefreshWait = 0; }
+    _sseRefreshLast = Date.now();
+    refreshAll();
+    return;
+  }
+  if(_sseRefreshTimer){                            /* 已有排期 → 只保留「更早到期」的那个 */
+    if(wait >= _sseRefreshWait) return;
+    clearTimeout(_sseRefreshTimer);
+  }
+  _sseRefreshWait = wait;
   _sseRefreshTimer = setTimeout(function(){
     _sseRefreshTimer = null;
+    _sseRefreshWait = 0;
     _sseRefreshLast = Date.now();
     refreshAll();
   }, wait);
@@ -167,7 +184,7 @@ function connect(){
         savePrefs();
       }
       if(state.modalRunId===d.run.run_id) scheduleRunModalRender();
-      scheduleSseRefresh();
+      scheduleSseRefresh("urgent");   /* run_end 是状态跃迁（角标 / 节点选择 / 参数清空）：立即重绘 */
       loadState();
       return;
     }
@@ -183,7 +200,7 @@ function connect(){
     }
     if(d.type==="queue"){
       state.queuedIds = d.queue.map(function(q){ return q.task_id; });
-      scheduleSseRefresh();
+      scheduleSseRefresh("coarse");   /* queue 只是队列快照：合并窗口放宽到 600ms，肉眼无感 */
       return;
     }
     if(d.type==="history"){
@@ -506,4 +523,4 @@ if(document.readyState === "loading"){
 }
 
 /* 自动导出：供其他模块导入的内部顶层符号 */
-export { COOKIE_POLL_BASE, COOKIE_POLL_JITTER, COOKIE_POLL_MIN, _es, _sseAttempt, _sseClose, bindEvents, checkCookieStatus, connect, init, loadState, nextCookieDelay, onCookieVisibilityChange, refreshAll, refreshByUser, scheduleRefresh, scheduleSseRefresh, scheduleCookieCheck, startCookiePolling, state, stopCookiePolling, syncCurrentLog, syncHeaderHeight };
+export { COOKIE_POLL_BASE, COOKIE_POLL_JITTER, COOKIE_POLL_MIN, SSE_REFRESH_COARSE_MS, SSE_REFRESH_MIN_MS, _es, _sseAttempt, _sseClose, bindEvents, checkCookieStatus, connect, init, loadState, nextCookieDelay, onCookieVisibilityChange, refreshAll, refreshByUser, scheduleRefresh, scheduleSseRefresh, scheduleCookieCheck, startCookiePolling, state, stopCookiePolling, syncCurrentLog, syncHeaderHeight };
