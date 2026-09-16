@@ -8,10 +8,9 @@ import { refreshLan, bindLanToggle, setArg, openSide, closeSide, askConfirm, clo
 import { renderHeader, renderNav, renderMain } from "./nav.js";
 import { renderAttendPeriodView } from "./attend-period.js";
 import { renderStandardView } from "./standard.js";
-import { renderTaskView, commitParamsForm, fillDefaultToForm, _dpkState, _sessionDangerOK } from "./task.js";
-import { openConfigDialog, closeConfigDialog, commitDateRangeGroup, resetDateRangeGroup, cfCurrent, closeRunDrawer } from "./config.js";
+import { renderTaskView, commitParamsForm, fillDefaultToForm, _dpkState, openConfigDialog, closeConfigDialog, commitDateRangeGroup, resetDateRangeGroup, cfCurrent } from "./task.js";
 import { renderTodoView, loadTodo, todoReload, todoOpenCount, openTodoEditor, closeTodoEditor } from "./todo.js";
-import { renderRunModal, openRunModal, openArtifacts, closeArtModal, mountTabulator, fallbackCopy, closeRunModal } from "./runs.js";
+import { renderRunModal, openRunModal, openArtifacts, closeArtModal, mountTabulator, fallbackCopy, closeRunModal, closeRunDrawer } from "./runs.js";
 import { renderHomeView, skeletonCards } from "./home.js";
 const state = store.state;
 

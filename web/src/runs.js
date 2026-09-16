@@ -362,5 +362,93 @@ export function viewRunLog(h){
   }).catch(function(){ toast("读取日志失败"); });
 }
 
+/* ============================================================================
+   运行记录视图 + 详情抽屉
+   原在 config.js（那里其实只混着「卡片/弹窗」与「历史/抽屉」两类互不相干的东西）。
+   归入 runs.js 后与运行日志/产物同处；config.js 因此可整体删除。
+   ========================================================================== */
+export function renderHistoryView(host){
+  host.appendChild(viewHead("运行记录", "最近 " + state.history.length + " 次执行，点任一行可看详情，或回看当时的完整日志", "clock", TK.neutral, ""));
+  var box = document.createElement("div");
+  box.className = "hlist";
+
+  if(!state.history.length){
+    var e = document.createElement("div");
+    e.className = "estate";
+    e.innerHTML = '<div class="e-ic">'+svg("clock")+'</div>'+
+      '<div class="e-tt">还没有运行记录</div>'+
+      '<div class="e-sub">运行任意任务后，这里会按时间倒序展示每次执行的日志与产物入口。</div>';
+    box.appendChild(e); host.appendChild(box); return;
+  }
+
+  var head = document.createElement("div");
+  head.className = "hrow hd-row";
+  head.innerHTML = "<span>时间</span><span>任务</span><span>状态</span><span>耗时</span><span>诊断</span><span></span>";
+  box.appendChild(head);
+
+  state.history.forEach(function(h){
+    var row = document.createElement("div");
+    row.className = "hrow";
+    row.style.cursor = "pointer";
+    row.innerHTML = '<span class="tm">'+esc(h.start||"")+'</span>'+
+      '<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(h.name)+'</span>'+
+      '<span class="st"><span class="badge '+(STATUS_CLS[h.status]||"b-stop")+'">'+(STATUS_TXT[h.status]||h.status)+'</span></span>'+
+      '<span class="tm">'+(h.duration||0)+'s</span>'+
+      '<span class="dgm">'+esc(h.error_kind||"")+'</span>';
+    var act = document.createElement("span");
+    act.className = "act";
+    var b = document.createElement("button");
+    b.textContent = "看日志";
+    b.onclick = (function(entry){ return function(ev){ ev.stopPropagation(); viewRunLog(entry); }; })(h);
+    act.appendChild(b);
+    var ba = document.createElement("button");
+    ba.textContent = "产物";
+    ba.onclick = (function(tid){ return function(ev){ ev.stopPropagation(); openArtifacts(tid); }; })(h.task_id);
+    act.appendChild(ba);
+    row.appendChild(act);
+    row.onclick = function(ev){ if(ev.target.closest(".act")) return; openRunDrawer(h); };
+    box.appendChild(row);
+  });
+  host.appendChild(box);
+}
+
+/* A3 运行记录详情抽屉：点行滑出右侧抽屉，展示概要 + 日志预览 + 入口按钮（复用 .scrim 遮罩模式） */
+export function openRunDrawer(h){
+  var scrim = document.getElementById("runScrim");
+  var dr = document.getElementById("runDrawer");
+  if(!scrim || !dr) return;
+  var stCls = STATUS_CLS[h.status] || "b-stop";
+  var stTxt = STATUS_TXT[h.status] || h.status;
+  var meta =
+    '<div class="std-fields">'+
+      '<div class="std-row"><span class="std-k">状态</span><span class="std-v"><span class="badge '+stCls+'">'+stTxt+'</span></span></div>'+
+      '<div class="std-row"><span class="std-k">时间</span><span class="std-v">'+esc(h.start||"")+'</span></div>'+
+      '<div class="std-row"><span class="std-k">耗时</span><span class="std-v">'+(h.duration||0)+'s</span></div>'+
+      (h.error_kind ? '<div class="std-row"><span class="std-k">诊断</span><span class="std-v">'+esc(h.error_kind)+'</span></div>' : '')+
+    '</div>';
+  var preview = "";
+  var lines = (h.runId && state.runs[h.runId]) ? state.runs[h.runId].lines : null;
+  if(lines && lines.length){
+    preview = '<div class="console" style="margin-top:var(--sp-12)">'+
+      '<div class="cs-h"><b>日志预览</b><span class="sp"></span></div>'+
+      '<div class="cs-body" style="height:220px">'+ lines.map(function(l){ return '<div class="ln">'+esc(l)+'</div>'; }).join("") +'</div></div>';
+  }
+  dr.querySelector(".rd-body").innerHTML = meta + preview;
+  dr.querySelector(".rd-t").textContent = h.name || h.task_id;
+  var acts = dr.querySelector(".rd-acts"); acts.innerHTML = "";
+  var b1 = document.createElement("button"); b1.className = "btn-primary"; b1.style.flex = "1"; b1.textContent = "查看完整日志";
+  b1.onclick = function(){ closeRunDrawer(); viewRunLog(h); };
+  var b2 = document.createElement("button"); b2.className = "mini"; b2.style.flex = "1"; b2.textContent = "查看产物";
+  b2.onclick = function(){ closeRunDrawer(); openArtifacts(h.task_id); };
+  acts.appendChild(b1); acts.appendChild(b2);
+  scrim.classList.add("show"); dr.classList.add("show");
+}
+export function closeRunDrawer(){
+  var scrim = document.getElementById("runScrim");
+  var dr = document.getElementById("runDrawer");
+  if(scrim) scrim.classList.remove("show");
+  if(dr) dr.classList.remove("show");
+}
+
 /* 自动导出：供其他模块导入的内部顶层符号 */
 export { state };

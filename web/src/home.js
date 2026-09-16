@@ -6,7 +6,7 @@ import { TK, TK_MAP, RISK_LABEL, RISK_CLS, STATUS_CLS, STATUS_TXT, ICON } from "
 import { bus } from "./bus.js";
 import { refreshLan, bindLanToggle, setArg, openSide, closeSide, askConfirm, closeConfirm, bindConfirmUI, lockScroll, unlockScroll } from "./behavior.js";
 import { navExpandOnly } from "./nav.js";
-import { openRunDrawer } from "./config.js";
+import { openRunDrawer } from "./runs.js";
 import { todoOpenCount, tdIsToday, todoToggle, tdOverdue, tdFmt } from "./todo.js";
 const state = store.state;
 

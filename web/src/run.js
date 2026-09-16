@@ -1,12 +1,14 @@
 // run.js —— 任务执行入口。
 // 从 main.js 抽出：任务卡片的「运行」按钮在 config.js，而 runTasks 原定义在 main.js，
 // 造成 config → main 的循环依赖。抽到本中立模块后，config.js 与 main.js 都不再互相依赖。
-import { taskById, missingText } from "./store.js";
+import { store, taskById, missingText } from "./store.js";
 import { api } from "./api.js";
 import { toast } from "./ui.js";
 import { askConfirm } from "./behavior.js";
-import { _sessionDangerOK } from "./task.js";
 import { openRunModal } from "./runs.js";
+
+/* 危险开关确认记录：单一归属 store.ui，与 task.js 共享同一份，避免 run↔task 循环依赖 */
+var _sessionDangerOK = store.ui.sessionDangerOK;
 
 export function runTasks(items){
   if(!items.length) return;

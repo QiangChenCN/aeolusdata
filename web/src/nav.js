@@ -5,7 +5,7 @@ import { TK, TK_MAP, RISK_LABEL, RISK_CLS, STATUS_CLS, STATUS_TXT, ICON } from "
 import { bus } from "./bus.js";
 import { refreshLan, bindLanToggle, setArg, openSide, closeSide, askConfirm, closeConfirm, bindConfirmUI, lockScroll, unlockScroll } from "./behavior.js";
 import { _gpReap, renderTaskView } from "./task.js";
-import { renderHistoryView } from "./config.js";
+import { renderHistoryView } from "./runs.js";
 const state = store.state;
 
 import { renderAttendPeriodView } from "./attend-period.js";

@@ -48,7 +48,8 @@ export const store = {
     taskFilter:     { q:"", status:"all", group:"all", sort:"last" },  // 「全部任务」工具条筛选/排序
     taskViewMode:   "list",                                            // 「全部任务」列表 / 看板
     expandedGroups: {},                                                // 「全部任务」各分组展开态
-    cfDateMode:     "single"                                           // 配置弹窗日期范围模式（single/range）
+    cfDateMode:     "single",                                          // 配置弹窗日期范围模式（single/range）
+    sessionDangerOK: {}                                                // 本会话已确认的危险开关（--reinit 等），避免重复弹确认
   },
   /** 浅合并顶层字段并通知订阅者 */
   set(patch){ if(patch && typeof patch === "object") Object.assign(state, patch); notify(); },
