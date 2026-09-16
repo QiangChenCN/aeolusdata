@@ -9,83 +9,6 @@ import { TK } from "./tokens.js";
 const state = store.state;
 const _std = store.ui.std;   /* 与 standard.js 共享同一份视图状态 */
 
-/* [已废弃] 参与站点 UI 已于 2026-09-10 移除：站点参与范围改由「等级标准设置」的增/删自动同步 teams-config 维护，
-   不再单独渲染参与站点区块。下方 _stdRenderTeamsSummary / _stdOpenTeamPicker 随之成为死代码，保留以备回滚。 */
-export function _stdRenderTeamsConfig(host){ /* deprecated: 参与站点 UI 已移除，此入口不再被调用 */ }
-
-/* 已选站点卡片：标题 + 右对齐管理按钮 + 可单独移除的 chips */
-export function _stdRenderTeamsSummary(host, all, sel){
-  var byId={};
-  all.forEach(function(t){ byId[String(t.id)]=t.name||t.id; });
-  // 数据全集（含已选但不在 all 里的，避免丢失）
-  var data=all.map(function(t){ return [String(t.id), t.name||t.id]; });
-  sel.forEach(function(id){
-    id=String(id);
-    if(!byId[id]){ data.unshift([id, id]); byId[id]=id; }
-  });
-  sel = sel.map(String);
-
-  host.innerHTML="";
-  var card=document.createElement("div"); card.className="st-teams-card";
-  var head=document.createElement("div"); head.className="st-teams-card-head";
-  var title=document.createElement("div"); title.className="st-teams-card-title";
-  var btn=document.createElement("button"); btn.className="st-btn-ghost"; btn.textContent="管理";
-  head.appendChild(title); head.appendChild(btn); card.appendChild(head);
-  var chips=document.createElement("div"); chips.className="st-teams-chips"; card.appendChild(chips);
-  host.appendChild(card);
-
-  function draw(){
-    title.innerHTML='已选 <b>'+sel.length+'</b> 个站点';
-    chips.innerHTML="";
-    if(!sel.length){ chips.innerHTML='<div class="st-empty-chips">暂无站点</div>'; return; }
-    sel.forEach(function(id){
-      var c=document.createElement("span"); c.className="st-chip";
-      var nm=document.createElement("span"); nm.className="nm"; nm.textContent=byId[id]||id; nm.title=byId[id]||id;
-      var x=document.createElement("button"); x.className="x"; x.textContent="×"; x.title="移除";
-      x.addEventListener("click", function(ev){
-        ev.stopPropagation();
-        var newSel = sel.filter(function(s){ return String(s)!==id; });
-        sel = newSel; draw();
-        commit(newSel);   // 移除即保存；commit 内做「同步删除其等级标准」联动
-      });
-      c.appendChild(nm); c.appendChild(x); chips.appendChild(c);
-    });
-  }
-  draw();
-
-  // 用户主动提交（移除 chips / 弹窗确定）：先取服务端当前参与站点做 diff，再写，
-  // 最后执行双向联动（减→删等级标准；增→弹编辑器队列）。同步侧的写不进此函数，不会互触发。
-  function commit(newSel, onDone){
-    newSel = newSel.map(String);
-    api("/api/standard/teams-config").then(function(tc){
-      var prev = (tc&&tc.teams||[]).map(String);
-      var removed = prev.filter(function(s){ return newSel.indexOf(s)<0; });
-      var added   = newSel.filter(function(s){ return prev.indexOf(s)<0; });
-      _stdSaveTeams(newSel).then(function(r){
-        if(r&&r.ok){
-          removed.forEach(function(tid){ _stdDeleteGradeStandard(tid, _stdSettingsCurrentMonth()); });
-          var needStd = added.filter(function(tid){ return !_stdGradeHasConfigured(tid); });
-          if(needStd.length && _stdOpenGradeEditorFor){
-            var queue = needStd.slice();
-            (function step(){
-              if(!queue.length) return;
-              var tid = queue.shift();
-              _stdOpenGradeEditorFor(tid, function(){ step(); });
-            })();
-          }
-        }
-        if(onDone) onDone(r);
-      }).catch(function(e){ if(onDone) onDone({ok:false, error:String(e)}); });
-    }).catch(function(e){ if(onDone) onDone({ok:false, error:String(e)}); });
-  }
-
-  btn.addEventListener("click", function(){
-    _stdOpenTeamPicker(data, sel.slice(), function(newSel){
-      sel = newSel.map(String); draw(); commit(newSel);
-    });
-  });
-}
-
 /* 保存参与站点（POST teams-config） */
 export function _stdSaveTeams(ids){
   return api("/api/standard/teams-config", {
@@ -94,20 +17,14 @@ export function _stdSaveTeams(ids){
   });
 }
 
-/* ===== 参与站点 ↔ 等级标准 双向联动（模块级，供两块设置共用）=====
+/* ===== 参与站点 ↔ 等级标准 联动 =====
    设计：两侧各自只做原子写；联动在前端编排。任何一侧的「同步写」都走 _stdSaveTeams 直写，
-   不触发对方的用户提交逻辑，避免 A→B→A 死循环。参与站点用户提交前先 GET 当前列表做 diff，
-   保证同步侧刚写入的变更已被纳入基准，状态不串。 */
-var _stdGradeCache = {lastData:null, month:null};   // 等级标准区块注入，供联动判断「该站是否已配标准」
-var _stdOpenGradeEditorFor = null;                   // 等级标准区块注入：function(tid, onClose){ openEditor("add", tid, onClose); }
-
-/* 该站本月是否已配置等级标准（用于「参与站点新增→仅对无标准的站弹编辑器」） */
-export function _stdGradeHasConfigured(tid){
-  var d=_stdGradeCache.lastData;
-  if(!d||!d.configured_ids) return false;
-  return d.configured_ids.indexOf(String(tid))>=0;
-}
-
+   不触发对方的用户提交逻辑，避免 A→B→A 死循环。
+   注：原「参与站点」独立 UI 已于 2026-09-10 移除；随之成为死代码的
+   _stdRenderTeamsConfig / _stdRenderTeamsSummary / _stdOpenTeamPicker、
+   以及只为它们服务的 _stdGradeCache / _stdOpenGradeEditorFor / _stdGradeHasConfigured
+   已于 2026-09-16 删除（完整实现见 git 历史）。现有联动只剩单向：
+   新增/删除站点标准 → 自动同步 teams-config。 */
 /* 删除某站本月等级标准，并同步从「参与站点」移除该站（幂等、不触发对方提交逻辑） */
 export function _stdDeleteGradeStandard(tid, mo){
   return api("/api/standard/grade-standards", {
@@ -138,136 +55,6 @@ export function _stdRemoveTeamFromConfig(tid){
   });
 }
 
-/* 弹窗选择器：搜索 + 虚拟化列表 + 已选置顶 + 全选/清空 + 确定/取消 */
-export function _stdOpenTeamPicker(data, initialSel, onSaved){
-  var ROW_H=46, BUFFER=6;
-  var state={
-    query:"",
-    selected:new Set(initialSel.map(String)),
-    order:initialSel.map(String),   // 选择顺序 = 保存顺序 = 刷新优先级
-    pin:true
-  };
-
-  var mask=document.createElement("div"); mask.className="st-modal-mask";
-  var modal=document.createElement("div"); modal.className="st-modal";
-  mask.appendChild(modal);
-
-  var head=document.createElement("div"); head.className="st-modal-head";
-  head.innerHTML='<div class="t">选择参与站点</div>';
-  var xBtn=document.createElement("button"); xBtn.className="st-modal-x"; xBtn.innerHTML="&times;"; xBtn.title="关闭";
-  head.appendChild(xBtn); modal.appendChild(head);
-
-  var searchWrap=document.createElement("div"); searchWrap.className="st-modal-search";
-  var search=document.createElement("input"); search.type="text"; search.placeholder="搜索站点名称或 ID…";
-  searchWrap.appendChild(search); modal.appendChild(searchWrap);
-
-  var tb=document.createElement("div"); tb.className="st-modal-toolbar";
-  var cnt=document.createElement("div"); cnt.className="cnt";
-  var acts=document.createElement("div"); acts.className="acts";
-  var btnAll=document.createElement("button"); btnAll.className="st-btn-secondary"; btnAll.textContent="全选";
-  var btnNone=document.createElement("button"); btnNone.className="st-btn-secondary"; btnNone.textContent="清空";
-  var pin=document.createElement("label"); pin.className="st-pin";
-  var pinCb=document.createElement("input"); pinCb.type="checkbox"; pinCb.checked=true;
-  pin.appendChild(pinCb); pin.appendChild(document.createTextNode("已选置顶"));
-  acts.appendChild(btnAll); acts.appendChild(btnNone); acts.appendChild(pin);
-  tb.appendChild(cnt); tb.appendChild(acts); modal.appendChild(tb);
-
-  var listEl=document.createElement("div"); listEl.className="st-modal-list";
-  var spacer=document.createElement("div"); spacer.className="st-picker-spacer";
-  listEl.appendChild(spacer); modal.appendChild(listEl);
-
-  var foot=document.createElement("div"); foot.className="st-modal-foot";
-  var hint=document.createElement("div"); hint.className="hint";
-  var btns=document.createElement("div"); btns.className="btns";
-  var cancel=document.createElement("button"); cancel.className="st-btn-ghost"; cancel.textContent="取消";
-  var ok=document.createElement("button"); ok.className="st-btn-primary"; ok.textContent="确定";
-  btns.appendChild(cancel); btns.appendChild(ok);
-  foot.appendChild(hint); foot.appendChild(btns); modal.appendChild(foot);
-
-  document.body.appendChild(mask);
-
-  function computeView(){
-    var q=state.query.trim().toLowerCase();
-    var matched=data.filter(function(p){
-      if(!q) return true;
-      return (p[1]||"").toLowerCase().indexOf(q)>=0 || String(p[0]).toLowerCase().indexOf(q)>=0;
-    });
-    if(state.pin){
-      var sel=state.order.filter(function(id){ return matched.some(function(p){ return String(p[0])===id; }); })
-                         .map(function(id){ return data.find(function(p){ return String(p[0])===id; }); });
-      var unsel=matched.filter(function(p){ return !state.selected.has(String(p[0])); });
-      return sel.concat(unsel);
-    }
-    return matched;
-  }
-
-  var lastRange="";
-  function renderWindow(force){
-    var view=computeView();
-    spacer.style.height=(view.length*ROW_H)+"px";
-    var ch=listEl.clientHeight||360;
-    var start=Math.max(0, Math.floor(listEl.scrollTop/ROW_H)-BUFFER);
-    var visible=Math.ceil(ch/ROW_H)+BUFFER*2;
-    var end=Math.min(view.length, start+visible);
-    var range=start+"|"+end;
-    if(!force && range===lastRange) return;
-    lastRange=range;
-    var old=spacer.querySelectorAll(".st-picker-row");
-    for(var k=old.length-1;k>=0;k--) old[k].remove();
-    var empty=spacer.querySelector(".st-picker-empty"); if(empty) empty.remove();
-    if(!view.length){
-      var e=document.createElement("div"); e.className="st-picker-empty"; e.textContent="无匹配站点";
-      spacer.appendChild(e); return;
-    }
-    for(var i=start;i<end;i++){
-      var p=view[i]; var id=String(p[0]); var on=state.selected.has(id);
-      var row=document.createElement("div");
-      row.className="st-picker-row"+(on?" on":"");
-      row.style.top=(i*ROW_H)+"px"; row.style.height=ROW_H+"px";
-      var ordIdx=state.order.indexOf(id);
-      row.innerHTML='<span class="cb"></span>'+
-        '<div class="info"><div class="name">'+esc(p[1])+'</div><div class="tid">'+esc(id)+'</div></div>'+
-        (on&&state.pin?'<span class="ord">'+(ordIdx+1)+'</span>':'');
-      row.addEventListener("click", (function(id){ return function(){ toggle(id); }; })(id));
-      spacer.appendChild(row);
-    }
-  }
-
-  function updateMeta(){
-    var view=computeView();
-    cnt.innerHTML='已选 <b>'+state.selected.size+'</b> / 命中 '+view.length+' 项';
-    hint.textContent='已选 '+state.selected.size+' 个站点';
-  }
-
-  function toggle(id){
-    id=String(id);
-    if(state.selected.has(id)){ state.selected.delete(id); state.order=state.order.filter(function(x){return x!==id;}); }
-    else { state.selected.add(id); state.order.push(id); }
-    renderWindow(true); updateMeta();
-  }
-
-  search.addEventListener("input", function(){ state.query=search.value; listEl.scrollTop=0; renderWindow(true); updateMeta(); });
-  pinCb.addEventListener("change", function(){ state.pin=pinCb.checked; listEl.scrollTop=0; renderWindow(true); updateMeta(); });
-  btnAll.addEventListener("click", function(){ data.forEach(function(p){ var id=String(p[0]); if(!state.selected.has(id)){ state.selected.add(id); state.order.push(id);} }); renderWindow(true); updateMeta(); });
-  btnNone.addEventListener("click", function(){ state.selected.clear(); state.order=[]; renderWindow(true); updateMeta(); });
-  listEl.addEventListener("scroll", function(){ renderWindow(false); });
-  function onKey(e){ if(e.key==="Escape") close(); }
-  function close(){ document.removeEventListener("keydown", onKey); if(mask.parentNode) mask.parentNode.removeChild(mask); }
-  xBtn.addEventListener("click", close);
-  cancel.addEventListener("click", close);
-  mask.addEventListener("click", function(e){ if(e.target===mask) close(); });
-  ok.addEventListener("click", function(){
-    ok.disabled=true; ok.textContent="保存中…";
-    _stdSaveTeams(state.order.slice()).then(function(r){
-      ok.disabled=false; ok.textContent="确定";
-      if(r&&r.ok){ if(onSaved) onSaved(state.order.slice()); close(); }
-      else { hint.textContent="保存失败："+((r&&r.error)||"未知错误"); }
-    }).catch(function(e){ ok.disabled=false; ok.textContent="确定"; hint.textContent="保存失败："+String(e); });
-  });
-  document.addEventListener("keydown", onKey);
-
-  renderWindow(true); updateMeta();
-}
 
 export function _stdSettingsCurrentMonth(){
   var d=new Date(); return d.getFullYear()+"-"+("0"+(d.getMonth()+1)).slice(-2);
@@ -396,7 +183,6 @@ export function _stdRenderSettings(host, opts){
         .then(function(j){
           if(!j||!j.ok){ tblHost.innerHTML='<div class="st-gs-empty">加载失败：'+esc(j&&j.error||"未知错误")+'</div>'; return; }
           lastData=j;
-          _stdGradeCache.lastData=j; _stdGradeCache.month=mo;   // 供参与站点联动判断「该站是否已配标准」
           renderTable(j);
         })
         .catch(function(e){
@@ -643,8 +429,6 @@ export function _stdRenderSettings(host, opts){
     document.addEventListener("keydown", onKey);
   }
 
-  // 注入联动桥：参与站点新增后由此打开「新增」编辑器并预选站点
-  _stdOpenGradeEditorFor = function(tid, onClose){ openEditor("add", tid, onClose, true); };
 
   top.querySelector("#gsManage").addEventListener("click", function(){ if(monthEl.value!==_stdSettingsCurrentMonth()) return; openEditor("manage"); });
 
