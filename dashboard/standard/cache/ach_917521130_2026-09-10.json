@@ -1,0 +1,53 @@
+{
+  "ok": true,
+  "source": "live",
+  "error": null,
+  "team": "917521130",
+  "teamName": "东莞市黄江镇站-UB",
+  "start": "2026-09-10",
+  "end": "2026-09-10",
+  "summary": {
+    "person_rate": 105.3,
+    "order_rate": 97.5,
+    "combined_rate": 101.4,
+    "achieved": false,
+    "status_label": "未达成",
+    "total_predict_num": 38,
+    "total_actual_num": 40,
+    "total_predict_order": 1491,
+    "total_actual_order": 1453,
+    "day_count": 1
+  },
+  "rows": [
+    {
+      "shift_date": "2026-09-10",
+      "time_code": 9999,
+      "time_name": "全天",
+      "actual_num": 40,
+      "predict_num": 38.0,
+      "person_rate": 105.3,
+      "person_achieved": true,
+      "predict_order": 1491.0,
+      "actual_order": 1453,
+      "order_rate": 97.5,
+      "order_achieved": false,
+      "combined_rate": 101.4,
+      "achieved": false,
+      "status_label": "未达成"
+    }
+  ],
+  "attendance": {
+    "time_code": 151,
+    "time_name": "夜宵2",
+    "sched": 16,
+    "online": 13,
+    "offline": 3,
+    "rest": 0,
+    "note": null
+  },
+  "need_refresh": false,
+  "data_status": "partial",
+  "data_note": "统计区间含今天，数据随当天推进持续增长",
+  "basis": "day",
+  "cache_time": null
+}

@@ -1,0 +1,794 @@
+[
+ {
+  "col": "agencyId",
+  "cn": "代理商ID",
+  "json_type": "int",
+  "maxlen": 8,
+  "distinct": 1,
+  "nonnull_pct": 100
+ },
+ {
+  "col": "agencyName",
+  "cn": "代理商名称",
+  "json_type": "str",
+  "maxlen": 13,
+  "distinct": 2,
+  "nonnull_pct": 100
+ },
+ {
+  "col": "teamId",
+  "cn": "团队ID",
+  "json_type": "int",
+  "maxlen": 9,
+  "distinct": 7,
+  "nonnull_pct": 100
+ },
+ {
+  "col": "teamName",
+  "cn": "团队/站点名称",
+  "json_type": "str",
+  "maxlen": 23,
+  "distinct": 7,
+  "nonnull_pct": 100
+ },
+ {
+  "col": "merchantBusDistrictId",
+  "cn": "商家商圈ID",
+  "json_type": "int",
+  "maxlen": 7,
+  "distinct": 10,
+  "nonnull_pct": 100
+ },
+ {
+  "col": "merchantBusDistrictName",
+  "cn": "商家商圈名称",
+  "json_type": "str",
+  "maxlen": 15,
+  "distinct": 10,
+  "nonnull_pct": 100
+ },
+ {
+  "col": "trackingId",
+  "cn": "运单ID",
+  "json_type": "str",
+  "maxlen": 19,
+  "distinct": 5000,
+  "nonnull_pct": 100
+ },
+ {
+  "col": "platformTrackingId",
+  "cn": "平台运单ID",
+  "json_type": "str",
+  "maxlen": 19,
+  "distinct": 5000,
+  "nonnull_pct": 100
+ },
+ {
+  "col": "knightId",
+  "cn": "骑手ID",
+  "json_type": "int",
+  "maxlen": 14,
+  "distinct": 351,
+  "nonnull_pct": 100
+ },
+ {
+  "col": "knightName",
+  "cn": "骑手姓名",
+  "json_type": "str",
+  "maxlen": 9,
+  "distinct": 351,
+  "nonnull_pct": 100
+ },
+ {
+  "col": "knightMobile",
+  "cn": "骑手手机号",
+  "json_type": "str",
+  "maxlen": 3,
+  "distinct": 1,
+  "nonnull_pct": 100
+ },
+ {
+  "col": "platformMerchantId",
+  "cn": "平台商家ID",
+  "json_type": "str",
+  "maxlen": 10,
+  "distinct": 5000,
+  "nonnull_pct": 100
+ },
+ {
+  "col": "platformMerchantName",
+  "cn": "平台商家名称",
+  "json_type": "str",
+  "maxlen": 39,
+  "distinct": 5000,
+  "nonnull_pct": 100
+ },
+ {
+  "col": "deliverType",
+  "cn": "配送类型",
+  "json_type": "int",
+  "maxlen": 1,
+  "distinct": 2,
+  "nonnull_pct": 100
+ },
+ {
+  "col": "deliverTypeName",
+  "cn": "配送类型名称",
+  "json_type": "str",
+  "maxlen": 3,
+  "distinct": 2,
+  "nonnull_pct": 100
+ },
+ {
+  "col": "productId",
+  "cn": "产品ID",
+  "json_type": "int",
+  "maxlen": 6,
+  "distinct": 10,
+  "nonnull_pct": 100
+ },
+ {
+  "col": "productName",
+  "cn": "产品名称",
+  "json_type": "str",
+  "maxlen": 11,
+  "distinct": 10,
+  "nonnull_pct": 100
+ },
+ {
+  "col": "sourceId",
+  "cn": "来源ID",
+  "json_type": "int",
+  "maxlen": 1,
+  "distinct": 2,
+  "nonnull_pct": 100
+ },
+ {
+  "col": "sourceName",
+  "cn": "来源名称",
+  "json_type": "str",
+  "maxlen": 5,
+  "distinct": 2,
+  "nonnull_pct": 100
+ },
+ {
+  "col": "merchantConsumerDistance",
+  "cn": "商家顾客距离(米)",
+  "json_type": "str",
+  "maxlen": 6,
+  "distinct": 5000,
+  "nonnull_pct": 100
+ },
+ {
+  "col": "payAmount",
+  "cn": "支付金额",
+  "json_type": "str",
+  "maxlen": 7,
+  "distinct": 5000,
+  "nonnull_pct": 100
+ },
+ {
+  "col": "weatherCode",
+  "cn": "天气编码",
+  "json_type": "list",
+  "maxlen": 55,
+  "distinct": 57,
+  "nonnull_pct": 100
+ },
+ {
+  "col": "weatherName",
+  "cn": "天气名称",
+  "json_type": "str",
+  "maxlen": 15,
+  "distinct": 57,
+  "nonnull_pct": 100
+ },
+ {
+  "col": "weatherGrade",
+  "cn": "天气等级",
+  "json_type": "str",
+  "maxlen": 1,
+  "distinct": 5,
+  "nonnull_pct": 100
+ },
+ {
+  "col": "weatherGradeName",
+  "cn": "天气等级名称",
+  "json_type": "str",
+  "maxlen": 4,
+  "distinct": 5,
+  "nonnull_pct": 100
+ },
+ {
+  "col": "weight",
+  "cn": "重量(kg)",
+  "json_type": "str",
+  "maxlen": 6,
+  "distinct": 1007,
+  "nonnull_pct": 100
+ },
+ {
+  "col": "isClaim",
+  "cn": "是否申诉",
+  "json_type": "int",
+  "maxlen": 1,
+  "distinct": 2,
+  "nonnull_pct": 100
+ },
+ {
+  "col": "claimReasonIds",
+  "cn": "申诉原因IDs",
+  "json_type": "str",
+  "maxlen": 3,
+  "distinct": 8,
+  "nonnull_pct": 0
+ },
+ {
+  "col": "claimReasons",
+  "cn": "申诉原因",
+  "json_type": "str",
+  "maxlen": 7,
+  "distinct": 5,
+  "nonnull_pct": 0
+ },
+ {
+  "col": "state",
+  "cn": "状态",
+  "json_type": "int",
+  "maxlen": 2,
+  "distinct": 2,
+  "nonnull_pct": 100
+ },
+ {
+  "col": "stateDesc",
+  "cn": "状态描述",
+  "json_type": "str",
+  "maxlen": 4,
+  "distinct": 2,
+  "nonnull_pct": 100
+ },
+ {
+  "col": "isAbnormalReport",
+  "cn": "是否异常上报",
+  "json_type": "int",
+  "maxlen": 1,
+  "distinct": 2,
+  "nonnull_pct": 100
+ },
+ {
+  "col": "abnormalReportReasonIds",
+  "cn": "异常上报原因IDs",
+  "json_type": "list",
+  "maxlen": 21,
+  "distinct": 47,
+  "nonnull_pct": 100
+ },
+ {
+  "col": "abnormalReportReasons",
+  "cn": "异常上报原因",
+  "json_type": "str",
+  "maxlen": 27,
+  "distinct": 43,
+  "nonnull_pct": 6
+ },
+ {
+  "col": "currentPredictDeliveryAt",
+  "cn": "当前预计送达时间",
+  "json_type": "int",
+  "maxlen": 13,
+  "distinct": 5000,
+  "nonnull_pct": 100
+ },
+ {
+  "col": "currentPredictDeliveryRange",
+  "cn": "当前预计送达时间范围",
+  "json_type": "dict",
+  "maxlen": 43,
+  "distinct": 5000,
+  "nonnull_pct": 5
+ },
+ {
+  "col": "customerPredictDeliveryAt",
+  "cn": "顾客预计送达时间",
+  "json_type": "int",
+  "maxlen": 13,
+  "distinct": 5000,
+  "nonnull_pct": 100
+ },
+ {
+  "col": "customerPredictDeliveryRange",
+  "cn": "顾客预计送达时间范围",
+  "json_type": "dict",
+  "maxlen": 43,
+  "distinct": 5000,
+  "nonnull_pct": 91
+ },
+ {
+  "col": "logisticsPredictDeliveryAt",
+  "cn": "物流预计送达时间",
+  "json_type": "int",
+  "maxlen": 13,
+  "distinct": 5000,
+  "nonnull_pct": 100
+ },
+ {
+  "col": "logisticsPredictDeliveryRange",
+  "cn": "物流预计送达时间范围",
+  "json_type": "dict",
+  "maxlen": 43,
+  "distinct": 5000,
+  "nonnull_pct": 5
+ },
+ {
+  "col": "isOverPlatfromExpecteTime",
+  "cn": "是否超平台期望时长",
+  "json_type": "int",
+  "maxlen": 1,
+  "distinct": 2,
+  "nonnull_pct": 100
+ },
+ {
+  "col": "overPlatfromExpecteTime",
+  "cn": "超平台期望时长(秒)",
+  "json_type": "int",
+  "maxlen": 8,
+  "distinct": 2389,
+  "nonnull_pct": 100
+ },
+ {
+  "col": "trackingCreatedAt",
+  "cn": "运单创建时间",
+  "json_type": "int",
+  "maxlen": 13,
+  "distinct": 5000,
+  "nonnull_pct": 100
+ },
+ {
+  "col": "acceptAtLast",
+  "cn": "最近接单时间",
+  "json_type": "int",
+  "maxlen": 13,
+  "distinct": 5000,
+  "nonnull_pct": 100
+ },
+ {
+  "col": "assignAtLast",
+  "cn": "最近派单时间",
+  "json_type": "int",
+  "maxlen": 13,
+  "distinct": 5000,
+  "nonnull_pct": 100
+ },
+ {
+  "col": "arriveAtLast",
+  "cn": "最近到店时间",
+  "json_type": "int",
+  "maxlen": 13,
+  "distinct": 5000,
+  "nonnull_pct": 100
+ },
+ {
+  "col": "currentCookingFinishAt",
+  "cn": "当前出餐完成时间",
+  "json_type": "int",
+  "maxlen": 13,
+  "distinct": 5000,
+  "nonnull_pct": 100
+ },
+ {
+  "col": "fetchAtLast",
+  "cn": "最近取货时间",
+  "json_type": "int",
+  "maxlen": 13,
+  "distinct": 5000,
+  "nonnull_pct": 100
+ },
+ {
+  "col": "completeAt",
+  "cn": "完成时间",
+  "json_type": "int",
+  "maxlen": 13,
+  "distinct": 5000,
+  "nonnull_pct": 100
+ },
+ {
+  "col": "trackingFinishAt",
+  "cn": "运单完成时间",
+  "json_type": "int",
+  "maxlen": 13,
+  "distinct": 5000,
+  "nonnull_pct": 100
+ },
+ {
+  "col": "cancelSponsor",
+  "cn": "取消发起方",
+  "json_type": "int",
+  "maxlen": 1,
+  "distinct": 4,
+  "nonnull_pct": 1
+ },
+ {
+  "col": "cancelSponsorName",
+  "cn": "取消发起方名称",
+  "json_type": "str",
+  "maxlen": 3,
+  "distinct": 4,
+  "nonnull_pct": 1
+ },
+ {
+  "col": "cancelReasonCode",
+  "cn": "取消原因编码",
+  "json_type": "str",
+  "maxlen": 42,
+  "distinct": 71,
+  "nonnull_pct": 1
+ },
+ {
+  "col": "cancelReason",
+  "cn": "取消原因",
+  "json_type": "str",
+  "maxlen": 15,
+  "distinct": 37,
+  "nonnull_pct": 1
+ },
+ {
+  "col": "cancelDuty",
+  "cn": "取消责任方",
+  "json_type": "list",
+  "maxlen": 3,
+  "distinct": 5,
+  "nonnull_pct": 100
+ },
+ {
+  "col": "cancelDutyName",
+  "cn": "取消责任方名称",
+  "json_type": "str",
+  "maxlen": 8,
+  "distinct": 4,
+  "nonnull_pct": 1
+ },
+ {
+  "col": "isCheat",
+  "cn": "是否作弊",
+  "json_type": "int",
+  "maxlen": 1,
+  "distinct": 1,
+  "nonnull_pct": 100
+ },
+ {
+  "col": "isIllegalFetch",
+  "cn": "是否违规取货",
+  "json_type": "int",
+  "maxlen": 1,
+  "distinct": 2,
+  "nonnull_pct": 100
+ },
+ {
+  "col": "isIllegalArrival",
+  "cn": "是否违规到店",
+  "json_type": "int",
+  "maxlen": 1,
+  "distinct": 2,
+  "nonnull_pct": 100
+ },
+ {
+  "col": "isIllegalComplete",
+  "cn": "是否违规完成",
+  "json_type": "int",
+  "maxlen": 1,
+  "distinct": 2,
+  "nonnull_pct": 100
+ },
+ {
+  "col": "isBogusReport",
+  "cn": "是否虚假上报",
+  "json_type": "int",
+  "maxlen": 1,
+  "distinct": 2,
+  "nonnull_pct": 100
+ },
+ {
+  "col": "isBogusReportReasonIds",
+  "cn": "虚假上报原因IDs",
+  "json_type": "list",
+  "maxlen": 5,
+  "distinct": 4,
+  "nonnull_pct": 100
+ },
+ {
+  "col": "isBogusReportReasons",
+  "cn": "虚假上报原因",
+  "json_type": "str",
+  "maxlen": 10,
+  "distinct": 3,
+  "nonnull_pct": 0
+ },
+ {
+  "col": "isBogusMark",
+  "cn": "是否虚假标记",
+  "json_type": "int",
+  "maxlen": 1,
+  "distinct": 1,
+  "nonnull_pct": 0
+ },
+ {
+  "col": "isBogusMarkReasonIds",
+  "cn": "虚假标记原因IDs",
+  "json_type": "list",
+  "maxlen": 5,
+  "distinct": 5,
+  "nonnull_pct": 100
+ },
+ {
+  "col": "isBogusMarkReasons",
+  "cn": "虚假标记原因",
+  "json_type": "str",
+  "maxlen": 9,
+  "distinct": 4,
+  "nonnull_pct": 0
+ },
+ {
+  "col": "platformPaidAt",
+  "cn": "平台支付时间",
+  "json_type": "int",
+  "maxlen": 13,
+  "distinct": 5000,
+  "nonnull_pct": 100
+ },
+ {
+  "col": "shippingType",
+  "cn": "配送方式",
+  "json_type": "int",
+  "maxlen": 1,
+  "distinct": 2,
+  "nonnull_pct": 100
+ },
+ {
+  "col": "shippingTypeName",
+  "cn": "配送方式名称",
+  "json_type": "str",
+  "maxlen": 3,
+  "distinct": 2,
+  "nonnull_pct": 100
+ },
+ {
+  "col": "isReverse",
+  "cn": "是否逆向单",
+  "json_type": "int",
+  "maxlen": 1,
+  "distinct": 2,
+  "nonnull_pct": 100
+ },
+ {
+  "col": "isTransfer",
+  "cn": "是否转单",
+  "json_type": "int",
+  "maxlen": 1,
+  "distinct": 2,
+  "nonnull_pct": 100
+ },
+ {
+  "col": "isReassign",
+  "cn": "是否改派",
+  "json_type": "int",
+  "maxlen": 1,
+  "distinct": 2,
+  "nonnull_pct": 100
+ },
+ {
+  "col": "platformMerchantSeq",
+  "cn": "平台商家序号",
+  "json_type": "str",
+  "maxlen": 15,
+  "distinct": 1662,
+  "nonnull_pct": 100
+ },
+ {
+  "col": "isUserComplaint",
+  "cn": "是否用户投诉",
+  "json_type": "int",
+  "maxlen": 1,
+  "distinct": 2,
+  "nonnull_pct": 100
+ },
+ {
+  "col": "isOverUserT",
+  "cn": "是否超用户时效",
+  "json_type": "int",
+  "maxlen": 1,
+  "distinct": 2,
+  "nonnull_pct": 100
+ },
+ {
+  "col": "isOverCarrierT",
+  "cn": "是否超承运商时效",
+  "json_type": "int",
+  "maxlen": 1,
+  "distinct": 2,
+  "nonnull_pct": 100
+ },
+ {
+  "col": "userComplaintContent",
+  "cn": "用户投诉内容",
+  "json_type": "str",
+  "maxlen": 58,
+  "distinct": 13,
+  "nonnull_pct": 0
+ },
+ {
+  "col": "userComplaintDuty",
+  "cn": "用户投诉责任方",
+  "json_type": "int",
+  "maxlen": 1,
+  "distinct": 1,
+  "nonnull_pct": 0
+ },
+ {
+  "col": "userComplaintDutyName",
+  "cn": "用户投诉责任方名称",
+  "json_type": "str",
+  "maxlen": 8,
+  "distinct": 1,
+  "nonnull_pct": 0
+ },
+ {
+  "col": "isMerchantComplaint",
+  "cn": "是否商家投诉",
+  "json_type": "int",
+  "maxlen": 1,
+  "distinct": 1,
+  "nonnull_pct": 100
+ },
+ {
+  "col": "merchantComplaintContent",
+  "cn": "商家投诉内容",
+  "json_type": "empty",
+  "maxlen": 0,
+  "distinct": 0,
+  "nonnull_pct": 0
+ },
+ {
+  "col": "merchantComplaintDuty",
+  "cn": "商家投诉责任方",
+  "json_type": "empty",
+  "maxlen": 0,
+  "distinct": 0,
+  "nonnull_pct": 0
+ },
+ {
+  "col": "merchantComplaintDutyName",
+  "cn": "商家投诉责任方名称",
+  "json_type": "empty",
+  "maxlen": 0,
+  "distinct": 0,
+  "nonnull_pct": 0
+ },
+ {
+  "col": "userEvaluateDuty",
+  "cn": "用户评价责任方",
+  "json_type": "int",
+  "maxlen": 1,
+  "distinct": 2,
+  "nonnull_pct": 2
+ },
+ {
+  "col": "userEvaluateDutyName",
+  "cn": "用户评价责任方名称",
+  "json_type": "str",
+  "maxlen": 8,
+  "distinct": 2,
+  "nonnull_pct": 2
+ },
+ {
+  "col": "userEvaluateStar",
+  "cn": "用户评价星数",
+  "json_type": "int",
+  "maxlen": 1,
+  "distinct": 2,
+  "nonnull_pct": 2
+ },
+ {
+  "col": "userEvaluateStarName",
+  "cn": "用户评价星数名称",
+  "json_type": "str",
+  "maxlen": 4,
+  "distinct": 2,
+  "nonnull_pct": 2
+ },
+ {
+  "col": "merchantEvaluateDuty",
+  "cn": "商家评价责任方",
+  "json_type": "int",
+  "maxlen": 1,
+  "distinct": 2,
+  "nonnull_pct": 0
+ },
+ {
+  "col": "merchantEvaluateDutyName",
+  "cn": "商家评价责任方名称",
+  "json_type": "str",
+  "maxlen": 8,
+  "distinct": 2,
+  "nonnull_pct": 0
+ },
+ {
+  "col": "merchantEvaluateStar",
+  "cn": "商家评价星数",
+  "json_type": "int",
+  "maxlen": 1,
+  "distinct": 3,
+  "nonnull_pct": 0
+ },
+ {
+  "col": "merchantEvaluateStarName",
+  "cn": "商家评价星数名称",
+  "json_type": "str",
+  "maxlen": 2,
+  "distinct": 3,
+  "nonnull_pct": 0
+ },
+ {
+  "col": "isAbnormalMark",
+  "cn": "是否异常标记",
+  "json_type": "int",
+  "maxlen": 1,
+  "distinct": 2,
+  "nonnull_pct": 1
+ },
+ {
+  "col": "abnormalMarkEvents",
+  "cn": "异常标记事件",
+  "json_type": "str",
+  "maxlen": 3,
+  "distinct": 5,
+  "nonnull_pct": 1
+ },
+ {
+  "col": "abnormalMarkEventNames",
+  "cn": "异常标记事件名称",
+  "json_type": "str",
+  "maxlen": 7,
+  "distinct": 5,
+  "nonnull_pct": 1
+ },
+ {
+  "col": "platformBookedAt",
+  "cn": "平台下单时间",
+  "json_type": "int",
+  "maxlen": 13,
+  "distinct": 5000,
+  "nonnull_pct": 100
+ },
+ {
+  "col": "deliveryDuration",
+  "cn": "配送时长(秒)",
+  "json_type": "int",
+  "maxlen": 8,
+  "distinct": 4594,
+  "nonnull_pct": 99
+ },
+ {
+  "col": "trackingCancelAt",
+  "cn": "运单取消时间",
+  "json_type": "int",
+  "maxlen": 13,
+  "distinct": 5000,
+  "nonnull_pct": 1
+ },
+ {
+  "col": "isHighValueOrder",
+  "cn": "是否高价值订单",
+  "json_type": "str",
+  "maxlen": 1,
+  "distinct": 2,
+  "nonnull_pct": 100
+ },
+ {
+  "col": "isSecondCallOrder",
+  "cn": "是否二次呼叫订单",
+  "json_type": "str",
+  "maxlen": 1,
+  "distinct": 2,
+  "nonnull_pct": 100
+ }
+]

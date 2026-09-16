@@ -1,0 +1,294 @@
+/* ==========================================================================
+   风神数据处理 · 任务运行工作台 —— 设计令牌（Design Tokens）
+   --------------------------------------------------------------------------
+   单一事实来源：所有颜色 / 字体 / 间距 / 圆角 / 阴影 / 动效 / 层级 / 布局尺寸
+   都在这里定义，业务样式一律通过 var() 引用，不再写死字面量。
+
+   文件位置：server/tokens.css（由 index.html 的 <link> 引入，随页面一起加载）
+   配套说明：server/DESIGN.md
+
+   命名规范：--{类别}-{角色}[-{变体}]
+     · 第一层「原始色板」以 --c- 开头，存字面量，是唯一允许出现具体色值的地方
+     · 第二层「语义令牌」无前缀，映射到第一层，业务样式只引用这一层
+     · 非颜色令牌用类别前缀：--fs-* --fw-* --lh-* --sp-* --r-* --shadow-*
+                            --ring-* --dur-* --z-* --layout-* --ctrl-* --grid-*
+     · 间距令牌后缀数字即 px 值（--sp-9 = 9px），改名即改值，不做隐式换算
+
+   深浅模式：本页未实现 prefers-color-scheme 深色模式（无此需求）。
+   唯一的深色面是日志终端，其配色集中在「6. 终端（深色面）」，自成一套。
+   ========================================================================== */
+
+:root{
+
+/* ── 1. 原始色板 · 品牌色 ──────────────────────────────────────────────── */
+  --c-brand:            #FF5000;   /* 淘宝闪购橙，品牌主色 */
+  --c-brand-dark:       #D94400;   /* 主色加深态（hover / active） */
+  --c-brand-soft:       #FFF1EA;   /* 主色浅底（选中面 / hover 面 / 聚焦环） */
+
+/* ── 2. 原始色板 · 中性面 ──────────────────────────────────────────────── */
+  --c-white:            #FFFFFF;   /* 卡片 / 面板 / 反色文字（源码 :root 用大写写法） */
+  --c-canvas:           #F5F6F8;   /* 页面画布 */
+  --c-sunken:           #FAFBFC;   /* 下沉块底（表头 / 参数区 / 面板头） */
+  --c-fill-cancel:      #F1F3F5;   /* 次要按钮底（取消） */
+  --c-fill-cancel-hover:#E6E9EC;   /* 次要按钮 hover 底 */
+  --c-fill-disabled:    #D8DBE0;   /* 禁用按钮底 */
+  --c-scrollbar:        #DFE3E8;   /* 滚动条滑块 */
+
+/* ── 3. 原始色板 · 中性文字与描边 ──────────────────────────────────────── */
+  --c-text-strong:      #1F2328;   /* 主文字 / 标题 */
+  --c-text-body:        #404854;   /* 弹窗正文 */
+  --c-text-muted:       #6B7280;   /* 次级文字 */
+  --c-text-faint:       #9AA1AC;   /* 辅助文字 / 占位 */
+  --c-text-neutral:     #5F6368;   /* 中性图标 / 中性视图强调（tool 分组同色） */
+  --c-line:             #E4E7EB;   /* 常规描边 / 分割 */
+  --c-line-soft:        #EEF0F3;   /* 极浅描边 / 组内分割 */
+
+/* ── 4. 原始色板 · 语义色 ──────────────────────────────────────────────── */
+  --c-ok:               #0F9D58;   /* 成功 */
+  --c-ok-soft:          #E9F7EF;   /* 成功浅底 */
+  --c-err:              #E02020;   /* 失败 / 危险 */
+  --c-err-soft:         #FDECEC;   /* 失败浅底 */
+  --c-err-line:         #F5C2C2;   /* 失败描边 */
+  --c-err-dark:         #B81818;   /* 失败加深态（hover） */
+  --c-err-deep:         #7A2020;   /* 失败正文（浅底上的可读红） */
+  --c-warn:             #F5A623;   /* 警告 */
+  --c-warn-soft:        #FEF6E7;   /* 警告浅底 */
+  --c-warn-line:        #F3D9A4;   /* 警告描边 */
+  --c-warn-deep:        #96650B;   /* 警告正文（浅底上的可读黄） */
+  --c-info:             #1A73E8;   /* 信息 / 进行中 */
+  --c-info-soft:        #EAF1FD;   /* 信息浅底 */
+  --c-info-line:        #B9D2FB;   /* 信息描边 */
+  --c-purple:           #7A5AF8;   /* 商站任务分组专用（tasks.json → JS 消费） */
+  --c-purple-soft:      #F0ECFE;
+  --c-cyan:             #0891B2;   /* 数据看板分组专用（tasks.json → JS 消费） */
+  --c-cyan-soft:        #E6F4F8;
+
+/* ── 5. 原始色板 · 遮罩与玻璃面 ────────────────────────────────────────── */
+  --c-glass:            rgba(255,255,255,.92);  /* 顶栏毛玻璃底 */
+  --c-glass-strong:     rgba(255,255,255,.96);  /* 底部执行栏毛玻璃底 */
+  --c-scrim:            rgba(16,24,40,.45);     /* 侧栏抽屉遮罩 */
+  --c-overlay:          rgba(16,24,40,.5);      /* 弹窗遮罩 */
+
+/* ── 6. 原始色板 · 终端（页面内唯一的深色面） ──────────────────────────── */
+  --c-term-bg:          #0F1115;   /* 终端底 */
+  --c-term-fg:          #C9D1D9;   /* 普通输出 */
+  --c-term-sys:         #7D8590;   /* 系统行 */
+  --c-term-cmd:         #79C0FF;   /* 命令行 / 成功态状态点 */
+  --c-term-ok:          #3FB950;   /* [开始] / 运行中状态点 */
+  --c-term-bad:         #FF7B72;   /* 错误行 / 失败态状态点 */
+  --c-term-warn:        #D29922;   /* [系统] 行 / 其他状态点 */
+  --c-term-dim:         #6E7681;   /* 异常堆栈（弱化） */
+
+/* ── 7. 原始色板 · 阴影基色 ────────────────────────────────────────────── */
+  --c-shadow-1:         rgba(16,24,40,.05);
+  --c-shadow-2:         rgba(16,24,40,.06);
+  --c-shadow-3:         rgba(16,24,40,.16);
+
+/* ══ 第二层：语义令牌（业务样式只引用这一层） ═══════════════════════════ */
+
+/* ── 8. 语义 · 背景与面 ────────────────────────────────────────────────── */
+  --bg:                 var(--c-canvas);   /* 页面画布 */
+  --card:               var(--c-white);    /* 卡片 / 面板底 */
+  --surface-sunken:     var(--c-sunken);   /* 下沉块底 */
+  --surface-cancel:     var(--c-fill-cancel);
+  --surface-cancel-hover:var(--c-fill-cancel-hover);
+  --surface-disabled:   var(--c-fill-disabled);
+  --white:              var(--c-white);    /* 反色文字 / 白底 */
+  --glass:              var(--c-glass);
+  --glass-strong:       var(--c-glass-strong);
+  --scrim:              var(--c-scrim);
+  --overlay:            var(--c-overlay);
+  --scrollbar-thumb:    var(--c-scrollbar);
+
+/* ── 9. 语义 · 文字 ────────────────────────────────────────────────────── */
+  --text:               var(--c-text-strong);
+  --text-body:          var(--c-text-body);
+  --muted:              var(--c-text-muted);
+  --muted-2:            var(--c-text-faint);
+  --accent-neutral:     var(--c-text-neutral);
+
+/* ── 10. 语义 · 描边 ───────────────────────────────────────────────────── */
+  --border:             var(--c-line);
+  --border-soft:        var(--c-line-soft);
+  --bw:                 1px;               /* 常规描边宽度 */
+
+/* ── 11. 语义 · 品牌与状态 ─────────────────────────────────────────────── */
+  --brand:              var(--c-brand);
+  --brand-dark:         var(--c-brand-dark);
+  --brand-soft:         var(--c-brand-soft);
+  --ok:                 var(--c-ok);
+  --ok-soft:            var(--c-ok-soft);
+  --err:                var(--c-err);
+  --err-soft:           var(--c-err-soft);
+  --err-line:           var(--c-err-line);
+  --err-dark:           var(--c-err-dark);
+  --err-deep:           var(--c-err-deep);
+  --warn:               var(--c-warn);
+  --warn-soft:          var(--c-warn-soft);
+  --warn-line:          var(--c-warn-line);
+  --warn-deep:          var(--c-warn-deep);
+  --info:               var(--c-info);
+  --info-soft:          var(--c-info-soft);
+  --info-line:          var(--c-info-line);
+  --purple:             var(--c-purple);
+  --purple-soft:        var(--c-purple-soft);
+  --cyan:               var(--c-cyan);
+  --cyan-soft:          var(--c-cyan-soft);
+  /* 关于 --purple / --purple-soft：
+     当前没有任何 CSS 选择器 var() 它们；消费走的是 tasks.json → JS → g.color 内联到 .gchip。
+     这里保留是为了「两条路径同步改色」—— 见 DESIGN.md §3.6 双路径说明。 */
+
+/* ── 12. 语义 · 终端 ───────────────────────────────────────────────────── */
+  --term-bg:            var(--c-term-bg);
+  --term-fg:            var(--c-term-fg);
+  --term-sys:           var(--c-term-sys);
+  --term-cmd:           var(--c-term-cmd);
+  --term-ok:            var(--c-term-ok);
+  --term-bad:           var(--c-term-bad);
+  --term-warn:          var(--c-term-warn);
+  --term-dim:           var(--c-term-dim);
+
+/* ── 13. 字体 ──────────────────────────────────────────────────────────── */
+  --font-sans: -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue","PingFang SC","Microsoft YaHei",sans-serif;
+  --font-mono: "SFMono-Regular",Consolas,"Liberation Mono",Menlo,monospace;
+
+/* ── 14. 字号层级（12 级，命名即用途） ─────────────────────────────────── */
+  --fs-badge:      11px;    /* 徽标 / 角标 / 分组标签 */
+  --fs-caption:    11.5px;  /* 计数 / 时间戳 / 次要点提示 */
+  --fs-small:      12px;    /* 表头 / 次级说明 */
+  --fs-note:       12.5px;  /* 描述正文 / 副标题 */
+  --fs-control:    13px;    /* 按钮 / 输入 / 表格正文 */
+  --fs-control-lg: 13.5px;  /* 主按钮 / 面板标题 */
+  --fs-body:       14px;    /* 页面正文基准 */
+  --fs-title-sm:   14.5px;  /* 卡片标题 / 区块标题 */
+  --fs-title:      23.25px; /* 顶栏主标题（原 15.5px × 1.5，2026-09-08 用户要求加大，保持不变） */
+  --fs-input:      16px;    /* 表单控件（iOS <16px 会自动放大页面，勿改） */
+  --fs-title-lg:   16.5px;  /* 弹窗标题 */
+  --fs-title-xl:   clamp(15px, 0.6vw + 13px, 17px);  /* 视图主标题（流式，宽屏封顶 17px） */
+  --fs-view:       var(--fs-title-xl);  /* 视图主标题别名（B1 三级映射） */
+  --fs-section:    15px;    /* 区块标题（.section-head / .home-sec） */
+  --fs-card:       var(--fs-title-sm); /* 卡片标题别名（B1 三级映射） */
+
+/* ── 15. 字重 ──────────────────────────────────────────────────────────── */
+  --fw-regular:    400;     /* 正文 */
+  --fw-medium:     500;     /* 按钮 / 选中项 */
+  --fw-semibold:   600;     /* 徽标 / 导航分区标题 / 表头 */
+
+/* ── 16. 行高 ──────────────────────────────────────────────────────────── */
+  --lh-tight:      1.35;    /* 卡片标题（多行收紧） */
+  --lh-normal:     1.5;     /* 描述 / 产物列表 */
+  --lh-base:       1.55;    /* 页面正文基准 / 诊断卡 */
+  --lh-relaxed:    1.6;     /* 徽标 / 弹窗正文 */
+  --lh-term:       1.65;    /* 终端日志（等宽字体需要更松） */
+
+/* ── 17. 间距（后缀数字 = px 值，改动即全局生效） ───────────────────────── */
+  --sp-1:1px;   --sp-2:2px;   --sp-3:3px;   --sp-4:4px;   --sp-5:5px;
+  --sp-6:6px;   --sp-7:7px;   --sp-8:8px;   --sp-9:9px;   --sp-10:10px;
+  --sp-11:11px; --sp-12:12px; --sp-13:13px; --sp-14:14px; --sp-15:15px;
+  --sp-16:16px; --sp-18:18px; --sp-20:20px; --sp-22:22px; --sp-24:24px;
+  --sp-28:28px; --sp-32:32px; --sp-34:34px; --sp-40:40px; --sp-48:48px; --sp-64:64px; --sp-88:88px; --sp-96:96px;
+  /* 内容栅格语义间距（统一节奏，替代散落的 sp-12/sp-13/sp-18） */
+  --gap-card:    var(--sp-12);   /* 卡片网格间距 */
+  --gap-block:   var(--sp-16);   /* 区块内分组间距 */
+  --gap-section: var(--sp-24);   /* 区块之间 */
+  /* 离格历史值（仅装饰/历史，新代码一律走 8pt 倍数：8/16/24/32/40/48/64）：--sp-18/22/34/88 */
+
+/* ── 18. 圆角 ──────────────────────────────────────────────────────────── */
+  --r-xs:    3px;      /* 滚动条滑块 */
+  --r-sm:    5px;      /* 徽标 / 分组标签 */
+  --r-md:    7px;      /* 小按钮 / 输入框 / 标签页 */
+  --r-lg:    8px;      /* 列表首尾 / 内嵌块 */
+  --r-xl:    9px;      /* 按钮 / 导航项 / 卡片内块（最常用） */
+  --r-card:  6px;      /* 卡片 / 面板（2026-09-13 统一收紧为 6px） */
+  --r-modal: 14px;     /* 弹窗 */
+  --r-pill:  999px;    /* 胶囊 */
+  --r-circle:50%;      /* 圆形（图标底 / 状态点 / 序号） */
+
+/* ── 19. 阴影与聚焦环 ──────────────────────────────────────────────────── */
+  --shadow-1: 0 1px 2px var(--c-shadow-1),0 1px 3px var(--c-shadow-2);  /* 卡片 */
+  --shadow-2: 0 12px 32px var(--c-shadow-3);                            /* 浮层 / 抽屉 / 弹窗 */
+  --ring-brand:0 0 0 3px var(--brand-soft);   /* 聚焦 / 选中 */
+  --ring-ok:   0 0 0 3px var(--ok-soft);      /* 在线状态点 */
+  --ring-err:  0 0 0 3px var(--err-soft);     /* 离线状态点 */
+
+/* ── 20. 动效时长（缓动统一用 ease，与浏览器默认一致） ─────────────────── */
+  --dur-fast:   .14s;   /* 导航项 hover */
+  --dur-base:   .15s;   /* 按钮 hover（最常用） */
+  --dur-slow:   .18s;   /* 卡片 / 弹窗 */
+  --dur-slower: .2s;    /* 折叠箭头 / toast */
+  --dur-slowest:.22s;   /* 抽屉 / 执行栏位移 */
+  --ease-apple: cubic-bezier(0.32, 0.72, 0, 1);  /* Apple 式 ease-out 曲线：滚动揭示 / 首屏淡入 / 卡片位移统一缓动 */
+
+/* ── 21. 层级 ──────────────────────────────────────────────────────────── */
+  /* 层级宪法（改这里请先读，check_tokens.py 会按此校验）：
+     · 所有浮层一律走 --z-* 令牌，禁止裸数字、禁止 calc(var(--z-x) + n) 这类魔法偏移；
+       需要「比同类高一点」就新登记一个名字明确的自有层，别就地加数。
+     · --z-confirm 是所有危险 / 二次确认弹窗的专用层，也是**全局最高的可交互层**：
+       它可能从任意弹窗内部弹出（配置弹窗里勾 DROP、日志弹窗里终止任务…），
+       必须盖得住 .cf-mask / .artmask / .logmask 中的任何一个。
+     · 唯一允许比 --z-confirm 更高的是 --z-toast，但它 pointer-events:none 不吃点击，
+       不构成遮挡。除此之外任何新浮层都不得越到 --z-confirm 之上。
+     · 新增弹窗的取值区间：--z-modal(100) ~ --z-modal-raise(105) 之间，或显式登记新层。 */
+  --z-header:50;       /* 顶栏 */
+  --z-batch: 60;       /* 底部批量执行栏 */
+  --z-scrim: 64;       /* 侧栏遮罩 */
+  --z-side:  65;       /* 侧栏抽屉（在遮罩之上） */
+  --z-modal: 100;      /* 弹窗基准层（配置 / 产物） */
+  --z-modal-raise: 105;/* 需盖在其他弹窗之上的同族弹窗（日志：可从产物弹窗里打开） */
+  --z-confirm:120;     /* 全部危险 / 二次确认弹窗：全局最高可交互层，不可被超越 */
+  --z-toast: 200;      /* 轻提示（最高，但 pointer-events:none，不参与交互层叠） */
+
+/* ── 22. 布局尺寸 ──────────────────────────────────────────────────────── */
+  --layout-max:        1560px;  /* 顶栏 / 主体 / 执行栏 统一最大宽度 */
+  --layout-hd:         59px;    /* 顶栏高度（JS 会按实测值覆写，见 syncHeaderHeight） */
+  --layout-side:       236px;   /* 侧栏宽度 */
+  --layout-side-mobile:262px;   /* 窄屏侧栏抽屉宽度 */
+  --layout-card-min:   330px;   /* 任务卡栅格最小列宽 */
+  --layout-preset-min: 400px;   /* 流水线卡栅格最小列宽 */
+  --layout-log-h:      320px;   /* 日志抽屉内日志区高度 */
+  --layout-log-offset: 290px;   /* 全屏日志 100vh 扣除量 */
+  --layout-log-min:    340px;   /* 全屏日志最小高度 */
+  --layout-modal:      440px;   /* 弹窗最大宽度 */
+
+/* ── 23. 控件高度 ──────────────────────────────────────────────────────── */
+  --ctrl-h-xs: 30px;   /* 小按钮（日志工具栏 / 看日志） */
+  --ctrl-h-sm: 32px;   /* 输入 / 下拉 */
+  --ctrl-h:    34px;   /* 顶栏按钮 */
+  --ctrl-h-md: 38px;   /* 卡片主按钮 / 快捷按钮 / 导航项 */
+  --ctrl-h-lg: 40px;   /* 底部执行栏按钮 */
+  --ctrl-h-xl: 42px;   /* 弹窗按钮 */
+  --tap-min:   44px;   /* 移动端最小点击区（对齐 WCAG，新增组件请遵守） */
+
+/* ── 24. 栅格 ──────────────────────────────────────────────────────────── */
+  --grid-col-time:  150px;  /* 运行记录 · 时间列 */
+  --grid-col-status:82px;   /* 运行记录 · 状态列 */
+  --grid-col-dur:   72px;   /* 运行记录 · 耗时列 */
+  --grid-col-act:   148px;  /* 运行记录 · 操作列（看日志/产物 两个按钮并排） */
+  --grid-form-label:100px;  /* 参数行标签宽度 */
+
+/* ── 25. 响应式断点（文档用） ──────────────────────────────────────────── */
+  /* CSS 的 @media() 不支持 var()，断点只能在 index.html 里写死字面量。
+     这里集中登记，改断点时两处一起改（同步 server/DESIGN.md §9.4）：
+       1000px —— 侧栏转为抽屉，顶栏出现 ☰，隐藏 .hide-sm
+        900px —— 首页两栏转单列、工作内容四宫格转两列、提醒明细转单列
+        820px —— 运行记录由表格行转为卡片式网格
+        620px —— 流水线卡栅格转单列、日志模态接近全屏
+        560px —— 任务卡栅格转单列、顶栏两行、时段/提醒区收窄
+        520px —— @container 容器查询：看板/快捷卡栅格在容器内收窄列宽
+  */
+}
+
+/* ── 26. 与 tasks.json 分组配色的对应关系（注释，非令牌） ──────────────────
+   tasks.json 的 groups[].color 直接沿用语义色板，两边需保持一致：
+     attendance 排班考勤  #FF5000 → --brand
+     task       商站任务 #7A5AF8 → --purple
+     equip      装备点亮   #0F9D58 → --ok
+     delivery   运单处理  #1A73E8 → --info
+     unsat      不满意单 #F5A623 → --warn
+     tool       其他工具  #5F6368 → --accent-neutral
+   （原 appeal 违规申诉分组已合并进 unsat 不满意单，对应行删除；勿再加回）
+   注：--cyan 不是分组色——「数据看板」是与「任务中心」平级的一级导航项，
+   不挂在 groups[] 里，其颜色由 index.html 的 TK.cyan 直接消费。
+   这些值以 hex 形式存在 tasks.json（数据文件，不引 CSS），由 JS 读取后
+   内联到分组标签与视图图标上；改色请同步改 tasks.json 与本文件。
+   ──────────────────────────────────────────────────────────────────────── */

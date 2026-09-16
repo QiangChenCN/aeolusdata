@@ -1,0 +1,82 @@
+# 敏感凭据（绝不提交）
+minio_config.json
+cookie.txt
+cookie.txt.lock
+quark_cookie.txt
+quark_da_cookies.txt
+quark_da_cache.json
+quark_pw_capture.json
+aeo_cookie.txt
+.env
+server/.api_token
+
+# CDP 探针产物 / 浏览器调试缓存（可重建，不提交）
+cdp_profile_knight/
+knight_rule_cdp_capture.json
+
+# 运行产物 · 图片
+attendance_absent.png
+violation_detail.png
+rider_equipment_warning.png
+task_started.png
+test_short.png
+
+# 运行产物 · 数据（JSON/CSV）
+attendance_response.json
+attendance_summary.json
+attendance_raw/
+task_list_raw.json
+rider_equipment.csv
+rider_equipment_raw.json
+rider_equipment_unlit.csv
+violations.csv
+
+# 运行产物 · 报告/预览
+preview/
+
+# 运行产物 · 日志
+*.log
+
+# Python 虚拟环境（每位开发者本地重建，不提交）
+.venv/
+
+# Python 缓存
+__pycache__/
+*.pyc
+
+# 数据库凭据与运单原始数据
+db_config.json
+delivery_raw/
+
+# 工作内容（提醒事项）SQLite 库 —— 本地数据，含 WAL  sidecar 文件
+server/data/todo.db
+server/data/todo.db-wal
+server/data/todo.db-shm
+
+# 在线表地址记忆（本地状态，每人/每月不同，不提交）
+last_sheet_url.txt
+# 站点选择记忆（attendance「沿用上次选择的站点」，本地状态，不提交）
+last_teams.txt
+
+# 前端 Vite 工程（P1 拆分）：依赖与构建产物本地重建，不提交
+web/node_modules/
+web/dist/
+web/package-lock.json
+
+# 后端 API token —— 真实密钥（server.py 的 _API_TOKEN_PATH 落在项目根）
+.api_token
+
+# LAN 开关本地状态
+.lan_enabled
+
+# 后端运行期数据 / 日志 / 截图（可重建，不提交）
+server/runs/
+server/logs/
+server/_final_shots/
+server/data/recent_groups.json
+
+# 本地工具缓存
+.vite/
+.pytest_cache/
+.playwright-cli/
+.workbuddy/

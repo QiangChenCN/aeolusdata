@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>任务中心 UI 系统性优化方案 · 2026-09-12</title>
+<style>
+  :root{
+    --brand:#FF5000; --brand-dark:#D94400; --brand-soft:#FFF1EA;
+    --bg:#F5F6F8; --card:#fff; --sunken:#FAFBFC; --line:#E4E7EB; --line-soft:#EEF0F3;
+    --text:#1F2328; --muted:#6B7280; --muted-2:#9AA1AC;
+    --ok:#0F9D58; --warn:#F5A623; --err:#E02020; --info:#1A73E8;
+    --r:14px; --r-sm:8px; --shadow:0 1px 2px rgba(16,24,40,.05),0 1px 3px rgba(16,24,40,.06);
+    --shadow-2:0 12px 32px rgba(16,24,40,.12);
+    --fs:14px; --mono:"SFMono-Regular",Consolas,Menlo,monospace;
+    --maxw:1080px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"PingFang SC","Microsoft YaHei",sans-serif;
+    font-size:var(--fs);line-height:1.6;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:var(--maxw);margin:0 auto;padding:32px 24px 96px}
+  /* hero */
+  .hero{background:linear-gradient(135deg,#FF5000,#D94400);color:#fff;border-radius:20px;padding:34px 36px;box-shadow:var(--shadow-2)}
+  .hero h1{margin:0;font-size:26px;letter-spacing:.3px;font-weight:700}
+  .hero p{margin:10px 0 0;opacity:.94;font-size:14px;max-width:760px}
+  .hero .meta{margin-top:16px;display:flex;gap:10px;flex-wrap:wrap}
+  .hero .meta span{background:rgba(255,255,255,.16);padding:5px 12px;border-radius:999px;font-size:12px}
+  /* tldr */
+  .tldr{margin-top:24px;background:var(--card);border:1px solid var(--line);border-left:4px solid var(--brand);
+    border-radius:var(--r);padding:18px 22px;box-shadow:var(--shadow)}
+  .tldr b{color:var(--brand)}
+  /* sections */
+  section{margin-top:40px}
+  h2{font-size:20px;margin:0 0 4px;display:flex;align-items:center;gap:10px}
+  h2 .num{width:30px;height:30px;border-radius:9px;background:var(--brand-soft);color:var(--brand);
+    display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:700;flex:none}
+  h3{font-size:15.5px;margin:26px 0 8px;color:var(--text)}
+  .lead{color:var(--muted);font-size:13.5px;margin:4px 0 14px}
+  /* cards / axis items */
+  .item{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:18px 20px;margin-top:14px;box-shadow:var(--shadow)}
+  .item-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .item-head h4{margin:0;font-size:15px}
+  .badge{font-size:11px;font-weight:700;padding:3px 9px;border-radius:999px;letter-spacing:.4px}
+  .p0{background:#E9F7EF;color:var(--ok)} .p1{background:#FEF6E7;color:#96650B} .p2{background:#EAF1FD;color:var(--info)}
+  .item p{margin:10px 0 0;font-size:13.5px;color:#404854}
+  .kv{margin-top:12px;display:grid;grid-template-columns:96px 1fr;gap:8px 12px;font-size:13px}
+  .kv .k{color:var(--muted);font-weight:600}
+  .kv .v{color:#404854}
+  pre{background:#0F1115;color:#C9D1D9;border-radius:10px;padding:13px 15px;overflow:auto;font-family:var(--mono);
+    font-size:12.5px;line-height:1.55;margin:10px 0 0;white-space:pre}
+  pre .c{color:#7D8590} pre .a{color:#79C0FF} pre .g{color:#3FB950} pre .o{color:#FF7B72}
+  .ba{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px}
+  .ba .col{border:1px solid var(--line-soft);border-radius:10px;padding:10px 12px}
+  .ba .col .t{font-size:11px;font-weight:700;letter-spacing:.4px;color:var(--muted-2);margin-bottom:6px;text-transform:uppercase}
+  /* table */
+  table{width:100%;border-collapse:collapse;margin-top:14px;font-size:13px;background:var(--card);border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
+  th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--line-soft);vertical-align:top}
+  th{background:var(--sunken);font-weight:600;color:var(--muted);font-size:12px;letter-spacing:.3px}
+  td code{font-family:var(--mono);font-size:11.5px;background:var(--sunken);padding:1px 5px;border-radius:5px}
+  tr:last-child td{border-bottom:none}
+  .ok{color:var(--ok);font-weight:600} .warn{color:var(--warn);font-weight:600}
+  /* refs */
+  .refs{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px}
+  .ref{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:11px 13px;font-size:12.5px}
+  .ref a{color:var(--brand);text-decoration:none;font-weight:600;word-break:break-all}
+  .ref .src{color:var(--muted-2);font-size:11.5px;margin-top:3px}
+  /* phase */
+  .phase{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:16px}
+  .pc{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:14px 16px}
+  .pc h4{margin:0 0 6px;font-size:14px;color:var(--brand)}
+  .pc ul{margin:6px 0 0;padding-left:18px;font-size:12.5px;color:#404854}
+  .pc li{margin:3px 0}
+  .ask{margin-top:28px;background:var(--brand-soft);border:1px solid #FFD2B8;border-radius:var(--r);padding:18px 20px}
+  .ask h3{margin:0 0 8px;color:var(--brand-dark)}
+  .ask ol{margin:6px 0 0;padding-left:20px;font-size:13.5px;color:#404854}
+  .ask li{margin:5px 0}
+  .tag{display:inline-block;background:#fff;border:1px solid var(--line);border-radius:6px;padding:1px 7px;font-size:11.5px;color:var(--muted);margin:2px 3px 0 0}
+  @media(max-width:720px){ .ba,.refs,.phase{grid-template-columns:1fr} .kv{grid-template-columns:80px 1fr} }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="hero">
+    <h1>任务中心 UI 系统性优化方案</h1>
+    <p>针对「任务运行工作台 / 任务中心」全部页面与组件，结合 2026 年主流前端设计实践与行业同类产品（运营后台 / 任务管理 / 数据看板）的设计语言，对现有 UI 与排版进行系统性审计，并输出可直接落地的优化实现方案。</p>
+    <div class="meta"><span>日期 2026-09-12</span><span>范围 任务中心全部视图与组件</span><span>形态 调研 + 审计 + 落地方案</span><span>配套 tokens.css / index.html / DESIGN.md</span></div>
+  </div>
+
+  <div class="tldr">
+    <b>结论速览：</b>当前工作台的设计基础已相当成熟——双层设计令牌、概览首页、横长形任务卡、节点步进条、配置弹窗、明确断点一应俱全。
+    主要差距集中在五处：<b>①</b> 间距未严格归一为 8pt 网格；<b>②</b> 字号阶梯含离格值（如 23.25px）；<b>③</b> 响应式仅用视口 <code>@media</code>，未引入容器查询；<b>④</b> 缺 <code>prefers-reduced-motion</code> 与骨架屏加载态；<b>⑤</b> 顶栏在 375px 仍结构性溢出、缺关键词/多维筛选。
+    下文给出 5 大轴、共 18 项的优化清单，每项均标注优先级（P0/P1/P2）并附具体 token / CSS / JS 改动，可直接进入实现。
+  </div>
+
+  <!-- 1 调研 -->
+  <section>
+    <h2><span class="num">1</span>调研结论 · 行业主流实践</h2>
+    <p class="lead">下列结论来自 2026 年仍在维护的权威设计系统与公开工程实践，作为本次优化的对标基准。</p>
+
+    <h3>1.1 布局结构 —— 概览优先 + 稳定框架 + 模块化</h3>
+    <p>任务/运营类产品的主流结构是「左侧导航 + 顶栏 + 内容区」三段式，且首屏必含一个<strong>概览（Overview）</strong>着陆页（KPI 卡 + 快捷入口 + 最近动态），让用户一眼掌握全局健康度，再下沉到具体任务列表（Zigpoll 实时看板研究；ONES 任务管理设计指南）。模块按功能聚类，用留白而非分割线划分。</p>
+
+    <h3>1.2 信息层级 —— 清晰三级 + 状态优先 + 留白</h3>
+    <p>LobeHub「2025 现代 UI 标准」强调：用<strong>尺寸/色彩/间距</strong>三件套建立层级；标题与正文要有戏剧性字号差；中性灰 + 单一品牌强调色；慷慨留白降低认知负荷。状态信息（运行中 / 失败 / 待处理）应<strong>前置、用色彩编码</strong>，而非藏在次级文字里。</p>
+
+    <h3>1.3 栅格与间距 —— 8pt 基线网格</h3>
+    <p>Atlassian、澳大利亚政府设计系统、Workday Canvas、LobeHub 均明确采用 <strong>8px 基准单位</strong>。间距刻度建议为 <code>0 / 4 / 8 / 12 / 16 / 24 / 32 / 40 / 48 / 64 / 80 / 96</code>px（4px 仅用于图标/边框微调）。语义约定：4–8px 图标-文字、12–16px 组件内、24px 卡片内边距、32–48px 区块间距、64–96px 页面级留白。</p>
+
+    <h3>1.4 组件组织 —— Token 驱动 + 三态完备</h3>
+    <p>成熟设计系统（Ant Design 5 / Material 3 / Polaris）的共性是：一切视觉走设计令牌、单一事实来源；每个组件具备<strong>默认 / 空 / 加载 / 错误</strong>四态；可复用组件库而非页面内联样式。</p>
+
+    <h3>1.5 响应式 —— 容器查询 + 触控可达</h3>
+    <p>2025 年响应式范式的核心转变是<strong>从「视口驱动」到「组件驱动」</strong>：用 <code>@container</code> 让卡片按<em>所在容器宽度</em>自适应，而非视口（Josh W. Comeau《Container Queries Unleashed》2025；Ant Design 5 已对 Card/Modal/Drawer 启用）。原则是用 <code>min-width</code> 渐进增强、而非 <code>max-width</code> 降级；老浏览器自动回退到紧凑版。触控目标 ≥44px 是 WCAG 硬性要求。</p>
+
+    <div class="refs">
+      <div class="ref"><a href="https://atlassian.design/foundations/spacing/">Atlassian Design · Spacing（8px 基准）</a><div class="src">间距刻度与语义用法</div></div>
+      <div class="ref"><a href="https://design-system.agriculture.gov.au/foundations/tokens/spacing">AU Gov Design System · Spacing Tokens</a><div class="src">8px 网格 + 用途映射</div></div>
+      <div class="ref"><a href="https://lobehub.com/de/skills/neversight-skills_feed-modern-ui-designer">LobeHub · Modern UI Designer 2025</a><div class="src">层级/留白/8px 网格原则</div></div>
+      <div class="ref"><a href="https://getnerdify.com/blog/responsive-design-best-practices">10 Responsive Best Practices 2025</a><div class="src">Container Queries 实践</div></div>
+      <div class="ref"><a href="https://www.zigpoll.com/content/how-can-we-design-an-intuitive-dashboard-that-provides-realtime-insights-into-team-productivity-and-project-status-for-managers-ensuring-they-can-make-informed-decisions-quickly">Zigpoll · Real-Time Dashboard UX</a><div class="src">概览/KPI/层级</div></div>
+      <div class="ref"><a href="https://ones.com.cn/knowledge/10-task-management-ui-design-tips-efficiency-secrets">ONES · 任务管理 UI 设计技巧</a><div class="src">概览/筛选/可视化</div></div>
+    </div>
+  </section>
+
+  <!-- 2 审计 -->
+  <section>
+    <h2><span class="num">2</span>现状审计 · 基于真实代码</h2>
+    <p class="lead">审计对象：<code>web/tokens.css</code>、<code>index.html</code>（CSS + JS 视图）、<code>server/DESIGN.md</code>。证据以「文件:行」标注。</p>
+    <table>
+      <thead><tr><th>维度</th><th>现状</th><th>证据</th><th>评级</th></tr></thead>
+      <tbody>
+        <tr><td>设计令牌体系</td><td>双层（原始色板 / 语义）+ 严格命名 + z-index 宪法；业务样式零裸值</td><td>tokens.css:21–283；DESIGN.md §1–§21</td><td class="ok">✅ 成熟</td></tr>
+        <tr><td>概览首页</td><td>已存在首页：<code>.stat-grid</code>/<code>.stat</code> KPI 卡 + <code>.quick-grid</code> 快捷入口</td><td>index.html:735–760</td><td class="ok">✅ 已具备</td></tr>
+        <tr><td>任务卡片</td><td>横长形三栏 + 固定右栏宽 + 等高锁 + 状态色条 + 描述/产物行高锁</td><td>index.html:130–223</td><td class="ok">✅ 成熟</td></tr>
+        <tr><td>配置弹窗 / 节点步进条</td><td>单例弹窗 + 行内渲染 + 区间校验；步进条拼线法</td><td>index.html:225–308, 495–565</td><td class="ok">✅ 成熟</td></tr>
+        <tr><td>响应式策略</td><td>仅视口 <code>@media</code>（1000/820/620/560），无容器查询</td><td>index.html:62–64, 104–110, 333–351, 693–697</td><td class="warn">⚠️ 待升级</td></tr>
+        <tr><td>间距规范</td><td>含离格值 <code>18/22/34/88</code>px；缺 8pt 档 <code>28/32/40/48/64</code></td><td>tokens.css:184–186</td><td class="warn">⚠️ 未归一</td></tr>
+        <tr><td>字号阶梯</td><td><code>--fs-title:23.25px</code>（15.5×1.5 hack）；无 clamp 流式</td><td>tokens.css:164</td><td class="warn">⚠️ 不规则</td></tr>
+        <tr><td>动效可访问性</td><td>无 <code>prefers-reduced-motion</code> 守卫</td><td>tokens.css §20（仅有 --dur-*）</td><td class="warn">⚠️ 缺失</td></tr>
+        <tr><td>顶栏窄屏</td><td>375px 仍结构性溢出（DESIGN 自认顶栏元素过多）</td><td>DESIGN.md §8.6.5</td><td class="warn">⚠️ 溢出</td></tr>
+        <tr><td>搜索 / 筛选</td><td>仅靠左导航分组切换，无关键词 / 多维筛选</td><td>index.html navSections()</td><td class="warn">⚠️ 不足</td></tr>
+        <tr><td>加载态</td><td>有空态 <code>.empty</code>，无骨架屏（skeleton）</td><td>index.html:375</td><td class="warn">⚠️ 缺加载态</td></tr>
+        <tr><td>列表排版</td><td>任务单栏全宽长滚，无分组小节头 / 看板视图切换</td><td>index.html:130–131</td><td class="warn">⚠️ 可增强</td></tr>
+        <tr><td>区块容器</td><td>各视图手写 margin（<code>.home-sec</code> 等），无统一 <code>.section</code> 组件</td><td>index.html:736</td><td class="warn">⚠️ 待抽象</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- 3 方案 -->
+  <section>
+    <h2><span class="num">3</span>优化方案 · 五大轴</h2>
+    <p class="lead">每项标注优先级：<span class="badge p0">P0</span> 低风险纯 token/CSS、可立即落地；<span class="badge p1">P1</span> 需少量 JS 交互增强；<span class="badge p2">P2</span> 视图级升级。</p>
+
+    <!-- 轴 A 布局 -->
+    <h3>轴 A · 布局结构</h3>
+
+    <div class="item">
+      <div class="item-head"><span class="badge p1">P1</span><h4>A1 首页增强：状态化 KPI + 最近运行</h4></div>
+      <p>现有首页仅有静态统计与快捷卡。增强为「健康概览」：KPI 卡直接反映实时状态（运行中 N / 失败 M / 今日已跑 K），并新增「最近运行」微型列表（取 <code>state.history</code> 前 5 条）。复用现有 <code>.stat</code> / <code>.hrow</code> 结构。</p>
+      <div class="kv"><div class="k">改动</div><div class="v">JS <code>renderHome()</code>：读 <code>state.current/queuedIds/last/history</code> 计算 KPI；新增 <code>.home-recent</code> 区块复用 <code>.hlist</code> 样式。</div>
+      <div class="k">前置</div><div class="v">数据已就绪（SSE 已推送 run_start/run_end），无需后端改动。</div></div>
+    </div>
+
+    <div class="item">
+      <div class="item-head"><span class="badge p2">P2</span><h4>A2 任务列表：分组小节头 + 列表/看板视图切换</h4></div>
+      <p>「全部任务」等长列表增加分组小节头（如按业务分组折叠），并提供「列表 / 看板」视图切换。看板视图按状态分列（待运行 / 运行中 / 完成 / 失败），卡片可拖拽改状态（与现有节点拖拽同范式）。</p>
+      <div class="kv"><div class="k">新增</div><div class="v"><code>.section-head</code>（标题+计数+折叠箭头）、<code>.view-switch</code> 分段控件、<code>.board</code>/<code>.board-col</code> 栅格。</div>
+      <div class="k">注意</div><div class="v">看板为新增交互范式，需先与老板确认是否纳入本期。</div></div>
+    </div>
+
+    <div class="item">
+      <div class="item-head"><span class="badge p2">P2</span><h4>A3 运行记录：二级详情抽屉</h4></div>
+      <p>点击运行记录行滑出右侧详情抽屉（概要字段 + 内嵌日志 + 产物入口），替代仅靠「看日志」按钮跳转全屏。</p>
+      <div class="kv"><div class="k">复用</div><div class="v">现有 <code>.scrim</code> + 右侧抽屉模式（与侧栏同机制），<code>.console</code> 内嵌。</div></div>
+    </div>
+
+    <!-- 轴 B 层级 -->
+    <h3>轴 B · 信息层级</h3>
+
+    <div class="item">
+      <div class="item-head"><span class="badge p0">P0</span><h4>B1 统一标题三级映射</h4></div>
+      <p>固化「视图标题 → 区块标题 → 卡片标题」三级字号，禁止散落自定义。现有令牌已覆盖，仅需在 DESIGN 中定稿映射表并补充可选 <code>--fs-section</code>。</p>
+      <pre><span class="c">/* tokens.css §14 增补 */</span>
+<span class="a">--fs-view</span>:  17px;   <span class="c">/* 视图主标题（现有 --fs-title-xl） */</span>
+<span class="a">--fs-section</span>:15px;   <span class="c">/* 区块标题（现有 --fs-title-sm） */</span>
+<span class="a">--fs-card</span>:  14.5px; <span class="c">/* 卡片标题（现有 --fs-title-sm 同值） */</span></pre>
+    </div>
+
+    <div class="item">
+      <div class="item-head"><span class="badge p0">P0</span><h4>B2 状态前置：卡片状态徽章</h4></div>
+      <p>卡片左侧已有一条状态色条（<code>.card.running/success/failed/queued::before</code>），再在 <code>card-left</code> 顶部补一行「状态徽章」（进行中 / 上次成功 / 上次失败 / 排队中），让状态一眼可读，不依赖滚动到右侧「上次运行」。</p>
+      <div class="ba">
+        <div class="col"><div class="t">现状</div>状态仅藏于右侧「上次运行」小字 + 左侧细色条。</div>
+        <div class="col"><div class="t">优化</div>card-left 顶部一行彩色徽章：<code>● 运行中</code> / <code>✓ 上次成功 6.2s</code> / <code>✕ 上次失败</code>。</div>
+      </div>
+    </div>
+
+    <div class="item">
+      <div class="item-head"><span class="badge p1">P1</span><h4>B3 空 / 加载三态完备</h4></div>
+      <p>新增骨架屏 <code>.skeleton</code>（shimmer，受 reduced-motion 控制）用于首屏与 SSE 重连；空态升级为「图标 + 文案 + 建议操作」三件套，替换纯文字 <code>.empty</code>。</p>
+      <pre><span class="c">/* 骨架屏：shimmer 动画，reduced-motion 下静止 */</span>
+<span class="a">.skeleton</span>{background:linear-gradient(90deg,#eef0f3 25%,#e2e6ea 37%,#eef0f3 63%);
+  background-size:400% 100%;animation:sk 1.4s ease infinite;border-radius:var(--r-sm)}
+<span class="a">@keyframes</span> sk{0%{background-position:100% 0}100%{background-position:0 0}}</pre>
+    </div>
+
+    <!-- 轴 C 间距 -->
+    <h3>轴 C · 栅格与间距（最高性价比）</h3>
+
+    <div class="item">
+      <div class="item-head"><span class="badge p0">P0</span><h4>C1 间距归一为 8pt 网格</h4></div>
+      <p>保留现有值，补齐 8pt 缺档；将 <code>18/22/34/88</code> 标记为「历史/装饰」离格值，新代码一律走 8 的倍数（对齐 Atlassian / AU Gov / Workday 实践）。</p>
+      <pre><span class="c">/* tokens.css §17 增补（8pt 倍数） */</span>
+<span class="a">--sp-28</span>:28px; <span class="a">--sp-32</span>:32px; <span class="a">--sp-40</span>:40px;
+<span class="a">--sp-48</span>:48px; <span class="a">--sp-64</span>:64px;
+<span class="c">/* 现有离格值（仅历史/装饰，勿在新代码使用）：18 / 22 / 34 / 88 */</span></pre>
+      <div class="kv"><div class="k">校验</div><div class="v"><code>server/check_tokens.py</code> 已统计裸 px；增补后可加一条「新代码间距须为 8 倍数」规则。</div></div>
+    </div>
+
+    <div class="item">
+      <div class="item-head"><span class="badge p1">P1</span><h4>C2 内容栅格语义令牌</h4></div>
+      <p>新增区块间距与卡片网格 gap 的语义令牌，统一各视图节奏（替代散落的 <code>sp-12/sp-13/sp-18</code>）。</p>
+      <pre><span class="a">--gap-card</span>:   var(--sp-12);   <span class="c">/* 卡片网格间距 */</span>
+<span class="a">--gap-section</span>:var(--sp-24);   <span class="c">/* 区块之间 */</span>
+<span class="a">--gap-block</span>:  var(--sp-16);   <span class="c">/* 区块内分组 */</span></pre>
+    </div>
+
+    <div class="item">
+      <div class="item-head"><span class="badge p1">P1</span><h4>C3 标题引入流式字号</h4></div>
+      <p>用 <code>clamp()</code> 让视图标题随视口平滑缩放，减少断点跳变（替代固定 23.25px 与 17px 的硬切）。</p>
+      <pre><span class="a">--fs-title-xl</span>:clamp(15px, 0.6vw + 13px, 17px);
+<span class="c">/* 顶栏主标题同理，避免 375px 硬截断 */</span>
+<span class="a">--fs-title</span>:clamp(16px, 1vw + 13px, 20px);</pre>
+    </div>
+
+    <!-- 轴 D 组件 -->
+    <h3>轴 D · 组件组织</h3>
+
+    <div class="item">
+      <div class="item-head"><span class="badge p0">P0</span><h4>D1 统一 <code>.section</code> 容器组件</h4></div>
+      <p>抽象一个区块容器（标题 + 可选操作位 + 内容槽），所有视图统一包裹，消除各视图手写 <code>margin</code>（如 <code>.home-sec</code>）。</p>
+      <pre><span class="a">.section</span>{margin-top:var(--gap-section)}
+<span class="a">.section-head</span>{display:flex;align-items:center;gap:var(--sp-10);margin-bottom:var(--sp-13)}
+<span class="a">.section-head</span> b{font-size:var(--fs-section);font-weight:600}
+<span class="a">.section-head</span> .sp{flex:1}</pre>
+    </div>
+
+    <div class="item">
+      <div class="item-head"><span class="badge p1">P1</span><h4>D2 骨架屏组件（见 B3）</h4></div>
+      <p>与 B3 同源，作为通用加载态组件，首屏 <code>init()</code> 与 SSE 断流重连时渲染。</p>
+    </div>
+
+    <div class="item">
+      <div class="item-head"><span class="badge p2">P2</span><h4>D3 卡片头统一 <code>.card-h</code></h4></div>
+      <p>抽离「图标 + 标题 + 元信息」头部，任务卡 / 流水线卡 / 快捷卡共用，避免三套近似结构。</p>
+    </div>
+
+    <!-- 轴 E 响应式 -->
+    <h3>轴 E · 响应式适配</h3>
+
+    <div class="item">
+      <div class="item-head"><span class="badge p0">P0</span><h4>E1 容器查询驱动卡片布局</h4></div>
+      <p>给 <code>.tasks</code> / 卡片容器加 <code>container-type:inline-size</code>，卡片内部布局按<em>容器宽度</em>在 ≥520px 走三栏、&lt;520px 堆叠——模态内、窄侧栏等场景天然适配，不再依赖视口断点（Ant Design 5 同做法）。</p>
+      <pre><span class="a">.tasks</span>{container-type:inline-size}
+<span class="c">/* 旧：@media(max-width:820px){ .card{grid-template-areas:"left""mid""right"} } */</span>
+<span class="a">@container</span> (max-width:520px){
+  .card{grid-template-columns:1fr;grid-template-areas:"left" "mid" "right";align-items:stretch}
+  .btn-run{min-width:180px}
+}</pre>
+      <div class="kv"><div class="k">原则</div><div class="v">用 <code>min-width</code> 升级、<code>max-width</code> 降级回退；老浏览器自动走默认紧凑版（渐进增强）。</div></div>
+    </div>
+
+    <div class="item">
+      <div class="item-head"><span class="badge p0">P0</span><h4>E2 动效可访问性：reduced-motion</h4></div>
+      <p>新增全局守卫，尊重系统「减少动态效果」设置（无障碍合规，且零风险纯增量）。</p>
+      <pre><span class="a">@media</span> (prefers-reduced-motion:reduce){
+  *,*::before,*::after{transition-duration:.01ms!important;
+    animation-duration:.01ms!important;animation-iteration-count:1!important}
+}</pre>
+    </div>
+
+    <div class="item">
+      <div class="item-head"><span class="badge p1">P1</span><h4>E3 顶栏 375px 溢出修复</h4></div>
+      <p>当前顶栏在 375px 仍溢出（DESIGN §8.6.5 自认结构问题）。方案：≤560px 时顶栏改为两行——第一行 logo+标题+☰，第二行状态胶囊+操作按钮换行；或用 <code>clamp()</code> 标题 + 溢出省略。</p>
+      <pre><span class="a">@media</span>(max-width:560px){
+  .hd{flex-wrap:wrap;height:auto;padding:var(--sp-10) var(--sp-14)}
+  .hd-t b{font-size:clamp(15px,4.5vw,17px)}
+  .hd .status,#connCap,#quarkCap{order:3}  <span class="c">/* 状态胶囊换行到第二行 */</span>
+}</pre>
+    </div>
+
+    <div class="item">
+      <div class="item-head"><span class="badge p1">P1</span><h4>E4 断点治理表</h4></div>
+      <p>集中登记视口断点（1000/820/620/560）与新增容器断点（520），同步更新 <code>tokens.css §25</code> 与 <code>DESIGN.md §9.4</code>，确保两处一致。</p>
+      <table style="margin-top:10px">
+        <thead><tr><th>类型</th><th>断点</th><th>行为</th></tr></thead>
+        <tbody>
+          <tr><td>视口</td><td>≤1000</td><td>侧栏转抽屉、出现 ☰</td></tr>
+          <tr><td>视口</td><td>≤820</td><td>运行记录转卡片网格</td></tr>
+          <tr><td>视口</td><td>≤620</td><td>流水线卡单列、隐藏服务胶囊</td></tr>
+          <tr><td>视口</td><td>≤560</td><td>顶栏两行、配置弹窗满宽</td></tr>
+          <tr><td>容器</td><td>≤520</td><td>任务卡三栏→堆叠（E1）</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="item">
+      <div class="item-head"><span class="badge p2">P2</span><h4>E5 关键词 / 多维筛选条</h4></div>
+      <p>在任务列表顶部增加搜索框 + 状态/分组筛选（行业最佳实践，ONES/Zigpoll 均强调）。与现有左导航分组互补，不冲突。</p>
+    </div>
+  </section>
+
+  <!-- 4 落地路径 -->
+  <section>
+    <h2><span class="num">4</span>落地路径 · 分三阶段</h2>
+    <p class="lead">每阶段完成后跑 <code>check_tokens.py</code> 基线比对 + jsdom 冒烟 + 真机 375/768/1440 截图验证。</p>
+    <div class="phase">
+      <div class="pc"><h4>Phase 0 · P0 低风险</h4><ul>
+        <li>C1 间距补 8pt 档</li>
+        <li>C2 内容栅格令牌</li>
+        <li>C3 流式字号 clamp</li>
+        <li>B1 标题三级映射</li>
+        <li>B2 状态徽章</li>
+        <li>E1 容器查询</li>
+        <li>E2 reduced-motion</li>
+        <li>D1 .section 组件</li>
+        <li>同步 DESIGN.md</li>
+      </ul></div>
+      <div class="pc"><h4>Phase 1 · P1 交互增强</h4><ul>
+        <li>B3 骨架屏 + 空态升级</li>
+        <li>E3 顶栏 375 修复</li>
+        <li>E4 断点治理表</li>
+        <li>E5 搜索/筛选条</li>
+        <li>A1 首页状态化</li>
+      </ul></div>
+      <div class="pc"><h4>Phase 2 · P2 视图升级</h4><ul>
+        <li>A2 看板视图</li>
+        <li>A3 详情抽屉</li>
+        <li>D3 卡片头统一</li>
+        <li>D2 骨架通用化</li>
+      </ul></div>
+    </div>
+    <p class="lead" style="margin-top:14px">Phase 0 全部为<strong>纯 token / CSS 增量</strong>，不触碰 JS 逻辑与数据接口，风险极低，可一次性提交并通过 <code>check_tokens.py</code> 校验；前端改动读盘即生效，无需重启服务（沿用现有铁律）。</p>
+  </section>
+
+  <!-- 5 待确认 -->
+  <section>
+    <div class="ask">
+      <h3>待确认 · 请老板拍板推进范围</h3>
+      <ol>
+        <li><b>推进范围：</b>全量三阶段 / 仅 Phase 0（P0 纯 CSS）/ 先某几个轴？</li>
+        <li><b>视图升级（P2）：</b>是否本期纳入「看板视图 A2」与「详情抽屉 A3」？二者属新增交互范式，工作量与回归风险最高。</li>
+        <li><b>间距归一：</b>是否允许将历史离格值 <code>18/22/34/88</code> 平滑迁移到 8pt 倍数（需动多处 CSS，建议 Phase 0 仅「增补新档 + 定规范」，迁移留待后续）？</li>
+        <li><b>移动端定位：</b>当前产品定位为桌面端内部工具，是否本期就要做到 375px 完整可用（E3），还是仅防溢出即可？</li>
+      </ol>
+      <div style="margin-top:10px">
+        <span class="tag">已有成熟基础，本方案以"补强"而非"重写"为基调</span>
+        <span class="tag">所有改动可经 check_tokens.py + 真机截图回归</span>
+        <span class="tag">前端改动免重启，后端零改动（Phase 0/1）</span>
+      </div>
+    </div>
+  </section>
+
+  <p style="margin-top:36px;color:var(--muted-2);font-size:12px;text-align:center">
+    本方案为「可直接落地的优化实现方案」交付物 · 配套文件 web/tokens.css · index.html · server/DESIGN.md · 2026-09-12
+  </p>
+
+</div>
+</body>
+</html>

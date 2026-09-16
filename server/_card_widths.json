@@ -1,0 +1,678 @@
+[
+ {
+  "view": {
+   "id": "all",
+   "name": "全部任务"
+  },
+  "cards": [
+   {
+    "name": "实时在线播报",
+    "card": 1224,
+    "cardX": 256,
+    "left": 282,
+    "leftX": 273,
+    "mid": 676,
+    "midX": 571,
+    "right": 200,
+    "rightX": 1263,
+    "title": 282,
+    "meta": 282,
+    "desc": 676,
+    "outs": 676,
+    "nodesW": [
+     120,
+     120,
+     120,
+     120
+    ],
+    "stepW": [
+     120,
+     120,
+     120,
+     120
+    ],
+    "nodesWrap": 654,
+    "conf": 90,
+    "run": 103,
+    "acts": 200,
+    "ghost": 200,
+    "last": 200,
+    "lastText": "2026-09-08 18:22:02 · 4.3s · 成功"
+   },
+   {
+    "name": "不满意单申诉提醒",
+    "card": 1224,
+    "cardX": 256,
+    "left": 282,
+    "leftX": 273,
+    "mid": 676,
+    "midX": 571,
+    "right": 200,
+    "rightX": 1263,
+    "title": 282,
+    "meta": 282,
+    "desc": 676,
+    "outs": 676,
+    "nodesW": [
+     120,
+     120,
+     120,
+     120,
+     120
+    ],
+    "stepW": [
+     120,
+     120,
+     120,
+     120,
+     120
+    ],
+    "nodesWrap": 654,
+    "conf": 90,
+    "run": 103,
+    "acts": 200,
+    "ghost": 200,
+    "last": 200,
+    "lastText": "2026-09-08 14:56:38 · 1.1s · 成功"
+   },
+   {
+    "name": "站长任务看板",
+    "card": 1224,
+    "cardX": 256,
+    "left": 282,
+    "leftX": 273,
+    "mid": 676,
+    "midX": 571,
+    "right": 200,
+    "rightX": 1263,
+    "title": 282,
+    "meta": 282,
+    "desc": 676,
+    "outs": 676,
+    "nodesW": [
+     120,
+     120,
+     120,
+     120,
+     120
+    ],
+    "stepW": [
+     120,
+     120,
+     120,
+     120,
+     120
+    ],
+    "nodesWrap": 654,
+    "conf": 90,
+    "run": 103,
+    "acts": 200,
+    "ghost": 200,
+    "last": 200,
+    "lastText": "2026-09-08 16:33:40 · 4s · 成功"
+   },
+   {
+    "name": "抓取三站在途急单",
+    "card": 1224,
+    "cardX": 256,
+    "left": 282,
+    "leftX": 273,
+    "mid": 676,
+    "midX": 571,
+    "right": 200,
+    "rightX": 1263,
+    "title": 282,
+    "meta": 282,
+    "desc": 676,
+    "outs": 676,
+    "nodesW": [
+     120,
+     120,
+     120
+    ],
+    "stepW": [
+     120,
+     120,
+     120
+    ],
+    "nodesWrap": 654,
+    "conf": 90,
+    "run": 103,
+    "acts": 200,
+    "ghost": 200,
+    "last": 200,
+    "lastText": "2026-09-08 00:35:16 · 7.1s · 成功"
+   },
+   {
+    "name": "运单明细入库",
+    "card": 1224,
+    "cardX": 256,
+    "left": 282,
+    "leftX": 273,
+    "mid": 676,
+    "midX": 571,
+    "right": 200,
+    "rightX": 1263,
+    "title": 282,
+    "meta": 282,
+    "desc": 676,
+    "outs": 676,
+    "nodesW": [
+     120,
+     120,
+     120
+    ],
+    "stepW": [
+     120,
+     120,
+     120
+    ],
+    "nodesWrap": 654,
+    "conf": 90,
+    "run": 103,
+    "acts": 200,
+    "ghost": 200,
+    "last": 0,
+    "lastText": ""
+   },
+   {
+    "name": "生成骑士规则文档",
+    "card": 1224,
+    "cardX": 256,
+    "left": 282,
+    "leftX": 273,
+    "mid": 676,
+    "midX": 571,
+    "right": 200,
+    "rightX": 1263,
+    "title": 282,
+    "meta": 282,
+    "desc": 676,
+    "outs": 676,
+    "nodesW": [
+     120,
+     120,
+     120,
+     120
+    ],
+    "stepW": [
+     120,
+     120,
+     120,
+     120
+    ],
+    "nodesWrap": 654,
+    "conf": 90,
+    "run": 103,
+    "acts": 200,
+    "ghost": 200,
+    "last": 200,
+    "lastText": "2026-09-07 16:26:54 · 0.9s · 成功"
+   },
+   {
+    "name": "橙色风暴明细抓取",
+    "card": 1224,
+    "cardX": 256,
+    "left": 282,
+    "leftX": 273,
+    "mid": 676,
+    "midX": 571,
+    "right": 200,
+    "rightX": 1263,
+    "title": 282,
+    "meta": 282,
+    "desc": 676,
+    "outs": 676,
+    "nodesW": [
+     120,
+     120,
+     120
+    ],
+    "stepW": [
+     120,
+     120,
+     120
+    ],
+    "nodesWrap": 654,
+    "conf": 90,
+    "run": 103,
+    "acts": 200,
+    "ghost": 200,
+    "last": 200,
+    "lastText": "2026-09-08 01:39:13 · 0.4s · 脚本非零退出"
+   },
+   {
+    "name": "不满意复盘反馈",
+    "card": 1224,
+    "cardX": 256,
+    "left": 282,
+    "leftX": 273,
+    "mid": 676,
+    "midX": 571,
+    "right": 200,
+    "rightX": 1263,
+    "title": 282,
+    "meta": 282,
+    "desc": 676,
+    "outs": 676,
+    "nodesW": [
+     120,
+     120,
+     120,
+     120
+    ],
+    "stepW": [
+     120,
+     120,
+     120,
+     120
+    ],
+    "nodesWrap": 654,
+    "conf": 90,
+    "run": 103,
+    "acts": 200,
+    "ghost": 200,
+    "last": 200,
+    "lastText": "2026-09-08 15:06:13 · 3.6s · 脚本非零退出"
+   },
+   {
+    "name": "骑手装备点亮提醒",
+    "card": 1224,
+    "cardX": 256,
+    "left": 282,
+    "leftX": 273,
+    "mid": 676,
+    "midX": 571,
+    "right": 200,
+    "rightX": 1263,
+    "title": 282,
+    "meta": 282,
+    "desc": 676,
+    "outs": 676,
+    "nodesW": [
+     120,
+     120,
+     120,
+     120,
+     120,
+     120,
+     120
+    ],
+    "stepW": [
+     120,
+     120,
+     120,
+     120,
+     120,
+     120,
+     120
+    ],
+    "nodesWrap": 654,
+    "conf": 90,
+    "run": 103,
+    "acts": 200,
+    "ghost": 200,
+    "last": 200,
+    "lastText": "2026-09-08 11:48:22 · 13.3s · 成功"
+   }
+  ]
+ },
+ {
+  "view": {
+   "id": "attendance",
+   "name": "排班考勤"
+  },
+  "cards": [
+   {
+    "name": "实时在线播报",
+    "card": 1224,
+    "cardX": 256,
+    "left": 282,
+    "leftX": 273,
+    "mid": 676,
+    "midX": 571,
+    "right": 200,
+    "rightX": 1263,
+    "title": 282,
+    "meta": 282,
+    "desc": 676,
+    "outs": 676,
+    "nodesW": [
+     120,
+     120,
+     120,
+     120
+    ],
+    "stepW": [
+     120,
+     120,
+     120,
+     120
+    ],
+    "nodesWrap": 654,
+    "conf": 90,
+    "run": 103,
+    "acts": 200,
+    "ghost": 200,
+    "last": 200,
+    "lastText": "2026-09-08 18:22:02 · 4.3s · 成功"
+   }
+  ]
+ },
+ {
+  "view": {
+   "id": "task",
+   "name": "商站任务"
+  },
+  "cards": [
+   {
+    "name": "站长任务看板",
+    "card": 1224,
+    "cardX": 256,
+    "left": 282,
+    "leftX": 273,
+    "mid": 676,
+    "midX": 571,
+    "right": 200,
+    "rightX": 1263,
+    "title": 282,
+    "meta": 282,
+    "desc": 676,
+    "outs": 676,
+    "nodesW": [
+     120,
+     120,
+     120,
+     120,
+     120
+    ],
+    "stepW": [
+     120,
+     120,
+     120,
+     120,
+     120
+    ],
+    "nodesWrap": 654,
+    "conf": 90,
+    "run": 103,
+    "acts": 200,
+    "ghost": 200,
+    "last": 200,
+    "lastText": "2026-09-08 16:33:40 · 4s · 成功"
+   }
+  ]
+ },
+ {
+  "view": {
+   "id": "equip",
+   "name": "装备点亮"
+  },
+  "cards": [
+   {
+    "name": "骑手装备点亮提醒",
+    "card": 1224,
+    "cardX": 256,
+    "left": 282,
+    "leftX": 273,
+    "mid": 676,
+    "midX": 571,
+    "right": 200,
+    "rightX": 1263,
+    "title": 282,
+    "meta": 282,
+    "desc": 676,
+    "outs": 676,
+    "nodesW": [
+     120,
+     120,
+     120,
+     120,
+     120,
+     120,
+     120
+    ],
+    "stepW": [
+     120,
+     120,
+     120,
+     120,
+     120,
+     120,
+     120
+    ],
+    "nodesWrap": 654,
+    "conf": 90,
+    "run": 103,
+    "acts": 200,
+    "ghost": 200,
+    "last": 200,
+    "lastText": "2026-09-08 11:48:22 · 13.3s · 成功"
+   }
+  ]
+ },
+ {
+  "view": {
+   "id": "delivery",
+   "name": "运单处理"
+  },
+  "cards": [
+   {
+    "name": "抓取三站在途急单",
+    "card": 1224,
+    "cardX": 256,
+    "left": 282,
+    "leftX": 273,
+    "mid": 676,
+    "midX": 571,
+    "right": 200,
+    "rightX": 1263,
+    "title": 282,
+    "meta": 282,
+    "desc": 676,
+    "outs": 676,
+    "nodesW": [
+     120,
+     120,
+     120
+    ],
+    "stepW": [
+     120,
+     120,
+     120
+    ],
+    "nodesWrap": 654,
+    "conf": 90,
+    "run": 103,
+    "acts": 200,
+    "ghost": 200,
+    "last": 200,
+    "lastText": "2026-09-08 00:35:16 · 7.1s · 成功"
+   },
+   {
+    "name": "运单明细入库",
+    "card": 1224,
+    "cardX": 256,
+    "left": 282,
+    "leftX": 273,
+    "mid": 676,
+    "midX": 571,
+    "right": 200,
+    "rightX": 1263,
+    "title": 282,
+    "meta": 282,
+    "desc": 676,
+    "outs": 676,
+    "nodesW": [
+     120,
+     120,
+     120
+    ],
+    "stepW": [
+     120,
+     120,
+     120
+    ],
+    "nodesWrap": 654,
+    "conf": 90,
+    "run": 103,
+    "acts": 200,
+    "ghost": 200,
+    "last": 0,
+    "lastText": ""
+   }
+  ]
+ },
+ {
+  "view": {
+   "id": "unsat",
+   "name": "不满意单"
+  },
+  "cards": [
+   {
+    "name": "不满意单申诉提醒",
+    "card": 1224,
+    "cardX": 256,
+    "left": 282,
+    "leftX": 273,
+    "mid": 676,
+    "midX": 571,
+    "right": 200,
+    "rightX": 1263,
+    "title": 282,
+    "meta": 282,
+    "desc": 676,
+    "outs": 676,
+    "nodesW": [
+     120,
+     120,
+     120,
+     120,
+     120
+    ],
+    "stepW": [
+     120,
+     120,
+     120,
+     120,
+     120
+    ],
+    "nodesWrap": 654,
+    "conf": 90,
+    "run": 103,
+    "acts": 200,
+    "ghost": 200,
+    "last": 200,
+    "lastText": "2026-09-08 14:56:38 · 1.1s · 成功"
+   },
+   {
+    "name": "不满意复盘反馈",
+    "card": 1224,
+    "cardX": 256,
+    "left": 282,
+    "leftX": 273,
+    "mid": 676,
+    "midX": 571,
+    "right": 200,
+    "rightX": 1263,
+    "title": 282,
+    "meta": 282,
+    "desc": 676,
+    "outs": 676,
+    "nodesW": [
+     120,
+     120,
+     120,
+     120
+    ],
+    "stepW": [
+     120,
+     120,
+     120,
+     120
+    ],
+    "nodesWrap": 654,
+    "conf": 90,
+    "run": 103,
+    "acts": 200,
+    "ghost": 200,
+    "last": 200,
+    "lastText": "2026-09-08 15:06:13 · 3.6s · 脚本非零退出"
+   }
+  ]
+ },
+ {
+  "view": {
+   "id": "tool",
+   "name": "其他工具"
+  },
+  "cards": [
+   {
+    "name": "生成骑士规则文档",
+    "card": 1224,
+    "cardX": 256,
+    "left": 282,
+    "leftX": 273,
+    "mid": 676,
+    "midX": 571,
+    "right": 200,
+    "rightX": 1263,
+    "title": 282,
+    "meta": 282,
+    "desc": 676,
+    "outs": 676,
+    "nodesW": [
+     120,
+     120,
+     120,
+     120
+    ],
+    "stepW": [
+     120,
+     120,
+     120,
+     120
+    ],
+    "nodesWrap": 654,
+    "conf": 90,
+    "run": 103,
+    "acts": 200,
+    "ghost": 200,
+    "last": 200,
+    "lastText": "2026-09-07 16:26:54 · 0.9s · 成功"
+   },
+   {
+    "name": "橙色风暴明细抓取",
+    "card": 1224,
+    "cardX": 256,
+    "left": 282,
+    "leftX": 273,
+    "mid": 676,
+    "midX": 571,
+    "right": 200,
+    "rightX": 1263,
+    "title": 282,
+    "meta": 282,
+    "desc": 676,
+    "outs": 676,
+    "nodesW": [
+     120,
+     120,
+     120
+    ],
+    "stepW": [
+     120,
+     120,
+     120
+    ],
+    "nodesWrap": 654,
+    "conf": 90,
+    "run": 103,
+    "acts": 200,
+    "ghost": 200,
+    "last": 200,
+    "lastText": "2026-09-08 01:39:13 · 0.4s · 脚本非零退出"
+   }
+  ]
+ }
+]

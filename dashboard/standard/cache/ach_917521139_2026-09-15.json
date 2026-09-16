@@ -1,0 +1,53 @@
+{
+  "ok": true,
+  "source": "live",
+  "error": null,
+  "team": "917521139",
+  "teamName": "东莞市大岭山大学城站-UB",
+  "start": "2026-09-15",
+  "end": "2026-09-15",
+  "summary": {
+    "person_rate": 103.9,
+    "order_rate": 85.2,
+    "combined_rate": 94.6,
+    "achieved": false,
+    "status_label": "未达成",
+    "total_predict_num": 51,
+    "total_actual_num": 53,
+    "total_predict_order": 2047,
+    "total_actual_order": 1745,
+    "day_count": 1
+  },
+  "rows": [
+    {
+      "shift_date": "2026-09-15",
+      "time_code": 9999,
+      "time_name": "全天",
+      "actual_num": 53,
+      "predict_num": 51.0,
+      "person_rate": 103.9,
+      "person_achieved": true,
+      "predict_order": 2047.0,
+      "actual_order": 1745,
+      "order_rate": 85.2,
+      "order_achieved": false,
+      "combined_rate": 94.6,
+      "achieved": false,
+      "status_label": "未达成"
+    }
+  ],
+  "attendance": {
+    "time_code": 151,
+    "time_name": "夜宵2",
+    "sched": 21,
+    "online": 8,
+    "offline": 13,
+    "rest": 0,
+    "note": null
+  },
+  "need_refresh": false,
+  "data_status": "partial",
+  "data_note": "统计区间含今天，数据随当天推进持续增长",
+  "basis": "day",
+  "cache_time": null
+}

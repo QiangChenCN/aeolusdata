@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>站点数据卡片 · 达成率与数字区隔方案对比</title>
+<style>
+  :root{--brand:#FF5000;--ok:#0F9D58;--warn:#B9770E;--bad:#E02020;--ink:#1a1a1a;--muted:#999;--border:#d7dbe0;--sunken:#f6f7f9}
+  *{box-sizing:border-box}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"PingFang SC","Microsoft YaHei",sans-serif;background:#f5f6f8;margin:0;padding:24px;color:var(--ink)}
+  .wrap{max-width:1000px;margin:0 auto}
+  h1{font-size:18px;margin:0 0 4px}
+  .sub{color:#666;font-size:13px;margin-bottom:18px}
+  .grid{display:flex;gap:20px;flex-wrap:wrap}
+  .card{flex:1;min-width:380px;background:#fff;border:1px solid #e6e8eb;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.05)}
+  .card-h{padding:12px 16px;font-weight:700;font-size:15px;border-bottom:1px solid #e6e8eb;background:#fafbfc;display:flex;align-items:center}
+  .tag{display:inline-block;font-size:11px;font-weight:700;padding:2px 9px;border-radius:999px;margin-left:10px}
+  .tag.cur{background:#eef0f2;color:#666}
+  .tag.pro{background:rgba(255,80,0,.12);color:var(--brand)}
+  table{width:100%;border-collapse:collapse;font-size:12px}
+  th,td{padding:7px 6px;border-bottom:1px solid #f0f1f3;white-space:nowrap}
+  thead th{background:var(--sunken);color:#666;font-weight:600;text-align:center}
+  .grp{background:#e7e9ee !important}
+  .site{text-align:left;font-weight:600}
+  .rate{text-align:center;font-weight:700;font-variant-numeric:tabular-nums}
+  .combo{text-align:center;font-variant-numeric:tabular-nums}
+  .num{font-weight:700;color:var(--ink)}
+  .den{color:var(--muted);font-weight:400}
+  .slash{color:#c2c6cc;margin:0 1px}
+  /* ---- 优化后增强 ---- */
+  .p-cell{display:flex;flex-direction:column;align-items:center;gap:3px}
+  .p-bar{width:100%;max-width:54px;height:5px;background:#eceef1;border-radius:3px;overflow:hidden;margin-top:1px}
+  .p-bar>i{display:block;height:100%;border-radius:3px}
+  .sep{border-left:2px solid var(--border) !important}
+  .rate-band{background:#fbfcfe}
+  .legend{margin-top:20px;font-size:13px;color:#444;line-height:1.85}
+  .legend b{color:var(--brand)}
+  .legend .k{display:inline-block;width:11px;height:11px;border-radius:3px;vertical-align:-1px;margin-right:5px}
+  details{margin-top:16px;border:1px solid #e6e8eb;border-radius:10px;background:#fff;overflow:hidden}
+  summary{padding:12px 16px;font-weight:600;cursor:pointer;background:#fafbfc}
+  pre{margin:0;background:#1e1e1e;color:#e6e6e6;padding:14px 16px;overflow:auto;font-size:12px;line-height:1.55}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>站点数据卡片 · 达成率与数字区隔方案对比</h1>
+  <div class="sub">以「时段有效」卡为例：左侧为当前实现，右侧为基于行业方案（Ant Design Divider / Grafana 阈值着色 / Gestalt 分组）的优化建议。</div>
+
+  <div class="grid">
+    <!-- 当前 -->
+    <div class="card">
+      <div class="card-h">时段有效 <span class="tag cur">当前</span></div>
+      <table>
+        <thead>
+          <tr>
+            <th class="site" rowspan="2">站点</th>
+            <th class="grp" colspan="3">时段达成率</th>
+            <th class="grp" colspan="3">达标 / 目标</th>
+          </tr>
+          <tr>
+            <th>全天</th><th>凌晨1</th><th>早餐1</th>
+            <th>全天</th><th>凌晨1</th><th>早餐1</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="site">黄江镇站</td>
+            <td class="rate" style="color:var(--ok)">91%</td>
+            <td class="rate" style="color:var(--warn)">33%</td>
+            <td class="rate" style="color:var(--bad)">12%</td>
+            <td class="combo"><span class="num">11</span><span class="slash">/</span><span class="den">12</span></td>
+            <td class="combo"><span class="num">6</span><span class="slash">/</span><span class="den">4</span></td>
+            <td class="combo"><span class="num">2</span><span class="slash">/</span><span class="den">3</span></td>
+          </tr>
+          <tr>
+            <td class="site">长安万科站</td>
+            <td class="rate" style="color:var(--warn)">76%</td>
+            <td class="rate" style="color:var(--warn)">50%</td>
+            <td class="rate" style="color:var(--ok)">88%</td>
+            <td class="combo"><span class="num">9</span><span class="slash">/</span><span class="den">10</span></td>
+            <td class="combo"><span class="num">5</span><span class="slash">/</span><span class="den">5</span></td>
+            <td class="combo"><span class="num">8</span><span class="slash">/</span><span class="den">9</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- 优化后 -->
+    <div class="card">
+      <div class="card-h">时段有效 <span class="tag pro">优化后</span></div>
+      <table>
+        <thead>
+          <tr>
+            <th class="site" rowspan="2">站点</th>
+            <th class="grp" colspan="3">时段达成率</th>
+            <th class="grp sep" colspan="3">达标 / 目标</th>
+          </tr>
+          <tr>
+            <th>全天</th><th>凌晨1</th><th>早餐1</th>
+            <th class="sep">全天</th><th>凌晨1</th><th>早餐1</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="site">黄江镇站</td>
+            <td class="rate rate-band"><div class="p-cell"><span style="color:var(--ok);font-weight:700">91%</span><div class="p-bar"><i style="width:91%;background:var(--ok)"></i></div></div></td>
+            <td class="rate rate-band"><div class="p-cell"><span style="color:var(--warn);font-weight:700">33%</span><div class="p-bar"><i style="width:33%;background:var(--warn)"></i></div></div></td>
+            <td class="rate rate-band"><div class="p-cell"><span style="color:var(--bad);font-weight:700">12%</span><div class="p-bar"><i style="width:12%;background:var(--bad)"></i></div></div></td>
+            <td class="combo sep"><span class="num">11</span><span class="slash">/</span><span class="den">12</span></td>
+            <td class="combo"><span class="num">6</span><span class="slash">/</span><span class="den">4</span></td>
+            <td class="combo"><span class="num">2</span><span class="slash">/</span><span class="den">3</span></td>
+          </tr>
+          <tr>
+            <td class="site">长安万科站</td>
+            <td class="rate rate-band"><div class="p-cell"><span style="color:var(--warn);font-weight:700">76%</span><div class="p-bar"><i style="width:76%;background:var(--warn)"></i></div></div></td>
+            <td class="rate rate-band"><div class="p-cell"><span style="color:var(--warn);font-weight:700">50%</span><div class="p-bar"><i style="width:50%;background:var(--warn)"></i></div></div></td>
+            <td class="rate rate-band"><div class="p-cell"><span style="color:var(--ok);font-weight:700">88%</span><div class="p-bar"><i style="width:88%;background:var(--ok)"></i></div></div></td>
+            <td class="combo sep"><span class="num">9</span><span class="slash">/</span><span class="den">10</span></td>
+            <td class="combo"><span class="num">5</span><span class="slash">/</span><span class="den">5</span></td>
+            <td class="combo"><span class="num">8</span><span class="slash">/</span><span class="den">9</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="legend">
+    <div><span class="k" style="background:var(--ok)"></span><b>① 达成率改为「文字 % + 迷你进度条」</b>：把达成率从"一个彩色数字"升级为"有形状的图形化 KPI"（Grafana/FineBI/Excel 看板通用做法），与右侧纯数字（X/Y）在视觉重量上拉开层级，一眼可分。</div>
+    <div><span class="k" style="background:var(--border)"></span><b>② 两指标块之间加竖向分隔线</b>：贯穿表头与表体（对应 Ant Design Pro `StatisticCard` 的 `Divider` 分组思路），明确"达成率区"与"数字区"的界限。</div>
+    <div><span class="k" style="background:#fbfcfe"></span><b>③ 达成率块极淡底色聚类 + 数字区保持中性</b>：用 Gestalt 相似性把同组列聚成一束；数字区（分子/分母）用中性墨色，颜色只留给状态（绿/黄/红），符合"颜色编码状态而非装饰"原则。</div>
+    <div style="margin-top:6px;color:#666">注：当前实现中达成率仅由 th1 分组头（浅灰底）作区分，该底色不延伸至表体，导致表体内两区块无边界；以上三招即补此缺口。</div>
+  </div>
+
+  <details>
+    <summary>可落地的 CSS / 渲染改动（复制到 index.html 即可生效）</summary>
+<pre>/* ===== 新增 CSS（置于 .ap-station-table 相关规则附近） ===== */
+/* 达成率：文字 + 迷你进度条，与数字区形成视觉层级 */
+.ap-station-table .ap-rate-cell{display:flex;flex-direction:column;align-items:center;gap:3px}
+.ap-station-table .ap-rate-bar{width:100%;max-width:54px;height:5px;background:var(--surface-sunken,#eceef1);border-radius:3px;overflow:hidden;margin-top:1px}
+.ap-station-table .ap-rate-bar&gt;i{display:block;height:100%;border-radius:3px}
+/* 两指标块之间的竖向分隔线（贯穿表头与表体） */
+.ap-station-table th.ap-blk-sep,.ap-station-table td.ap-blk-sep{border-left:2px solid var(--c-border,#d7dbe0)}
+/* 达成率块极淡底色聚类（Gestalt 相似性） */
+.ap-station-table td.ap-rate-band{background:var(--surface-sunken,#fbfcfe)}
+
+/* ===== JS：_apStationCard 渲染改动要点 ===== */
+// 1) 达成率单元格：包成 ap-rate-cell + 进度条（颜色复用现有阈值色 ok/warn/bad）
+//    原： tds += '&lt;td class="center"&gt;'+_apRateBadge(v)+'&lt;/td&gt;';
+//    改：
+function _apRateCell(v){
+  if(v==null) return '&lt;td class="center ap-rate-band"&gt;—&lt;/td&gt;';
+  var c = v&gt;=0.8 ? 'var(--ok,#0F9D58)' : (v&gt;=0.5 ? 'var(--warn,#B9770E)' : 'var(--bad,#E02020)');
+  var pct = Math.round(v*100)+'%';
+  return '&lt;td class="ap-rate-band"&gt;&lt;div class="ap-rate-cell"&gt;'+
+         '&lt;span style="color:'+c+';font-weight:700"&gt;'+pct+'&lt;/span&gt;'+
+         '&lt;div class="ap-rate-bar"&gt;&lt;i style="width:'+pct+';background:'+c+'"&gt;&lt;/i&gt;&lt;/div&gt;'+
+         '&lt;/div&gt;&lt;/td&gt;';
+}
+// 2) 在构建 th2 / body 时，给「第二个指标组(合并列)的首列」加 ap-blk-sep：
+//    - th2：首个合并列 &lt;th class="ap-pcol ap-blk-sep"&gt;
+//    - body：首个合并列 &lt;td class="ap-combo ap-blk-sep"&gt;
+//    （第一指标组 rate 列加 ap-rate-band 即可，见上）
+// 3) 合并列（X/Y）保持中性，不加阈值色 —— 颜色只留给达成率状态。
+</pre>
+  </details>
+</div>
+</body>
+</html>
