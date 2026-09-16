@@ -4,13 +4,12 @@ import { svg, esc, hexA, toast, debounce, viewHead } from "./ui.js";
 import { TK, TK_MAP, RISK_LABEL, RISK_CLS, STATUS_CLS, STATUS_TXT, ICON } from "./tokens.js";
 import { bus } from "./bus.js";
 import { refreshLan, bindLanToggle, setArg, openSide, closeSide, askConfirm, closeConfirm, bindConfirmUI, lockScroll, unlockScroll } from "./behavior.js";
-import { _gpReap } from "./task.js";
+import { _gpReap, renderTaskView } from "./task.js";
 import { renderHistoryView } from "./config.js";
 const state = store.state;
 
 import { renderAttendPeriodView } from "./attend-period.js";
 import { renderStandardView } from "./standard.js";
-import { renderTaskView } from "./task.js";
 import { renderHomeView } from "./home.js";
 import { renderTodoView, todoOpenCount } from "./todo.js";
 

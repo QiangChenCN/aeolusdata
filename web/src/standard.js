@@ -5,7 +5,11 @@ import { TK, TK_MAP, RISK_LABEL, RISK_CLS, STATUS_CLS, STATUS_TXT, ICON } from "
 import { bus } from "./bus.js";
 import { refreshLan, bindLanToggle, setArg, openSide, closeSide, askConfirm, closeConfirm, bindConfirmUI, lockScroll, unlockScroll } from "./behavior.js";
 import { _stdEnsureStyle, _stdYMD, _stdTableLoader, _stdEnsureECharts, _std, _STD_ALL_TEAM, _stdCoolKey } from "./attend-period.js";
+import * as echarts from "echarts";
 const state = store.state;
+/* _stdFillRiders 是视图设置函数内的闭包，模块级的 _stdRenderRiders 引用不到它；
+   用模块级引用承接，加载完骑手后据此刷新下拉输入框（原先靠 typeof 守卫成了静默空操作）。 */
+var _stdRiderFill = null;
 
 export function renderStandardView(host){
   _stdEnsureStyle();
@@ -387,6 +391,7 @@ export function renderStandardView(host){
     _stdRenderRiderList("");
   }
   _stdFillRiders();
+  _stdRiderFill = _stdFillRiders;   /* 暴露给 _stdRenderRiders（跨函数作用域）刷新下拉 */
   if(selRider){
     selRider.addEventListener("focus", function(){
       selRiderCombo.classList.add("open");
@@ -835,7 +840,7 @@ export function _stdRenderRiders(host, refresh, done){
     _std.riderPool=(j.rows||[]).map(function(r){
       return {id:r.rider_id, name:r.rider_name, team:r.team_id, teamName:r.team_name};
     });
-    if(typeof _stdFillRiders==="function") _stdFillRiders();
+    if(typeof _stdRiderFill==="function") _stdRiderFill();
 
     // 骑手筛选：选中具体骑手时只看他一行；「全部骑手」(_std.rider 为空) 不过滤
     var rows=(j.rows||[]).slice();

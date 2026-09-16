@@ -87,6 +87,7 @@ export var _TEAMS_PROMISE = null;
 export function ensureTeams(){
   /* 只要拉过（哪怕结果是 fallback）就复用，不再打第二次——「一次」是硬要求。
      想强制刷新只能刷新页面（后端 /api/teams 另有 5 分钟 TTL 兜底）。 */
+  var state = store.state;
   if(state.teams) return Promise.resolve(state.teams);
   if(_TEAMS_PROMISE) return _TEAMS_PROMISE;      // 合并并发请求
   _TEAMS_PROMISE = api("/api/teams").then(function(j){

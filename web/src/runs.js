@@ -1,4 +1,5 @@
 // 自动生成的模块头：统一依赖（未使用的导入会被打包器摇树移除）
+import { Tabulator } from "tabulator-tables";
 import { store, groupOf, taskById, countInGroup, producerOf, missingText, visibleTasks, taskState, argValue } from "./store.js";
 import { api, savePrefs, loadPrefs, readTokens, withToken } from "./api.js";
 import { svg, esc, hexA, toast, debounce, viewHead } from "./ui.js";
