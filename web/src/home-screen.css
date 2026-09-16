@@ -1,0 +1,84 @@
+/* 首页 · 数据大屏（原首页内容已全部移除）。
+   设计取向：沿用工作台既有 token（--card / --brand / --r-card …）保证与其它视图同源，
+   但按「大屏」组织信息层级 —— 顶部巨大的 KPI 数字、按站点对比的条形、可比大小的日趋势。
+   全部用 CSS 实现，不引第三方图表库（首屏零额外依赖）。 */
+
+:root{ --scr-gap:16px; }
+
+.scr{ display:flex; flex-direction:column; gap:var(--scr-gap); }
+
+/* ---------- 工具条：区间切换 + 数据状态 ---------- */
+.scr-bar{ display:flex; align-items:center; gap:12px; flex-wrap:wrap;
+  background:var(--card); border:1px solid var(--c-border,#eee); border-radius:var(--r-card);
+  padding:12px 16px; box-shadow:var(--shadow-1); }
+.scr-seg{ display:inline-flex; gap:4px; padding:4px; background:var(--surface-sunken,#f1f3f5); border-radius:10px; }
+.scr-seg button{ border:none; background:transparent; padding:6px 14px; border-radius:7px; cursor:pointer;
+  font-size:13px; color:var(--muted); font-family:inherit; }
+.scr-seg button.on{ background:var(--brand,#FF5000); color:#fff; font-weight:600; }
+.scr-meta{ margin-left:auto; font-size:12px; color:var(--muted); text-align:right; line-height:1.5; }
+.scr-meta b{ color:var(--c-ink,#1a1a1a); font-weight:600; }
+
+/* ---------- KPI 巨字带 ---------- */
+.scr-kpis{ display:grid; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); gap:var(--scr-gap); }
+.scr-kpi{ position:relative; overflow:hidden; background:var(--card); border:1px solid var(--c-border,#eee);
+  border-radius:var(--r-card); box-shadow:var(--shadow-1); padding:18px 20px 16px; }
+.scr-kpi::after{ content:""; position:absolute; left:0; top:0; bottom:0; width:3px; background:var(--brand,#FF5000); opacity:.9; }
+.scr-kpi.ok::after{ background:#0F9D58 } .scr-kpi.cyan::after{ background:var(--cyan,#0891B2) }
+.scr-kpi.warn::after{ background:#B9770E }
+.scr-kpi .k{ font-size:12px; color:var(--muted); display:flex; align-items:center; gap:6px; }
+.scr-kpi .v{ font-size:clamp(28px,3.4vw,42px); font-weight:700; line-height:1.1; margin-top:8px;
+  color:var(--c-ink,#1a1a1a); font-variant-numeric:tabular-nums; letter-spacing:-.5px; }
+.scr-kpi .v small{ font-size:.42em; font-weight:600; color:var(--muted); margin-left:4px }
+.scr-kpi .s{ font-size:12px; color:var(--muted); margin-top:6px }
+
+/* ---------- 通用面板 ---------- */
+.scr-panels{ display:grid; grid-template-columns:1.25fr 1fr; gap:var(--scr-gap) }
+@media (max-width:1080px){ .scr-panels{ grid-template-columns:1fr } }
+.scr-panel{ background:var(--card); border:1px solid var(--c-border,#eee); border-radius:var(--r-card);
+  box-shadow:var(--shadow-1); padding:16px 18px 18px; min-width:0 }
+.scr-pt{ display:flex; align-items:center; gap:8px; font-size:14px; font-weight:600;
+  color:var(--c-ink,#1a1a1a); margin-bottom:4px }
+.scr-pt .hp{ margin-left:auto; font-size:12px; font-weight:400; color:var(--muted) }
+.scr-ph{ font-size:12px; color:var(--muted); margin-bottom:14px }
+
+/* ---------- 站点对比条 ---------- */
+.scr-bars{ display:flex; flex-direction:column; gap:14px }
+.scr-bar-row .h{ display:flex; align-items:baseline; gap:8px; font-size:13px; margin-bottom:6px }
+.scr-bar-row .nm{ color:var(--c-ink,#1a1a1a); font-weight:600 }
+.scr-bar-row .sum{ margin-left:auto; color:var(--muted); font-variant-numeric:tabular-nums }
+.scr-bar-row .sum b{ color:var(--c-ink,#1a1a1a) }
+.scr-track{ height:14px; border-radius:999px; background:var(--surface-sunken,#f0f1f3); overflow:hidden; display:flex }
+.scr-fill{ height:100%; background:linear-gradient(90deg,var(--brand,#FF5000),#FF8A3D); transition:width .5s ease }
+.scr-fill.rest{ background:var(--surface-sunken,#e6e8eb) }
+
+/* ---------- 站点明细表 ---------- */
+.scr-tbl-wrap{ overflow-x:auto }
+.scr-tbl{ width:100%; border-collapse:collapse; font-size:13px }
+.scr-tbl th,.scr-tbl td{ padding:10px 12px; border-bottom:1px solid var(--c-border,#eee); white-space:nowrap }
+.scr-tbl th{ text-align:right; font-weight:600; color:var(--muted); font-size:12px;
+  background:var(--surface-sunken,#f6f7f9) }
+.scr-tbl th:first-child,.scr-tbl td:first-child{ text-align:left }
+.scr-tbl td{ text-align:right; color:var(--c-ink,#1a1a1a); font-variant-numeric:tabular-nums }
+.scr-tbl tbody tr:hover{ background:var(--surface-sunken,#fafbfc) }
+.scr-tbl .nm{ font-weight:600 } .scr-tbl .id{ display:block; font-size:11px; color:var(--muted); font-weight:400 }
+.scr-tbl tfoot td{ border-top:2px solid var(--c-border,#e3e3e6); border-bottom:none; font-weight:700 }
+.scr-rate{ display:flex; align-items:center; gap:8px; justify-content:flex-end }
+.scr-rate .track{ width:64px; height:6px; border-radius:999px; background:var(--surface-sunken,#f0f1f3); overflow:hidden; flex:none }
+.scr-rate .track i{ display:block; height:100%; background:#0F9D58 }
+.scr-rate.low .track i{ background:#B9770E } .scr-rate.bad .track i{ background:#E02020 }
+
+/* ---------- 日趋势（纯 CSS 双色柱） ---------- */
+.scr-trend{ display:flex; align-items:flex-end; gap:10px; height:170px; padding-top:6px }
+.scr-day{ flex:1 1 0; min-width:0; display:flex; flex-direction:column; align-items:center; gap:6px; height:100% }
+.scr-day .cols{ flex:1; width:100%; display:flex; align-items:flex-end; justify-content:center; gap:3px }
+.scr-day .c{ width:min(14px,38%); border-radius:4px 4px 0 0; background:var(--brand,#FF5000) }
+.scr-day .c.done{ background:var(--cyan,#0891B2) }
+.scr-day .d{ font-size:11px; color:var(--muted); font-variant-numeric:tabular-nums }
+.scr-legend{ display:flex; gap:14px; font-size:12px; color:var(--muted); margin-top:10px }
+.scr-legend i{ display:inline-block; width:10px; height:10px; border-radius:3px; margin-right:5px; vertical-align:-1px }
+
+/* ---------- 空态 / 加载 ---------- */
+.scr-empty{ padding:34px 10px; text-align:center; color:var(--muted); font-size:13px }
+.scr-note{ font-size:12px; color:var(--muted); line-height:1.7 }
+.scr-note b{ color:var(--c-ink,#1a1a1a) }
+.scr-warn{ color:#B9770E }

@@ -1,48 +1,18 @@
-// 自动生成的模块头：统一依赖（未使用的导入会被打包器摇树移除）
-import { store, groupOf, taskById, countInGroup, producerOf, missingText, visibleTasks, taskState, argValue, navExpandOnly } from "./store.js";
-import { api, savePrefs, loadPrefs, readTokens, withToken } from "./api.js";
-import { svg, esc, hexA, toast, debounce, viewHead } from "./ui.js";
-import { TK, TK_MAP, RISK_LABEL, RISK_CLS, STATUS_CLS, STATUS_TXT, ICON } from "./tokens.js";
-import { bus } from "./bus.js";
-import { refreshLan, bindLanToggle, setArg, openSide, closeSide, askConfirm, closeConfirm, bindConfirmUI, lockScroll, unlockScroll } from "./behavior.js";
+/* 首页 · 数据大屏
+   —— 原首页（Hero / 服务状态 / 任务概览 / 快捷任务 / 今日待办 / 最近运行 / 分组总览）已全部移除，
+   改为按「大屏」组织的运单数据看板：
+     · KPI 巨字带：接单总量 / 配送完成量 / 完成率 / 有效单量
+     · 站点对比：条形长度 = 接单量，深色段 = 其中配送完成的部分
+     · 日趋势：逐日对比接单量与配送完成量（纯 CSS 柱，不引图表库）
+     · 站点明细表：站点 × 接单量 / 完成量 / 完成率 / 有效单量 / 有效占比
+   数据来自 GET /api/overview/site-orders（后端 site_orders.py，口径单一来源 order_rules：
+   归属日 = 骑手接单时间的北京时间自然日，跨午夜单归接单当天）。 */
+import { api } from "./api.js";
+import { esc, viewHead } from "./ui.js";
+import { TK } from "./tokens.js";
+import "./home-screen.css";
 
-import { openRunDrawer } from "./runs.js";
-import { todoOpenCount, tdIsToday, todoToggle, tdOverdue, tdFmt } from "./todo.js";
-const state = store.state;
-
-/* ================= 首页 =================
-   一屏回答四件事：能不能跑（服务/Cookie/Quark）、有什么（任务与分组）、
-   要做什么（今日待办）、刚发生了什么（最近运行）。点区块直接跳到对应视图。 */
-export function homeSection(title, icon, rightHtml){
-  var s = document.createElement("div");
-  s.className = "home-sec";
-  s.innerHTML = svg(icon) + "<b>" + esc(title) + "</b><span class='sp'></span>" + (rightHtml||"");
-  return s;
-}
-/* 首页 Hero：Apple 式大标题 + 动态日期 eyebrow。日期随时间刷新，标题用品牌渐变。 */
-export function heroDate(){
-  var w = ["周日","周一","周二","周三","周四","周五","周六"];
-  var d = new Date();
-  return d.getFullYear()+"年"+(d.getMonth()+1)+"月"+d.getDate()+"日 · "+w[d.getDay()];
-}
-export function homeHero(){
-  var h = document.createElement("div");
-  h.className = "hero";
-  h.innerHTML = '<div class="hero-eyebrow">AEOLUS WORKBENCH</div>'+
-                '<h1 class="hero-title">风神工作台</h1>'+
-                '<p class="hero-sub">'+esc(heroDate())+' · 工作台概览：服务状态、实时任务与今日待办，一目了然。</p>';
-  return h;
-}
-export function homeStat(icon, color, label, value, unit){
-  var d = document.createElement("div");
-  d.className = "stat";
-  d.innerHTML = '<div class="s-ic" style="background:'+hexA(color,.12)+';color:'+color+'">'+svg(icon)+'</div>'+
-                '<div class="s-b"><div class="s-v">'+esc(value)+
-                (unit?'<span class="s-u">'+esc(unit)+'</span>':'')+'</div>'+
-                '<div class="s-k">'+esc(label)+'</div></div>';
-  return d;
-}
-/* D2 通用骨架屏：往 host 里塞 n 张 .sk-card 占位卡；首屏未加载 / 视图切换空窗期复用同一实现 */
+/* 通用骨架屏：其它视图（任务中心等）也在用，保留导出 */
 export function skeletonCards(host, n){
   host.innerHTML = "";
   for(var i=0;i<n;i++){
@@ -51,176 +21,249 @@ export function skeletonCards(host, n){
     host.appendChild(sk);
   }
 }
-export function homeBox(){
-  var d = document.createElement("div");
-  d.className = "home-box";
-  return d;
-}
-export function homeRow(){
-  var d = document.createElement("div");
-  d.className = "home-row";
-  return d;
-}
-export function todayYmd(){
-  var d = new Date(), p = function(n){ return (n<10?"0":"")+n; };
+
+/* ---------- 区间选择（模块级：切视图后保持；同一会话内结果按区间缓存，切回不重复请求） ---------- */
+var RANGES = [
+  { k:"today", label:"今日",    days:1  },
+  { k:"7d",    label:"近 7 天",  days:7  },
+  { k:"14d",   label:"近 14 天", days:14 }
+];
+var _rangeKey = "7d";
+var _cache = {};
+
+function ymd(d){
+  var p = function(n){ return (n<10?"0":"")+n; };
   return d.getFullYear()+"-"+p(d.getMonth()+1)+"-"+p(d.getDate());
 }
-export function renderHomeView(host){
-  host.appendChild(viewHead("首页", "工作台概览 · 服务状态、实时任务概览与今日待办", "house", TK.brand, ""));
-
-  /* --- 服务状态 --- */
-  host.appendChild(homeSection("服务状态", "info", '<span class="hp">每 60s 自动探测</span>'));
-  var sg = document.createElement("div");
-  sg.className = "stat-grid";
-
-  var cv, cc;
-  if(state.connected === true)       { cv = "已连接"; cc = TK.ok; }
-  else if(state.connected === false) { cv = "已断开"; cc = TK.err; }
-  else                               { cv = "连接中"; cc = TK.neutral; }
-  sg.appendChild(homeStat("check-circle", cc, "工作台服务", cv));
-
-  var kv, kc;
-  if(!state.cookie)                          { kv = "待校验"; kc = TK.neutral; }
-  else if(state.cookie.status === "valid")   { kv = "有效";   kc = TK.ok; }
-  else if(state.cookie.status === "invalid") { kv = "已失效"; kc = TK.err; }
-  else                                       { kv = "未知";   kc = TK.neutral; }
-  sg.appendChild(homeStat("user-check", kc, "风神 Cookie", kv));
-
-  var qv, qc;
-  if(!state.quark)                            { qv = "待校验"; qc = TK.neutral; }
-  else if(state.quark.status === "valid")     { qv = "有效";   qc = TK.ok; }
-  else if(state.quark.status === "invalid")   { qv = "已失效"; qc = TK.err; }
-  else if(state.quark.status === "nocache")   { qv = "未兑换"; qc = TK.neutral; }
-  else                                        { qv = "未知";   qc = TK.neutral; }
-  sg.appendChild(homeStat("layers", qc, "Quark DA", qv));
-  host.appendChild(sg);
-
-  /* --- 任务概览（实时） --- */
-  host.appendChild(homeSection("任务概览", "layers", '<span class="hp">实时统计</span>'));
-  var kp = document.createElement("div");
-  kp.className = "stat-grid";
-  var _running = (state.current ? 1 : 0) + (state.queuedIds ? state.queuedIds.length : 0);
-  var _failed = 0; for(var _fk in (state.last||{})){ if(state.last[_fk] && state.last[_fk].status === "failed") _failed++; }
-  var _tStr = todayYmd();
-  var _today = 0; for(var _hi=0;_hi<state.history.length;_hi++){ if((state.history[_hi].start||"").indexOf(_tStr)===0) _today++; }
-  kp.appendChild(homeStat("play", TK.info, "运行中", String(_running), "个"));
-  kp.appendChild(homeStat("alert-triangle", TK.err, "失败", String(_failed), "个"));
-  kp.appendChild(homeStat("calendar-days", TK.ok, "今日已跑", String(_today), "次"));
-  kp.appendChild(homeStat("list-checks", TK.brand, "待办未完成", String(todoOpenCount()), "条"));
-  kp.appendChild(homeStat("grid", TK.info, "任务总数", String(state.tasks.length), "个"));
-  kp.appendChild(homeStat("clock", TK.neutral, "运行记录", String(state.history.length), "次"));
-  host.appendChild(kp);
-
-  /* --- 快捷任务 --- */
-  if(state.tasks.length){
-    host.appendChild(homeSection("快捷任务", "bolt", '<span class="hp">点卡片跳到所属分组</span>'));
-    var qg = document.createElement("div");
-    qg.className = "quick-grid";
-    state.tasks.slice(0,6).forEach(function(t){
-      var g = groupOf(t.group);
-      var b = document.createElement("button");
-      b.type = "button";
-      b.className = "qcard";
-      b.innerHTML = '<div class="q-ic" style="background:'+hexA(g.color,.12)+';color:'+g.color+'">'+svg("bolt")+'</div>'+
-                    '<div class="q-b"><div class="q-t">'+esc(t.name)+'</div>'+
-                    '<div class="q-d">'+esc(g.name)+' · '+esc(RISK_LABEL[t.risk]||"")+'</div></div>'+
-                    svg("arrow","ic q-go");
-      b.onclick = function(){
-        state.nav = { kind:"tasks", id:t.group };
-        navExpandOnly("hub");
-        savePrefs(); bus.emit("refresh");
-      };
-      qg.appendChild(b);
-    });
-    host.appendChild(qg);
-  }
-
-  /* --- 今日待办 / 最近运行（并排两栏） --- */
-  var two = document.createElement("div");
-  two.className = "home-two";
-
-  // 左：今日待办
-  var tBox = homeBox();
-  var todayItems = (state.todo ? state.todo.items : []).filter(function(x){
-    return !x.done && tdIsToday(x);
-  }).sort(function(a,b){ return (a.remindAt||"9").localeCompare(b.remindAt||"9"); });
-  if(!todayItems.length){
-    var te = document.createElement("div");
-    te.className = "empty"; te.textContent = "今天没有待办。";
-    tBox.appendChild(te);
-  }else{
-    todayItems.slice(0,6).forEach(function(it){
-      var r = homeRow();
-      var cir = document.createElement("button");
-      cir.type = "button";
-      cir.className = "rmd-cir";
-      cir.innerHTML = svg("check");
-      cir.title = "标记完成";
-      cir.onclick = function(){ todoToggle(it.id); };
-      r.appendChild(cir);
-      var b = document.createElement("div");
-      b.style.cssText = "flex:1;min-width:0";
-      b.innerHTML = '<div class="rmd-tt">'+esc(it.title)+'</div>'+
-        (it.remindAt ? '<div class="rmd-meta"><span class="m'+(tdOverdue(it)?" over":"")+'">'+
-          svg("bell","ic")+esc(tdFmt(it.remindAt))+'</span></div>' : "");
-      r.appendChild(b);
-      tBox.appendChild(r);
-    });
-  }
-
-  // 右：最近运行
-  var hBox = homeBox();
-  if(!state.history.length){
-    var he = document.createElement("div");
-    he.className = "empty"; he.textContent = "还没有运行记录。";
-    hBox.appendChild(he);
-  }else{
-    state.history.slice(0,6).forEach(function(h){
-      var r = homeRow();
-      r.style.cursor = "pointer";
-      r.innerHTML = '<span class="tm" style="color:var(--muted);font-size:var(--fs-small);flex:none">'+esc(h.start||"")+'</span>'+
-        '<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(h.name)+'</span>'+
-        '<span class="badge '+(STATUS_CLS[h.status]||"b-stop")+'">'+(STATUS_TXT[h.status]||h.status)+'</span>';
-      r.title = "查看运行详情";
-      r.onclick = function(){ openRunDrawer(h); };
-      hBox.appendChild(r);
-    });
-  }
-
-  var c1 = document.createElement("div");
-  c1.appendChild(homeSection("今日待办", "sun", '<span class="hp">点圆圈标记完成</span>'));
-  c1.appendChild(tBox);
-  var c2 = document.createElement("div");
-  c2.appendChild(homeSection("最近运行", "clock", ""));
-  c2.appendChild(hBox);
-  two.appendChild(c1); two.appendChild(c2);
-  host.appendChild(two);
-
-  /* --- 分组总览 --- */
-  if(state.groups.length){
-    host.appendChild(homeSection("任务分组", "layers", '<span class="hp">共 '+state.tasks.length+' 个任务</span>'));
-    var gg = document.createElement("div");
-    gg.className = "quick-grid";
-    state.groups.forEach(function(g){
-      var n = countInGroup(g.id);
-      if(!n) return;
-      var b = document.createElement("button");
-      b.type = "button";
-      b.className = "qcard";
-      b.innerHTML = '<div class="q-ic" style="background:'+hexA(g.color,.12)+';color:'+g.color+'">'+svg("grid")+'</div>'+
-                    '<div class="q-b"><div class="q-t">'+esc(g.name)+'</div>'+
-                    '<div class="q-d">'+n+' 个任务</div></div>'+
-                    svg("arrow","ic q-go");
-      b.onclick = function(){
-        state.nav = { kind:"tasks", id:g.id };
-        navExpandOnly("hub");
-        savePrefs(); bus.emit("refresh");
-      };
-      gg.appendChild(b);
-    });
-    host.appendChild(gg);
-  }
+function rangeOf(k){
+  var r = RANGES.filter(function(x){ return x.k===k; })[0] || RANGES[1];
+  var end = new Date();
+  var start = new Date(end.getTime() - (r.days-1)*86400000);
+  return { start: ymd(start), end: ymd(end), label: r.label, days: r.days };
+}
+function fmt(n){
+  if(n === null || n === undefined) return "—";
+  return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+}
+function pct(x){
+  if(x === null || x === undefined) return "—";
+  return (x*100).toFixed(1)+"%";
+}
+function rateCls(x){
+  if(x === null || x === undefined) return "";
+  return x >= 0.97 ? "" : (x >= 0.9 ? "low" : "bad");
 }
 
-/* 自动导出：供其他模块导入的内部顶层符号 */
-export { state };
+/* ---------- 入口（renderMain 每次重绘都会调用；数据有缓存就直出，避免刷新风暴重复取数） ---------- */
+export function renderHomeView(host){
+  host.appendChild(viewHead("数据大屏",
+    "运单概览 · 按站点汇总接单量与配送完成量（归属口径：骑手接单时间的北京时间自然日）",
+    "layers", TK.brand, ""));
+  var root = document.createElement("div");
+  root.className = "scr";
+  host.appendChild(root);
+  draw(root);
+}
+
+function draw(root){
+  root.innerHTML = "";
+  root.appendChild(toolbar(root));
+  var mount = document.createElement("div");
+  mount.style.cssText = "display:flex;flex-direction:column;gap:16px";
+  root.appendChild(mount);
+
+  var rg = rangeOf(_rangeKey);
+  var key = rg.start + "_" + rg.end;
+  if(_cache[key]){ paint(mount, _cache[key]); return; }
+
+  mount.innerHTML = '<div class="scr-panel"><div class="scr-empty">正在汇总运单数据…</div></div>';
+  api("/api/overview/site-orders?start="+rg.start+"&end="+rg.end)
+    .then(function(j){
+      if(!document.contains(mount)) return;          // 期间视图已重绘 → 丢弃本次结果，避免写到废弃节点
+      if(!j || !j.ok){
+        mount.innerHTML = '<div class="scr-panel"><div class="scr-empty">加载失败：'+esc((j && j.error) || "未知错误")+'</div></div>';
+        return;
+      }
+      _cache[key] = j;
+      paint(mount, j);
+    })
+    .catch(function(e){
+      if(!document.contains(mount)) return;
+      mount.innerHTML = '<div class="scr-panel"><div class="scr-empty">加载失败：'+esc(String(e))+'</div></div>';
+    });
+}
+
+/* ---------- 工具条 ---------- */
+function toolbar(root){
+  var bar = document.createElement("div"); bar.className = "scr-bar";
+  var seg = document.createElement("div"); seg.className = "scr-seg";
+  RANGES.forEach(function(r){
+    var b = document.createElement("button");
+    b.type = "button";
+    b.textContent = r.label;
+    if(r.k === _rangeKey) b.className = "on";
+    b.onclick = function(){ if(_rangeKey === r.k) return; _rangeKey = r.k; draw(root); };
+    seg.appendChild(b);
+  });
+  bar.appendChild(seg);
+  var rg = rangeOf(_rangeKey);
+  var meta = document.createElement("div"); meta.className = "scr-meta";
+  meta.innerHTML = '统计区间 <b>'+esc(rg.start)+' ~ '+esc(rg.end)+'</b>（'+rg.days+' 天）'+
+                   '<br><span class="scr-warn">跨午夜的运单归到「接单当天」，不会被两天各计一次</span>';
+  bar.appendChild(meta);
+  return bar;
+}
+
+/* ---------- 面板小工具 ---------- */
+function panel(title, hint, right){
+  var el = document.createElement("div"); el.className = "scr-panel";
+  var t = document.createElement("div"); t.className = "scr-pt";
+  t.innerHTML = esc(title) + (right ? '<span class="hp">'+esc(right)+'</span>' : "");
+  el.appendChild(t);
+  if(hint){
+    var h = document.createElement("div"); h.className = "scr-ph";
+    h.textContent = hint;
+    el.appendChild(h);
+  }
+  var body = document.createElement("div");
+  el.appendChild(body);
+  return { el: el, body: body };
+}
+
+/* ---------- 组装 ---------- */
+function paint(mount, j){
+  mount.innerHTML = "";
+  var sites = j.sites || [];
+  if(!sites.length){
+    mount.innerHTML = '<div class="scr-panel"><div class="scr-empty">区间内没有可用数据：请先在「标准达成 → 全量刷新」拉取运单明细后再看大屏。</div></div>';
+    return;
+  }
+  mount.appendChild(kpiCards(j));
+  var two = document.createElement("div"); two.className = "scr-panels";
+  two.appendChild(siteBars(j));
+  two.appendChild(trendPanel(j));
+  mount.appendChild(two);
+  mount.appendChild(siteTable(j));
+  mount.appendChild(notePanel(j));
+}
+
+function kpiCards(j){
+  var t = j.totals || {};
+  var g = document.createElement("div"); g.className = "scr-kpis";
+  g.appendChild(kpi("接单总量", fmt(t.accepted), "单", "", "区间内归属的运单条数"));
+  g.appendChild(kpi("配送完成量", fmt(t.completed), "单", "ok", "完成率 "+pct(t.complete_rate)));
+  g.appendChild(kpi("完成率", pct(t.complete_rate), "", "cyan", "配送完成量 / 接单量"));
+  g.appendChild(kpi("有效单量", fmt(t.valid), "单", "warn",
+    "占接单 "+pct(t.valid_rate)+"（完成 · 非作弊 · 非逆向 · 非改派）"));
+  return g;
+}
+
+function kpi(label, val, unit, tone, sub){
+  var d = document.createElement("div");
+  d.className = "scr-kpi" + (tone ? " "+tone : "");
+  d.innerHTML = '<div class="k">'+esc(label)+'</div>'+
+    '<div class="v">'+esc(val)+(unit ? '<small>'+esc(unit)+'</small>' : '')+'</div>'+
+    '<div class="s">'+esc(sub)+'</div>';
+  return d;
+}
+
+/* 站点对比：条形长度 = 接单量，深色段 = 其中已配送完成的部分 */
+function siteBars(j){
+  var p = panel("站点对比", "条形长度 = 接单量；深色段为其中「配送完成」的部分", "按接单量排序");
+  var wrap = document.createElement("div"); wrap.className = "scr-bars";
+  var max = Math.max.apply(null, j.sites.map(function(s){ return s.accepted; }).concat([1]));
+  j.sites.forEach(function(s){
+    var wAcc = Math.max(0, s.accepted/max*100);
+    var wDone = s.accepted ? (s.completed/s.accepted*wAcc) : 0;
+    var row = document.createElement("div"); row.className = "scr-bar-row";
+    row.innerHTML =
+      '<div class="h"><span class="nm">'+esc(s.team_name)+'</span>'+
+        '<span class="sum">接单 <b>'+fmt(s.accepted)+'</b> · 完成 <b>'+fmt(s.completed)+'</b> · '+pct(s.complete_rate)+'</span></div>'+
+      '<div class="scr-track">'+
+        '<div class="scr-fill" style="width:'+wDone.toFixed(2)+'%"></div>'+
+        '<div class="scr-fill rest" style="width:'+Math.max(0, wAcc-wDone).toFixed(2)+'%"></div>'+
+      '</div>';
+    wrap.appendChild(row);
+  });
+  p.body.appendChild(wrap);
+  return p.el;
+}
+
+/* 日趋势：逐日柱状（跨站点求和），双色对比接单 / 完成 */
+function trendPanel(j){
+  var p = panel("日趋势", "每一天汇总所有站点，对比接单量与配送完成量", (j.range ? j.range.days : 0)+" 天");
+  var byDate = {};
+  (j.sites || []).forEach(function(s){
+    (s.daily || []).forEach(function(d){
+      var a = byDate[d.date] || (byDate[d.date] = { date:d.date, accepted:0, completed:0 });
+      a.accepted += d.accepted;
+      a.completed += d.completed;
+    });
+  });
+  var days = Object.keys(byDate).sort().map(function(k){ return byDate[k]; });
+  if(!days.length){
+    p.body.innerHTML = '<div class="scr-empty">区间内没有日粒度数据</div>';
+    return p.el;
+  }
+  var max = Math.max.apply(null, days.map(function(d){ return d.accepted; }).concat([1]));
+  var wrap = document.createElement("div"); wrap.className = "scr-trend";
+  days.forEach(function(d){
+    var col = document.createElement("div"); col.className = "scr-day";
+    col.title = d.date + "：接单 " + fmt(d.accepted) + " · 完成 " + fmt(d.completed);
+    col.innerHTML =
+      '<div class="cols">'+
+        '<div class="c" style="height:'+Math.max(2, d.accepted/max*100).toFixed(1)+'%"></div>'+
+        '<div class="c done" style="height:'+Math.max(2, d.completed/max*100).toFixed(1)+'%"></div>'+
+      '</div>'+
+      '<div class="d">'+esc(d.date.slice(5))+'</div>';
+    wrap.appendChild(col);
+  });
+  p.body.appendChild(wrap);
+  var lg = document.createElement("div"); lg.className = "scr-legend";
+  lg.innerHTML = '<span><i style="background:var(--brand,#FF5000)"></i>接单量</span>'+
+                 '<span><i style="background:var(--cyan,#0891B2)"></i>配送完成量</span>';
+  p.body.appendChild(lg);
+  return p.el;
+}
+
+/* 站点明细表 */
+function siteTable(j){
+  var p = panel("站点明细", "完成率 = 配送完成量 / 接单量；有效单量沿用项目口径（完成 · 非作弊 · 非逆向 · 非改派）");
+  var rows = (j.sites || []).map(function(s){
+    return '<tr>'+
+      '<td><span class="nm">'+esc(s.team_name)+'</span><span class="id">'+esc(s.team_id)+'</span></td>'+
+      '<td>'+fmt(s.accepted)+'</td>'+
+      '<td>'+fmt(s.completed)+'</td>'+
+      '<td><span class="scr-rate '+rateCls(s.complete_rate)+'">'+
+        '<span class="track"><i style="width:'+Math.max(0, Math.min(100, (s.complete_rate||0)*100)).toFixed(1)+'%"></i></span>'+
+        pct(s.complete_rate)+'</span></td>'+
+      '<td>'+fmt(s.valid)+'</td>'+
+      '<td>'+pct(s.valid_rate)+'</td>'+
+      '<td>'+(s.days||0)+'</td>'+
+    '</tr>';
+  }).join("");
+  var t = j.totals || {};
+  var w = document.createElement("div"); w.className = "scr-tbl-wrap";
+  w.innerHTML =
+    '<table class="scr-tbl">'+
+      '<thead><tr><th>站点</th><th>接单量</th><th>配送完成量</th><th>完成率</th>'+
+        '<th>有效单量</th><th>有效占比</th><th>天数</th></tr></thead>'+
+      '<tbody>'+rows+'</tbody>'+
+      '<tfoot><tr><td>合计</td><td>'+fmt(t.accepted)+'</td><td>'+fmt(t.completed)+'</td>'+
+        '<td>'+pct(t.complete_rate)+'</td><td>'+fmt(t.valid)+'</td><td>'+pct(t.valid_rate)+'</td><td>—</td></tr></tfoot>'+
+    '</table>';
+  p.body.appendChild(w);
+  return p.el;
+}
+
+/* 数据状态：来源 / 截止时间 / 缺口（如实提示，别让空白显得像 0 单） */
+function notePanel(j){
+  var p = panel("数据状态", "", "");
+  var miss = j.missing_count || 0;
+  p.body.innerHTML = '<div class="scr-note">'+
+    '数据来源：<b>本地运单明细缓存</b>（dashboard/data/orders_&lt;站点&gt;_&lt;日期&gt;.json，由「标准达成 → 全量刷新」落盘）<br>'+
+    '最新落盘：<b>'+esc(j.cached_at || "—")+'</b>　·　参与汇总站点：<b>'+((j.totals||{}).sites||0)+'</b> 个'+
+    (miss ? '<br><span class="scr-warn">区间内有 '+miss+' 个「站点 × 日期」没有缓存，未参与求和（不代表 0 单）</span>' : '')+
+    '</div>';
+  return p.el;
+}

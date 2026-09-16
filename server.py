@@ -2272,6 +2272,31 @@ def _serve_static_get(self, p):
     return False
 
 
+# ---------------------------------------------------------------- 数据大屏（首页）
+def _get_ov_site_orders(self, qs):
+    """数据大屏 —— 站点维度「接单量 / 配送完成量」。
+
+    归属口径：骑手接单时间（acceptAtLast）的北京时间自然日，跨午夜归接单当天；
+    数据来自本地运单缓存 dashboard/data/orders_<team>_<date>.json（口径单一来源 order_rules）。
+    默认区间：end（默认今天）往前 7 天。
+    """
+    if ROOT not in sys.path:
+        sys.path.insert(0, ROOT)
+    import datetime as _dt
+    from dashboard.standard import cache as CACHE
+    from dashboard.standard import site_orders as SO
+    end = (qs.get("end") or [""])[0].strip() or CACHE.today_ymd()
+    start = (qs.get("start") or [""])[0].strip()
+    if not start:
+        start = (_dt.date.fromisoformat(end) - _dt.timedelta(days=6)).isoformat()
+    try:
+        payload = SO.build_site_orders(start, end)
+    except Exception as e:
+        payload = {"ok": False, "error": "%s: %s" % (type(e).__name__, e),
+                   "range": {"start": start, "end": end}, "sites": [], "totals": {}}
+    self._json(payload)
+
+
 GET_ROUTES = {
     "/api/state": _get_state,
     "/api/lan/status": _get_lan_status,
@@ -2302,6 +2327,7 @@ GET_ROUTES = {
     "/api/sheet": _get_sheet,
     "/api/todo": _get_todo,
     "/api/todo/runs": _get_todo_runs,
+    "/api/overview/site-orders": _get_ov_site_orders,
 }
 
 POST_ROUTES = {
