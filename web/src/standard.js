@@ -1472,7 +1472,6 @@ export function _stdRenderSettings(host, opts){
 }
 
 
-export function debounce(fn, ms){ var t; return function(){ var a=arguments, c=this; clearTimeout(t); t=setTimeout(function(){ fn.apply(c,a); }, ms); }; }
 
 /* 自动导出：供其他模块导入的内部顶层符号 */
 export { _stdCoolTimer, _stdGradeCache, _stdOpenGradeEditorFor, _stdQuerying, state };

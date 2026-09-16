@@ -14,6 +14,18 @@ import { renderRunModal, openRunModal, openArtifacts, closeArtModal, mountTabula
 import { renderHomeView, skeletonCards } from "./home.js";
 const state = store.state;
 
+/* 全局错误兜底 —— 让失败可见。
+   渲染链路里若抛错且发生在 Promise / 事件回调中（如 loadState().then 里调 refreshAll），
+   浏览器只会把它吞成 unhandledrejection：页面毫无迹象、控制台也干净，排查只能靠 DOM 反推
+   （2026-09-16 模块化冒烟就踩过这类静默失败 —— 任务列表整段没渲染却 0 报错）。
+   这里统一把「未捕获异常 / 未处理的 Promise 拒绝」显式打到控制台。 */
+window.addEventListener("error", function(e){
+  console.error("[未捕获异常]", e.message, (e.error && e.error.stack) || e.error || "");
+});
+window.addEventListener("unhandledrejection", function(e){
+  console.error("[未处理的 Promise 拒绝]", (e.reason && e.reason.stack) || e.reason);
+});
+
 /* 统一刷新入口 —— 渲染函数之间禁止互调，全部由这里按序调度 */
 function refreshAll(){
   renderHeader();
