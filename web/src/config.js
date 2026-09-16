@@ -8,7 +8,7 @@ import { openArtifacts, viewRunLog } from "./runs.js";
 const state = store.state;
 
 import { commitParamsForm, fillDefaultToForm, dateRangeGroupFlags, getDateValue, _yesterdayStr, setDateValue, visibleParams, paramIsModified, renderDateRangeGroup, renderParamRow, closeAllGroupPickers, nodesBlock, _gpReap } from "./task.js";
-import { runTasks } from "./main.js";
+import { runTasks } from "./run.js";
 
 export function commitDateRangeGroup(task){
   var g = dateRangeGroupFlags(task);
