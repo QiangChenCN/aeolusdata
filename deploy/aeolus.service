@@ -1,0 +1,16 @@
+[Unit]
+Description=Aeolus Workbench
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/aeolusdata
+ExecStart=/opt/aeolusdata/.venv/bin/python server.py --port 8917 --host 127.0.0.1
+# 强密码：建议改成随机串，或放进 /opt/aeolusdata/.env 用 EnvironmentFile 读取
+Environment=WB_ADMIN_PASSWORD=CHANGE_ME_STRONG
+Restart=always
+RestartSec=5
+User=root
+
+[Install]
+WantedBy=multi-user.target
