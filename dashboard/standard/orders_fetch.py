@@ -203,6 +203,19 @@ SEG_SPLIT_THRESHOLD = 8000    # 单站单日超过此量则按时段切片
 FULL_DAY = "0-86400"
 SEGMENTS_4 = ["0-21600", "21600-43200", "43200-64800", "64800-86400"]
 
+# ---- 完整性校验（2026-09-18 加）------------------------------------------
+# 为什么必须有这一步：运单导出是异步任务，**成功不等于完整**。
+#   2026-09-17 实测：导出拿回 5793 行，同一时间窗接口 total=5820 —— 静默少 27 行，
+#   全流程无任何报错。下游「标准达成」按单量判定 + 「今日有单」判定都依赖这批行，
+#   少几行就表现为个别骑手少算一单（如孙源源 18 单被算成 17 单）。
+# 因此导出后固定做一次「行数 vs 接口 total」对账：只要一次第 1 页请求就能拿到
+#   total（同 dashboard/standard/site_orders 注释里提到的三个时间维度之一），
+#   开销远小于因数据不全导致的排查成本。
+VERIFY_EXPORT_TOTAL = True       # 导出后是否与接口 total 对数；关掉可省 1 次请求
+TOTAL_SHORT_TOLERANCE = 0.0      # 「实拿行数 < total」的比例容忍
+TOTAL_SHORT_TOLERANCE_MIN = 0    # 比例容忍之外再给的绝对行数豁免
+FALLBACK_ON_TOTAL_SHORT = True   # 核对发现残缺时，回落到分页路径重取（宁慢勿错）
+
 
 def log(msg):
     ts = datetime.datetime.now(BJ).strftime("%H:%M:%S")
@@ -449,8 +462,34 @@ def fetch_orders(sess, start_ms, end_ms, sleep_max=None, time_field=None):
     return dedup
 
 
+def _short_tolerance(total):
+    """允许「实拿行数 < 接口 total」的差额容忍（换算成绝对行数）。"""
+    return int(int(total or 0) * TOTAL_SHORT_TOLERANCE) + TOTAL_SHORT_TOLERANCE_MIN
+
+
+def _verify_total(sess, s_ms, e_ms, time_field=None):
+    """取一次第 1 页拿到接口 total，用于与已到手行数对账。返回 (total, rows_of_page1)。
+
+    取不到（网络 / 会话 / 限流）返回 (None, [])，由调用方决定放行还是回落。
+    """
+    if not VERIFY_EXPORT_TOTAL:
+        return None, []
+    try:
+        first, total = sess.call(s_ms, e_ms, 1, PAGE_SIZE, FULL_DAY, time_field=time_field)
+    except Exception as e:
+        log(f"  !! 完整性校验取 total 失败：{type(e).__name__}: {e}")
+        return None, []
+    return int(total or 0), first or []
+
+
 def _fetch_all_rows(sess, start_ms, end_ms, sleep_max=None, time_field=None):
     """取全量运单行：导出优先（异步导出，零分页请求、无限流），失败/超时/空则回落分页。
+
+    完整性保证（2026-09-18 加）：**导出成功 ≠ 数据完整**。实测导出会静默少给数据
+    （同期接口 total=5820、导出只有 5793 行、无任何报错），下游按单量判定「标准达成 /
+    今日有单」就会被系统性少计几单。所以导出后固定与接口 total 对一次账，
+    差额超容忍就丢弃这份残缺结果、回落到分页重取 —— 宁可慢，也不能给下游一份缺数据
+    （见本文件顶部「完整性校验」的调参说明）。
 
     导出路径见 get_data/delivery_export.py：异步触发 Aeolus 运单导出 → 轮询任务
     → 拿 OSS 签名 URL → 下载 xlsx → 解析为 dict（中文表头双写英文键，已对齐
@@ -464,7 +503,22 @@ def _fetch_all_rows(sess, start_ms, end_ms, sleep_max=None, time_field=None):
                                poll_timeout=DE.DEFAULT_POLL_TIMEOUT,
                                time_field=time_field)
         if rows:
+            rows = _dedup(rows)          # 去重后再对数，total 也是按单口径
             log(f"导出成功：拿回 {len(rows)} 行（0 次分页请求）")
+            total, _p1 = _verify_total(sess, start_ms, end_ms, time_field)
+            if total is not None:
+                gap = max(0, total - len(rows))
+                log(f"完整性核对：导出 {len(rows)} 行 / 接口 total={total}，差 {gap} 行")
+                tol = _short_tolerance(total)
+                if gap and gap <= tol:
+                    log(f"  差 {gap} 行在容忍范围内（≤{tol}），沿用导出结果")
+                    return rows
+                if gap and FALLBACK_ON_TOTAL_SHORT:
+                    log(f"  !! 导出残缺（少 {gap} 行），回落到分页重取")
+                    return fetch_orders(sess, start_ms, end_ms,
+                                        sleep_max=sleep_max, time_field=time_field)
+                if gap:
+                    log(f"  !! 导出残缺（少 {gap} 行）但未开启回落，按残缺数据返回")
             return rows
         log("导出返回空，回落分页取数")
     except Exception as e:
@@ -506,6 +560,8 @@ __all__ = [
     "BACKOFF_BASE", "BACKOFF_FACTOR", "BACKOFF_MAX_SLEEP", "BACKOFF_JITTER",
     "MAX_RETRIES", "RELOGIN_MAX", "RELOGIN_BACKOFF_BASE",
     "PAGE_INDEX_CAP", "SEG_SPLIT_THRESHOLD",
+    "VERIFY_EXPORT_TOTAL", "TOTAL_SHORT_TOLERANCE", "TOTAL_SHORT_TOLERANCE_MIN",
+    "FALLBACK_ON_TOTAL_SHORT",
     "FULL_DAY", "SEGMENTS_4", "PAGE_SIZE", "BJ",
     "log", "rand_sleep", "backoff_wait", "backoff_sleep", "page_sleep",
     "coarse_sleep", "Session", "fetch_orders", "_fetch_all_rows",

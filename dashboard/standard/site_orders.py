@@ -16,12 +16,16 @@ dashboard/data/orders_<teamId>_<date>.json —— 等价于 cache.load_raw("orde
 抓取口径与归属口径的配合（重要）
 ------------------------------
   接口没有「接单时间」维度，只有 运单生成 / 用户下单 / 运单终态 三个
-  （见 get_data.delivery.TIME_FIELDS）；落盘的运单缓存按**运单生成时间**抓
-  （refresh_all._fetch_shared_orders 显式传 trackingCreated）。
-  生成必然早于/等于接单，所以「接单日在 D」的单，生成时间落在 [D-1, D]
-  —— 本模块据此读 D 与 D-1 两个文件（LOOKBACK_DAYS）。
-  历史遗留：早期缓存是按「运单终态时间」抓的，跨午夜单（今天接、次日完成）落在次日文件里，
-  今天算不到、次日又归属不符 → 两天都丢，属系统性少计。要修正历史区间需按新口径重新刷新那几天。
+  （见 get_data.delivery.TIME_FIELDS）。2026-09-18 起落盘的运单缓存改为按
+  **运单终态时间(trackingFinish)** 抓（refresh_all._fetch_shared_orders 显式传该字段），
+  与风神前端「运单数据」页、以及考勤侧 fullDayFinishOrder 的口径一致。
+
+  变更原因：此前按生成时间(trackingCreated)抓，取不到「生成早于当天、但当天接单并完成」
+  的运单 —— 2026-09-17 实测同一天少 34 行，表现为个别骑手少算一单。
+  已知取舍：本模块聚合仍按**骑手接单时间**归属，因此「今天接单、次日完成」的跨午夜单
+  仍会落到次日文件里而当天取不到；要彻底零丢失需把归属口径也改成完成时间。
+  历史遗留：区间内的旧缓存仍是按生成时间抓的，**必须按新口径重新刷新那几天**，
+  否则新旧文件混用会算错。
   接单量     accepted      = 归属日落在 [start, end] 内的运单条数（不论最终是否完成）
   配送完成量 completed     = 其中 is_completed() 为真（stateDesc=配送成功 / state=40）
   有效单量   valid         = 其中 is_valid_order() 为真（完成 + 非作弊 + 非逆向 + 非改派）
@@ -49,7 +53,10 @@ _RAW_KIND = "orders"
 _DATA_DIR = os.path.join(_ROOT, "dashboard", "data")
 _FNAME_RE = re.compile(r"^orders_(?P<team>[^_]+)_(?P<date>\d{4}-\d{2}-\d{2})\.json$")
 NAME_KEYS = ("teamName", "团队/站点名称", "团队名称")
-# 「接单日在 D」的单，其运单生成时间最早落在 D-1（生成 <= 接单，且两者通常只隔几分钟）
+# 原用途：缓存按生成时间抓时，「接单日在 D」的单生成时间可能落在 D-1，需回读一天。
+# 现状（2026-09-18）：缓存已改为按终态时间抓，而 accept <= finish 恒成立，
+#   故 D-1 文件里的行按接单时间归属必然落在 D-1 或更早，回读对结果已无增益。
+# 仍保留回读，是为了兼容「历史区间尚未按新口径重刷」的混合期，且开销仅为多读一个文件。
 LOOKBACK_DAYS = 1
 
 

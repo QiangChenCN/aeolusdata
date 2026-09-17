@@ -162,7 +162,19 @@ def _day_target_rows(sched_rows):
     return out
 
 
-def _count_valid_orders_by_date(orders, team_id):
+def _day_bounds(start, end):
+    """[start, end] 内每个北京自然日的 (ymd, start_ms, end_ms) 列表，供整数日界归属。"""
+    out = []
+    d = datetime.date(*(int(x) for x in start.split("-")))
+    end_d = datetime.date(*(int(x) for x in end.split("-")))
+    while d <= end_d:
+        ymd = d.strftime("%Y-%m-%d")
+        out.append((ymd, _ymd_to_ms(ymd, False), _ymd_to_ms(ymd, True)))
+        d += datetime.timedelta(days=1)
+    return out
+
+
+def _count_valid_orders_by_date(orders, team_id, start, end):
     """全天实际单量：按「骑手接单时间」归属北京时间日期 + 有效单口径。
 
     口径见 dashboard.standard.order_rules（与骑手维度同一份，避免漂移）：
@@ -172,8 +184,11 @@ def _count_valid_orders_by_date(orders, team_id):
     - 归属日期用接单时间，跨午夜单归属接单那天，不会被两天各计一次
     - trackingId 兜底去重：同一单只计一次（切片抓取边界可能重复）
     - 只统计本 team_id 的单（demo CSV 含多站，live 已按站过滤）
+    - 日界归属改用整数毫秒比较（预生成 [start,end] 各自然日起止 ms），
+      避免逐单构造 datetime / strftime（订单量大时省掉大量对象创建）
     返回 { 'YYYY-MM-DD': 有效单量 }
     """
+    bounds = _day_bounds(start, end)
     counts = {}
     seen = set()
     team_str = OR.norm_team(team_id)
@@ -189,12 +204,19 @@ def _count_valid_orders_by_date(orders, team_id):
         ms = OR.accept_ms(o)
         if ms is None:
             continue
+        # 整数日界归属：找 ms 落在哪个自然日（通常至多一个命中）
+        d = None
+        for ymd, s, e in bounds:
+            if s <= ms <= e:
+                d = ymd
+                break
+        if d is None:
+            continue
         tid = o.get("trackingId")
         if tid is not None:
             if tid in seen:
                 continue
             seen.add(tid)
-        d = OR.ms_to_ymd(ms)
         counts[d] = counts.get(d, 0) + 1
     if mismatched:
         _log("全天单量统计跳过非本站点单 %d 条" % mismatched)
@@ -406,7 +428,8 @@ def _build(team_id, start, end, sched_rows, orders, att_payload, source):
     """
     team_name = TEAM_NAMES.get(team_id, "team " + team_id)
     has_orders = bool(orders)
-    order_counts = _count_valid_orders_by_date(orders, team_id) if has_orders else {}
+    order_counts = (_count_valid_orders_by_date(orders, team_id, start, end)
+                    if has_orders else {})
     day_rows = _day_target_rows(sched_rows)
     attendance = _snapshot_from_rows(sched_rows, att_payload) if sched_rows else None
     rows = _enrich(day_rows, order_counts, has_orders)

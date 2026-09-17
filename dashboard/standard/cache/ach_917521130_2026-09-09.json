@@ -8,14 +8,14 @@
   "end": "2026-09-09",
   "summary": {
     "person_rate": 105.3,
-    "order_rate": 87.5,
-    "combined_rate": 96.4,
+    "order_rate": 94.4,
+    "combined_rate": 99.8,
     "achieved": false,
     "status_label": "未达成",
     "total_predict_num": 38,
     "total_actual_num": 40,
     "total_predict_order": 1477,
-    "total_actual_order": 1292,
+    "total_actual_order": 1394,
     "day_count": 1
   },
   "rows": [
@@ -28,10 +28,10 @@
       "person_rate": 105.3,
       "person_achieved": true,
       "predict_order": 1477.0,
-      "actual_order": 1292,
-      "order_rate": 87.5,
+      "actual_order": 1394,
+      "order_rate": 94.4,
       "order_achieved": false,
-      "combined_rate": 96.4,
+      "combined_rate": 99.8,
       "achieved": false,
       "status_label": "未达成"
     }

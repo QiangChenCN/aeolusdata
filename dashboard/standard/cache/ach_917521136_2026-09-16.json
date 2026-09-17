@@ -1,6 +1,6 @@
 {
   "ok": true,
-  "source": "live",
+  "source": "cache",
   "error": null,
   "team": "917521136",
   "teamName": "东莞市长安万科站-UB",
@@ -8,14 +8,14 @@
   "end": "2026-09-16",
   "summary": {
     "person_rate": 98.7,
-    "order_rate": 49.1,
-    "combined_rate": 73.9,
+    "order_rate": 85.1,
+    "combined_rate": 91.9,
     "achieved": false,
     "status_label": "未达成",
     "total_predict_num": 79,
     "total_actual_num": 78,
     "total_predict_order": 3082,
-    "total_actual_order": 1512,
+    "total_actual_order": 2622,
     "day_count": 1
   },
   "rows": [
@@ -28,10 +28,10 @@
       "person_rate": 98.7,
       "person_achieved": false,
       "predict_order": 3082.0,
-      "actual_order": 1512,
-      "order_rate": 49.1,
+      "actual_order": 2622,
+      "order_rate": 85.1,
       "order_achieved": false,
-      "combined_rate": 73.9,
+      "combined_rate": 91.9,
       "achieved": false,
       "status_label": "未达成"
     }
@@ -46,8 +46,8 @@
     "note": null
   },
   "need_refresh": false,
-  "data_status": "partial",
-  "data_note": "统计区间含今天，数据随当天推进持续增长",
+  "data_status": "ok",
+  "data_note": null,
   "basis": "day",
-  "cache_time": null
+  "cache_time": "2026-09-18 01:07:43"
 }

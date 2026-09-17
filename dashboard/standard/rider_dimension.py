@@ -183,6 +183,68 @@ def current_slot_code():
 
 
 # ===================== 运单聚合（骑手×时段）=====================
+def _aggregate_rider_data(orders, team_id, day_bounds):
+    """单遍扫描同时产出「全天有效单量 / 全天完成单量 / 今日有完成单骑手」三份结果。
+
+    替代 _build 原先对 orders 做三遍独立扫描（_aggregate_rider_orders /
+    _aggregate_rider_all_orders / riders_with_completed_orders_today），把逐单的
+    有效性判定、团队过滤、trackingId 兜底去重、接单时间归属一次性算完，CPU 降到 1/3。
+
+    日界用整数毫秒比较（落在 day_bounds 任一自然日区间内即算），不逐单构造 datetime。
+    口径与三个原函数逐一一致：有效单=完成+非作弊+非逆向+非改派；完成单=仅卡状态；
+    去重按 trackingId；接单时间优先、缺失兜底创建时间；按 team_id 过滤。
+    """
+    team_str = str(team_id).strip() if team_id else None
+    valid_by_rider = {}
+    completed_by_rider = {}
+    name_by_rider = {}      # 今日有完成单的骑手 → 最佳姓名（补齐未排班骑手用）
+    seen_valid = set()
+    seen_completed = set()
+    for o in orders or []:
+        if team_str:
+            ot = _order_val(o, TEAM_KEYS)
+            if ot is not None and str(ot).strip() != team_str:
+                continue
+        # 日期归属：接单时间优先，缺失兜底创建时间
+        raw = _order_val(o, ACCEPT_KEYS)
+        if raw is None:
+            raw = _order_val(o, CREATE_KEYS)
+        if raw is None:
+            continue
+        try:
+            ms = int(raw)
+        except (ValueError, TypeError):
+            continue
+        if not any(s <= ms <= e for s, e in day_bounds):
+            continue
+        rid = _order_val(o, RIDER_ID_KEYS)
+        if rid is None:
+            continue
+        rs = str(rid)
+        tid = o.get("trackingId")
+        # 完成单（仅卡状态）：先计完成，再在其上判定有效（省一次状态求值）
+        if _is_completed(o):
+            if tid is not None:
+                if tid not in seen_completed:
+                    seen_completed.add(tid)
+                    completed_by_rider[rs] = completed_by_rider.get(rs, 0) + 1
+            else:
+                completed_by_rider[rs] = completed_by_rider.get(rs, 0) + 1
+            if rs not in name_by_rider:
+                name_by_rider[rs] = ""
+            nm = _order_val(o, RIDER_NAME_KEYS) or ""
+            if nm:
+                name_by_rider[rs] = nm
+            if _is_valid_order(o):
+                if tid is not None:
+                    if tid not in seen_valid:
+                        seen_valid.add(tid)
+                        valid_by_rider[rs] = valid_by_rider.get(rs, 0) + 1
+                else:
+                    valid_by_rider[rs] = valid_by_rider.get(rs, 0) + 1
+    return valid_by_rider, completed_by_rider, name_by_rider
+
+
 def _aggregate_rider_orders(orders, team_id, today_ymd):
     """按骑手聚合「全天有效单量」，返回 {rider_id_str: count}。
 
@@ -386,6 +448,9 @@ def _est_achievable_day(valid_online_min, valid_orders, day_order_target):
 
     返回 (achieved: bool|None, label: str)
     """
+    if valid_online_min is None:
+        # 未排班 / 全天有效在线时长未知：时长维度无法预判，不误报"不可达标"
+        return (None, "时长未知")
     cur = valid_online_min or 0
     THRESHOLD = 360  # 6 小时 = 360 分钟
     target = day_order_target or 0
@@ -442,10 +507,21 @@ def _build(team_id, start, end, month, riders_raw, orders, target_tc, source):
     orders = orders or []
     target_tc = int(target_tc) if target_tc else None
 
-    # 全天有效单量（一个骑手当天只有一个数，不再区分时段）
-    today_ymd = _std_ymd(datetime.datetime.now(BJ))
-    allday_orders = _aggregate_rider_orders(orders, team_id, today_ymd)
-    allday_all = _aggregate_rider_all_orders(orders, team_id, today_ymd)  # 全天单量（含非有效）
+    # 全天口径：有效单 / 完成单 / 今日有单骑手 一次扫描完成（避免对 orders 扫三遍）
+    # 日界必须按**查询日**(start~end)算，绝不能用 now()：
+    # 在 T+1 重算历史日期时，用「今天」的日界去筛「那天」的单会一条都不命中 → 单量全 0。
+    _d0 = datetime.date.fromisoformat(start)
+    _d1 = datetime.date.fromisoformat(end)
+    if _d1 < _d0:
+        _d0, _d1 = _d1, _d0
+    day_bounds = []
+    _cur = _d0
+    while _cur <= _d1:
+        _ymd = _cur.strftime("%Y-%m-%d")
+        day_bounds.append((_ymd_to_ms(_ymd, False), _ymd_to_ms(_ymd, True)))
+        _cur += datetime.timedelta(days=1)
+    allday_orders, allday_all, completed_name = _aggregate_rider_data(
+        orders, team_id, day_bounds)
 
     # 全天达成门槛 = 等级标准的「标准1」（最低一档）。
     # 考勤接口只有时段目标(timeFinishOrderTarget)，没有全天目标字段，
@@ -461,7 +537,6 @@ def _build(team_id, start, end, month, riders_raw, orders, target_tc, source):
     # 考勤快照返回整个站点骑手（含休息 status==1 / 其他状态），只有 status==2 才是"今日排班"。
     # 今日有单口径（2026-09-09）：订单日期归属 = 接单时间(acceptAtLast) 的北京时间日期；
     #   完成单 = 状态已完成(40 / 配送成功)；仅补本站点今天有完成单、且不在排班集合里的骑手。
-    today_ymd = _std_ymd(datetime.datetime.now(BJ))
     # 考勤快照按 knightId 建索引（含休息 / 其它状态，不止 status==2）。
     # 未排班但有单的骑手同样在这份快照里，其 fullDayValidOnlineTime 是真实在线时长；
     # 早期实现给这类骑手造了 fullDayValidOnlineTime=0 的假记录，
@@ -490,8 +565,7 @@ def _build(team_id, start, end, month, riders_raw, orders, target_tc, source):
         riders_sched.append(r)
     n_sched0 = len(riders_sched)
     if orders:
-        completed_today = riders_with_completed_orders_today(orders, team_id, today_ymd)
-        for rid_str, rec in completed_today.items():
+        for rid_str in completed_name:
             if rid_str in scheduled_ids:
                 continue
             # 快照里有这个人就沿用其真实考勤字段（时长 / 在线时间等）；
@@ -499,7 +573,7 @@ def _build(team_id, start, end, month, riders_raw, orders, target_tc, source):
             src = raw_by_id.get(rid_str) or {}
             riders_sched.append({
                 "knightId": rid_str,
-                "knightName": rec["name"] or src.get("knightName") or "",
+                "knightName": completed_name.get(rid_str) or src.get("knightName") or "",
                 "teamId": src.get("teamId", team_id),
                 "workStatus": src.get("workStatus"),
                 "timeValidOnlineTime": src.get("timeValidOnlineTime", 0),
@@ -555,7 +629,7 @@ def _build(team_id, start, end, month, riders_raw, orders, target_tc, source):
         achieved = bool(order_ok and dur_ok)
         achieved_label = "达成" if achieved else "未达成"
         # 10) 预计达标（综合判定：时长骨架三态 + 单量节奏细分；已达标需时长与单量双指标均达标）
-        est, est_label = _est_achievable_day(valid_online_min or 0, valid_orders or 0, day_order_target)
+        est, est_label = _est_achievable_day(valid_online_min, valid_orders or 0, day_order_target)
 
         # 等级 + 7/8 缺口（_grade 自身会处理 valid_min=None 的情况）
         g = _grade(valid_orders, full_day_valid_min, levels)

@@ -1,6 +1,6 @@
 {
   "ok": true,
-  "source": "live",
+  "source": "cache",
   "error": null,
   "team": "917521136",
   "teamName": "东莞市长安万科站-UB",
@@ -37,17 +37,17 @@
     }
   ],
   "attendance": {
-    "time_code": null,
-    "time_name": null,
-    "sched": null,
-    "online": null,
-    "offline": null,
-    "rest": null,
-    "note": "当前不在任何排班时段内"
+    "time_code": 140,
+    "time_name": "晚高峰",
+    "sched": 77,
+    "online": 73,
+    "offline": 4,
+    "rest": 0,
+    "note": null
   },
   "need_refresh": false,
   "data_status": "ok",
   "data_note": null,
   "basis": "day",
-  "cache_time": null
+  "cache_time": "2026-09-18 01:07:42"
 }

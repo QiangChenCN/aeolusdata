@@ -190,18 +190,26 @@ def _fetch_shared_orders(teams, start_date, end_date):
 
     失败不导致整个刷新中止：返回 (False, 原因)，调用方降级为「各站点自行拉取」。
 
-    时间维度按**运单生成时间(trackingCreated)**抓，而不是接口默认的运单终态时间：
-    看板一律按「骑手接单时间」归属日期（order_rules 单一来源），而接口没有「接单时间」维度
-    （只有 运单生成 / 用户下单 / 运单终态 三个，见 get_data.delivery.TIME_FIELDS）。
-    接单必然晚于生成 → 按生成时间抓得到的是「接单日 ⊆ 生成日」的超集：
-    今天接单、次日完成的跨午夜单不会再落进次日的文件里造成两天都归不进（系统性少计）。
-    聚合侧配合读取 D 与 D-1 两个文件，见 site_orders.py。
+    时间维度按**运单终态时间(trackingFinish)**抓（接口默认值，也是风神前端「运单数据」页
+    与你抓到的那个请求所用的字段）。选它的原因：生成时间(trackingCreated)窗口取不到
+    「生成早于当天、但当天接单并完成」的运单 —— 2026-09-17 实测同一天少 34 行
+    （trackingCreated 5820 vs trackingFinish 5854），直接导致个别骑手少算一单
+    （孙源源 18 单被算成 17 单，缺失那单 create=09-16 09:57 / accept=今天 08:20 /
+    finish=今天 08:37，为当日生成的改派类运单）。
+
+    已知取舍（务必知情）：本项目聚合侧仍按「骑手接单时间」归属日期（order_rules 单一来源），
+    而接口没有「接单时间」维度。因此改成终态时间后，**「今天接单、次日完成」的跨午夜单**
+    会落到次日文件里：当天取不到、次日归属又不符 → 与 2026-09-09 之前那次口径问题的成因一
+    致（见 site_orders.py 的历史遗留说明）。若要彻底零丢失，需把归属口径也改为完成时间
+    （那样与平台 fullDayFinishOrder 完全一致），或对两个字段取并集。
+
+    切换后**历史缓存必须按新口径重新刷新**：已落盘的旧文件是按生成时间抓的，混用会算错。
     """
     try:
         sess = OF.Session()
         s_ms = AC._ymd_to_ms(start_date, False)
         e_ms = AC._ymd_to_ms(end_date, True)
-        grouped = OF.fetch_orders_grouped(sess, s_ms, e_ms, time_field="trackingCreated")
+        grouped = OF.fetch_orders_grouped(sess, s_ms, e_ms, time_field="trackingFinish")
     except Exception as e:
         return False, "%s: %s" % (type(e).__name__, e)
     hit = 0

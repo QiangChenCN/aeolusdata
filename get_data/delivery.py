@@ -39,8 +39,11 @@ BJ = datetime.timezone(datetime.timedelta(hours=8))
 # 参数名规律：`${字段}Start` / `${字段}End` / `${字段}TimePeriodList`（平铺在 request 内）。
 # 实测：时段键必须与时间字段同名 —— 用 trackingCreated 配 trackingFinishTimePeriodList 会报
 # TIME_PERIOD_IS_NULL「运单查询时间区间不能为空」。
-# 注意：接口**没有「骑手接单时间」维度**；按接单日归属时需用 trackingCreated（必然 <= 接单时间）取超集，
-# 详见 dashboard/standard/site_orders.py 的归属说明。
+# 注意：接口**没有「骑手接单时间」维度**，三个字段都不等于接单日，只能取近似超集：
+#   · trackingCreated 曾是推荐超集（生成 <= 接单），但实测会漏「生成早于当天、当天接单完成」
+#     的改派/跨日单（2026-09-17 当天漏 34 行）→ 看板已改用 trackingFinish。
+#   · trackingFinish（接口默认值，前端同款）会漏「当天接单、次日完成」的跨午夜单。
+# 二者互补，没有单字段的零丢失解；取舍说明见 dashboard/standard/site_orders.py。
 TIME_FIELD = "trackingFinish"
 TIME_FIELDS = ("trackingCreated", "platformBooked", "trackingFinish")
 
