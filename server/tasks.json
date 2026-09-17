@@ -92,7 +92,7 @@
           "flag": "--group",
           "label": "目标群",
           "type": "group",
-          "default": "cidOW1oUVyj85JVYxQh8EyzGg==",
+          "default": "",
           "placeholder": "留空用默认群（站点日常管理通知群）"
         },
         {
@@ -143,7 +143,7 @@
           "flag": "--group",
           "label": "目标群",
           "type": "group",
-          "default": "cidOW1oUVyj85JVYxQh8EyzGg==",
+          "default": "",
           "placeholder": "留空用默认群（站点日常管理通知群）"
         },
         {
@@ -224,7 +224,7 @@
           "flag": "--group",
           "label": "目标群",
           "type": "group",
-          "default": "cidOW1oUVyj85JVYxQh8EyzGg==",
+          "default": "",
           "placeholder": "留空用默认群（站点日常管理通知群）"
         },
         {
