@@ -91,3 +91,9 @@ server/data/data_perms_teams_last.json
 .pytest_cache/
 .playwright-cli/
 .workbuddy/
+
+# 看板运行数据（每日刷新的原始层与结果缓存，只算实时，不进版本控制）
+# 说明：这些是「刷新」产物，不是源码；各环境自己刷新生成，进仓库只会让每次
+#       pull 因本地改动冲突（历史数据 09-09~09-17 已一并从版本控制移除）。
+dashboard/data/
+dashboard/standard/cache/
