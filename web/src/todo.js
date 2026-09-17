@@ -1,5 +1,5 @@
 import { store, groupOf, taskById, countInGroup, producerOf, missingText, visibleTasks, taskState, argValue } from "./store.js";
-import { api, savePrefs, loadPrefs, readTokens, withToken, ensureTeams, __API_TOKEN__ } from "./api.js";
+import { api, savePrefs, loadPrefs, readTokens, withToken, ensureTeams } from "./api.js";
 import { svg, esc, hexA, toast, debounce, viewHead } from "./ui.js";
 import { TK, TK_MAP, RISK_LABEL, RISK_CLS, STATUS_CLS, STATUS_TXT, ICON } from "./tokens.js";
 import { bus } from "./bus.js";

@@ -347,9 +347,10 @@ export function createGroupPicker(initVal, onChange){
   var wrap = document.createElement("div");
   wrap.className = "gp";
 
+  var GP_PH = "搜索群名，留空则用任务的默认群";
   var inp = document.createElement("input");
   inp.type = "text"; inp.className = "gp-inp";
-  inp.placeholder = "搜索群名，留空则用任务的默认群";
+  inp.placeholder = GP_PH;
   inp.autocomplete = "off";
 
   var hid = document.createElement("input");
@@ -376,6 +377,7 @@ export function createGroupPicker(initVal, onChange){
      wantFirst：列表尚未展开时按下 ArrowDown，展开后直接高亮第一项（一次按键同时完成
      「展开 + 选中」，符合 combobox 的常规手感）；ArrowUp 展开则不预选。 */
   var rows = [], hi = -1, timer = null, seq = 0, vseq = 0, wantFirst = false;
+  var dirty = false;   /* 用户是否改动过输入框：决定失焦时能否据其清空隐藏域 gid */
 
   function close(){ pop.hidden = true; hi = -1; }
 
@@ -445,7 +447,7 @@ export function createGroupPicker(initVal, onChange){
     var defId = defaultGid();
     list.forEach(function(g, i){
       var d = document.createElement("div"); d.className = "gp-opt" + (i === hi ? " on" : "");
-      var nm = document.createElement("span"); nm.className = "nm"; nm.textContent = g.title;
+      var nm = document.createElement("span"); nm.className = "nm"; nm.textContent = g.title || "（未命名群）";
       d.appendChild(nm);
       /* 下拉展开时列的就是最近使用的群，再逐条打「最近」属于同义反复，已移除。
          仅搜索场景保留匹配度百分比——那才是用户判断命中准不准的有效信息。 */
@@ -544,6 +546,7 @@ export function createGroupPicker(initVal, onChange){
     expandRecent();
   };
   inp.oninput = function(){
+    dirty = true;                            // 用户已改动：失焦时可据其清空 gid
     hid.value = inp.value;                   // 未选中：原文当群名，脚本侧解析
     if(!inp.value.trim()){ loading("加载最近使用的群…"); run("", true); return; }
     loading("搜索中…");
@@ -553,7 +556,7 @@ export function createGroupPicker(initVal, onChange){
     setTimeout(close, 160);                  // 给 mousedown 选中留出时间
     var v = inp.value.trim();
     if(v && !hid.value) hid.value = v;
-    if(!v) hid.value = "";
+    else if(!v && dirty) hid.value = "";     // 仅当用户主动清空才清：避免 gid 未解析时误清
     if(onChange) onChange(hid.value);
   };
   inp.onkeydown = function(e){
@@ -570,19 +573,31 @@ export function createGroupPicker(initVal, onChange){
     }else if(e.key === "Escape"){ close(); }
   };
 
-  /* 初值回填：存的是 gid，显示要给群名。先占位 gid 不阻塞，反查到了再替换。 */
+  /* 初值回填：存的是 gid（或手输群名），界面一律显示群名，绝不露出群号。
+     gid → 群名走 /api/groups?id= 精确反查（命中全量群缓存，比按名搜索可靠）；
+     反查回来前输入框留空、不给群号。 */
   wrap._setValue = function(v){
     var my = ++vseq;
+    dirty = false;
     hid.value = v || "";
-    if(!v){ inp.value = ""; return; }
+    if(!v){ inp.value = ""; inp.placeholder = GP_PH; return; }
     if(/^cid/.test(v)){
-      inp.value = v;
-      api("/api/groups?q=")
+      inp.value = "";                                  // 反查回来前不显示群号
+      inp.placeholder = "正在获取群名…";
+      api("/api/groups?id=" + encodeURIComponent(v))
         .then(function(j){
           if(my !== vseq) return;
-          var hit = (j.groups || []).filter(function(g){ return g.id === v; })[0];
-          if(hit) inp.value = hit.title;
-        }).catch(function(e){ console.error("[目标群] 反查群名失败：", e); });
+          var hit = (j && j.groups || [])[0];
+          if(hit && hit.title && hit.title !== v){
+            inp.value = hit.title; inp.placeholder = GP_PH;
+          }else{
+            inp.placeholder = "群名暂不可用，点开可重新选择";
+          }
+        })
+        .catch(function(e){
+          console.error("[目标群] 反查群名失败：", e);
+          if(my === vseq) inp.placeholder = "群名暂不可用，点开可重新选择";
+        });
     }else{
       inp.value = v;
     }

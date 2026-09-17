@@ -113,8 +113,12 @@ def _count_day(team_id, date):
     return {"accepted": acc, "completed": comp, "valid": val, "name": name}
 
 
-def build_site_orders(start, end):
-    """站点维度运单量汇总。[start, end] 为北京时间自然日（含端点）。"""
+def build_site_orders(start, end, teams=None):
+    """站点维度运单量汇总。[start, end] 为北京时间自然日（含端点）。
+
+    teams: 可选 team id 列表，用于数据权限裁剪（只统计这些站点）。
+           为 None 时退化为全量（兼容旧调用）。
+    """
     dates = _daterange(start, end)
 
     # 1) 先摸清区间内「哪些站点 × 哪些天」有缓存
@@ -124,7 +128,13 @@ def build_site_orders(start, end):
         for tid in _cached_teams(date):
             have.add((tid, date))
             teams_seen.add(tid)
-    all_teams = sorted(set(TEAM_NAMES.keys()) | teams_seen)
+    if teams is not None:
+        allowed = set(str(t) for t in teams)
+        teams_seen &= allowed
+        have = {(tid, d) for (tid, d) in have if tid in allowed}
+        all_teams = sorted(allowed)
+    else:
+        all_teams = sorted(set(TEAM_NAMES.keys()) | teams_seen)
 
     # 2) 逐站点聚合（有缓存的日子才参与求和）
     sites = []

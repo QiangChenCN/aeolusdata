@@ -58,6 +58,7 @@ _STATE = {
     "stats": None,
     "log_file": None,       # 本次刷新的日志文件（dashboard/standard/logs/ 下）
 }
+_THREAD = None            # 当前刷新线程引用，用于检测「running 残留但未真正在跑」
 
 LOG_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs")
 
@@ -115,6 +116,12 @@ def start(teams=None, start_date=None, end_date=None, time_code=None, month=None
         return False, "参与站点为空，请先到『系统设置』勾选站点"
 
     with _LOCK:
+        # 防御：上一刷新线程已不在运行（异常退出/被回收），但 running 未被 finally 复位，
+        # 此时放行新任务，避免「409 永久卡死」无法再刷新。
+        if _STATE["running"] and (_THREAD is None or not _THREAD.is_alive()):
+            _STATE["running"] = False
+            _STATE["finished_at"] = _now()
+            _STATE["current_stage"] = "（检测到上次刷新异常中断，已复位）"
         if _STATE["running"]:
             return False, "已有刷新任务在运行"
         _STATE.update({
@@ -135,6 +142,7 @@ def start(teams=None, start_date=None, end_date=None, time_code=None, month=None
     th = threading.Thread(
         target=_run, args=(teams, start_date, end_date, time_code, month),
         name="std-refresh-all", daemon=True)
+    _THREAD = th
     th.start()
     return True, "已启动，共 %d 个站点" % len(teams)
 

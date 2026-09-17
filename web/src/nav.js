@@ -1,5 +1,5 @@
 import { store, groupOf, taskById, countInGroup, producerOf, missingText, visibleTasks, taskState, argValue, navExpandOnly } from "./store.js";
-import { api, savePrefs, loadPrefs, readTokens, withToken, ensureTeams } from "./api.js";
+import { api, savePrefs, loadPrefs, readTokens, withToken, ensureTeams, getSessionUser } from "./api.js";
 import { svg, esc, hexA, toast, debounce, viewHead } from "./ui.js";
 import { TK, TK_MAP, RISK_LABEL, RISK_CLS, STATUS_CLS, STATUS_TXT, ICON } from "./tokens.js";
 import { bus } from "./bus.js";
@@ -12,6 +12,7 @@ import { renderAttendPeriodView } from "./attend-period.js";
 import { renderStandardView } from "./standard.js";
 import { renderHomeView } from "./home.js";
 import { renderTodoView, todoOpenCount } from "./todo.js";
+import { renderAdminView } from "./admin.js";
 
 /* ================= 渲染层（互不调用，统一由 refreshAll 调度） ================= */
 export function renderHeader(){
@@ -126,6 +127,11 @@ export function navSections(){
   // 4) 工作内容（提醒事项），计数 = 未完成条数
   items.push({ kind:"todo", id:"", name:"工作内容", icon:"list-checks",
                count:todoOpenCount(), color:TK.brand });
+
+  // 5) 系统设置（仅管理员可见：账号 / 角色权限 / 密码策略）
+  if(getSessionUser() && getSessionUser().role === "admin"){
+    items.push({ kind:"admin", id:"", name:"系统设置", icon:"shield-alert", color:TK.err });
+  }
 
   return items;
 }
@@ -259,6 +265,7 @@ export function renderMain(){
   else if(state.nav.kind==="standard") renderStandardView(host);
   else if(state.nav.kind==="attendPeriod") renderAttendPeriodView(host);
   else if(state.nav.kind==="history") renderHistoryView(host);
+  else if(state.nav.kind==="admin")  renderAdminView(host);
   else renderTaskView(host);   // 兜底（hub / logs 等旧导航值统一回落到任务视图）
   _lastViewKey = key;
   if(scroller) scroller.scrollTop = scrollTop;

@@ -102,7 +102,8 @@ DWS  = get_path("DING_DWS_JS",
 FONT_PATH = get_path("DING_FONT_PATH", "C:/Windows/Fonts/simhei.ttf")
 
 # ---------- 目标群 ----------
-GROUP_ID = "cidOW1oUVyj85JVYxQh8EyzGg=="   # 站点日常管理通知群（东莞德佑）
+# GROUP_ID（生产群 openConversationId）改为按群名运行时解析，见文件末尾 resolve_production_group_id()。
+# 原写死的 cidOW1oUVyj85JVYxQh8EyzGg== 是 conversationId，会被 dws 判 OPEN_CID_INVALID。
 
 # ---------- 发送时禁止 @ 的人员（用户要求）----------
 # 仍保留在 MANAGER_OPENID 中（其他用途可用），仅从所有 @ 名单中剔除。
@@ -243,3 +244,27 @@ def dws_run(args, times=3, delay=4, backoff=2, label="钉钉发送"):
 def _dws_once(args):
     out, err, code = dws(args, raise_on_error=True)
     return out, err, code
+
+
+# ---------- 生产群 openConversationId：按群名解析（替代写死 ID，防止 cid 失效）----------
+# 放在文件末尾、dws_json 定义之后，避免与 find_group 的「from ding_common import dws_json」循环导入。
+# 原写死的 conversationId（cidOW1oUVyj85JVYxQh8EyzGg==）会被 dws 判 OPEN_CID_INVALID，
+# 故改为启动时按群名调 find_group.resolve_group_id 取真实 openConversationId。
+PRODUCTION_GROUP_NAME = "站点日常管理通知群"
+
+
+def resolve_production_group_id():
+    """按群名解析生产群 openConversationId；失败（dws 未授权/无网络）则回落旧常量并告警。"""
+    try:
+        from find_group import resolve_group_id
+        gid, title = resolve_group_id(PRODUCTION_GROUP_NAME)
+        log.info("生产群按群名解析成功：%s (%s)", title, gid)
+        return gid
+    except Exception as e:
+        log.warning(
+            "按群名解析生产群失败，回落旧写死常量（可能已失效，请检查 dws 授权/网络）：%s", e
+        )
+        return "cidOW1oUVyj85JVYxQh8EyzGg=="
+
+
+GROUP_ID = resolve_production_group_id()

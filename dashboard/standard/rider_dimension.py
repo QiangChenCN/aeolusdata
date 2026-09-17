@@ -578,6 +578,7 @@ def _build(team_id, start, end, month, riders_raw, orders, target_tc, source):
                                         if g["next_duration_gap"] is not None else None),
             "online_status": _status_label(ws),  # 9 在线状态（真实上下线：在线/小休/下线；不再把未排班骑手覆盖为"未排班"，"排班/未排班有单"由 rider_set 与骑手姓名圆点区分）
             "online_status_code": ws,
+            "delivering_orders": _norm_int(r.get("deliveryOrder")),  # 配送中单量（引用实时考勤 deliveryOrder，与考勤看板同源）
             "est_achievable": est,                              # 10 预计达标 bool
             "est_achievable_label": est_label,                  # 已达标 / 不可达标 / 达成困难 / 有望达成 / 轻松达成
             "full_day_orders": full_day_orders,                 # 11 全天单量（含非有效）

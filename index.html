@@ -1146,7 +1146,7 @@ header{
 </style>
 <script>document.documentElement.classList.add('reveal-ready')</script>
 <link rel="stylesheet" href="/web/apple.css">
-<script>window.__API_TOKEN__ = "__SERVER_API_TOKEN__";</script>
+<!-- RBAC：访问令牌不再注入页面（防公网泄露），改由登录后存入 sessionStorage -->
 </head>
 <body data-page-node-id="22cvKpnvDOOFnLpNwJNzIy">
 
@@ -1180,6 +1180,14 @@ header{
         <input type="checkbox" id="lanToggle">
         <span class="slider"></span>
       </label>
+    </div>
+    <!-- 右上角用户芯片：仅展示用户名；角色与退出按钮悬停（或聚焦）时以浮层展示 -->
+    <div id="userChip" class="user-chip" tabindex="0" aria-haspopup="true">
+      <span class="uc-name" id="userChipName"></span>
+      <div class="uc-pop" role="menu">
+        <div class="uc-role">角色：<span id="userChipRole"></span></div>
+        <button id="userChipLogout" class="uc-logout" type="button" title="退出登录">退出登录</button>
+      </div>
     </div>
   </div>
 </header>
@@ -1346,5 +1354,41 @@ header{
 <!-- 日期选择浮层（单例，挂到 body 末尾以避免被任何祖先的 overflow / 错位影响）。
      内容由 JS 的 openDatePicker() 按需填充；关闭 = display:none + 归还 trigger 焦点。 -->
 <div id="dpk" class="dpk" role="dialog" aria-label="选择日期" data-page-node-id="MVwCv0Tdx04NZNP3Mq499Y"></div>
+
+<!-- RBAC 登录浮层 -->
+<div id="loginMask" class="login-mask">
+  <div class="login-card">
+    <div class="login-title">风神数据处理 · 工作台</div>
+    <div class="login-sub">请登录以继续</div>
+    <input id="loginUser" class="login-input" type="text" placeholder="用户名" autocomplete="username"/>
+    <input id="loginPass" class="login-input" type="password" placeholder="密码" autocomplete="current-password"/>
+    <button id="loginBtn" class="login-btn" type="button">登录</button>
+    <div id="loginErr" class="login-err"></div>
+  </div>
+</div>
+
+<style id="rbacStyle">
+.login-mask{position:fixed;inset:0;z-index:9999;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.45);backdrop-filter:saturate(180%) blur(6px)}
+.login-card{width:320px;max-width:90vw;background:var(--glass,#fff);border:1px solid var(--border,#e6e6e6);border-radius:16px;padding:28px 24px;box-shadow:0 20px 60px rgba(0,0,0,.25);display:flex;flex-direction:column;gap:12px}
+.login-title{font-size:18px;font-weight:700;text-align:center;color:var(--text,#1d1d1f)}
+.login-sub{font-size:13px;text-align:center;color:var(--muted,#86868b);margin-top:-6px}
+.login-input{height:42px;border:1px solid var(--border,#d0d0d5);border-radius:10px;padding:0 14px;font-size:14px;background:var(--bg,#fff);color:var(--text,#1d1d1f);outline:none}
+.login-input:focus{border-color:var(--brand,#FF5000)}
+.login-btn{height:42px;border-radius:10px;background:var(--brand,#FF5000);color:#fff;font-weight:600;font-size:15px}
+.login-btn:disabled{opacity:.6}
+.login-err{color:var(--err,#e02424);font-size:13px;min-height:18px;text-align:center}
+.user-chip{position:relative;display:none;align-items:center;flex:none;order:7;cursor:default;background:var(--glass,#fff);border:1px solid var(--border,#e6e6e6);border-radius:999px;padding:5px 14px;font-size:13px;color:var(--text,#1d1d1f);box-shadow:0 4px 14px rgba(0,0,0,.12)}
+.user-chip:focus{outline:none}
+.user-chip:hover,.user-chip:focus-within{border-color:var(--brand,#FF5000)}
+.user-chip .uc-name{font-weight:600}
+.user-chip .uc-pop{position:absolute;top:calc(100% + 8px);right:0;display:none;flex-direction:column;gap:8px;min-width:150px;background:var(--glass,#fff);border:1px solid var(--border,#e6e6e6);border-radius:12px;padding:10px 12px;box-shadow:0 10px 30px rgba(0,0,0,.16);z-index:1}
+/* 悬停 / 聚焦时展开浮层；::before 覆盖 8px 间隙，避免鼠标移入过程中丢失 hover */
+.user-chip:hover .uc-pop,.user-chip:focus-within .uc-pop{display:flex}
+.user-chip .uc-pop::before{content:"";position:absolute;left:0;right:0;top:-10px;height:10px}
+.user-chip .uc-role{color:var(--muted,#86868b);font-size:12px;white-space:nowrap}
+.user-chip .uc-role span{color:var(--text,#1d1d1f);font-weight:600}
+.user-chip .uc-logout{height:30px;padding:0 12px;border-radius:999px;background:var(--border-soft,#f0f0f2);color:var(--muted,#86868b);font-size:12px;white-space:nowrap}
+.user-chip .uc-logout:hover{color:#fff;background:var(--err,#e02424)}
+</style>
 </body>
 </html>

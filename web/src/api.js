@@ -69,15 +69,30 @@ function savePrefs(){
   }catch(e){}
 }
 
-/* H2: 接口访问令牌（由服务端注入 __SERVER_API_TOKEN__ 占位符），所有请求须携带 */
-export const __API_TOKEN__ = (window.__API_TOKEN__ || "__SERVER_API_TOKEN__");
-function withToken(u){ return u + (u.indexOf("?")>=0 ? "&" : "?") + "token=" + encodeURIComponent(__API_TOKEN__); }
+/* RBAC：会话令牌登录后存入 sessionStorage，所有请求经 X-Token 头 / ?token= 携带。
+   不再依赖服务端注入到页面的全局 token（避免公网暴露时 token 泄露到 HTML 源码）。 */
+var WB_TOKEN_KEY = "wb_token", WB_USER_KEY = "wb_user";
+export function getToken(){ try{ return sessionStorage.getItem(WB_TOKEN_KEY) || ""; }catch(e){ return ""; } }
+export function getSessionUser(){ try{ return JSON.parse(sessionStorage.getItem(WB_USER_KEY) || "null"); }catch(e){ return null; } }
+export function setSession(token, user, role){ try{ sessionStorage.setItem(WB_TOKEN_KEY, token); sessionStorage.setItem(WB_USER_KEY, JSON.stringify({user:user, role:role})); }catch(e){} }
+export function clearSession(){ try{ sessionStorage.removeItem(WB_TOKEN_KEY); sessionStorage.removeItem(WB_USER_KEY); }catch(e){} }
+
+function withToken(u){ var t = getToken(); return u + (u.indexOf("?")>=0 ? "&" : "?") + "token=" + encodeURIComponent(t); }
+
+/* 未授权回调：由 main.js 注册为弹出登录框；api 在收到 401 时调用 */
+var onUnauthorized = null;
+export function setUnauthorizedHandler(fn){ onUnauthorized = fn; }
 
 function api(path, opts){
   opts = opts || {};
-  opts.headers = Object.assign({}, opts.headers, { "X-Token": __API_TOKEN__ });
+  var t = getToken();
+  opts.headers = Object.assign({}, opts.headers, { "X-Token": t || "" });
   return fetch(path, opts)
     .then(function(r){
+      if(r.status === 401){
+        if(typeof onUnauthorized === "function") onUnauthorized();
+        throw new Error("HTTP 401 未授权");
+      }
       if(!r.ok){ throw new Error("HTTP " + r.status + " " + (r.statusText || "")); }
       return r.json();
     })
@@ -87,6 +102,31 @@ function api(path, opts){
       toast("请求失败：" + msg);
       throw err;
     });
+}
+
+/* 登录：POST /api/auth/login → 成功写入会话；返回 Promise<{token,user,role}> */
+export function login(username, password){
+  return fetch("/api/auth/login", {
+    method:"POST", headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({username:username, password:password})
+  }).then(function(r){
+    return r.json().then(function(j){ return {status:r.status, body:j}; });
+  }).then(function(res){
+    if(res.status === 200 && res.body && res.body.ok){
+      setSession(res.body.token, res.body.user, res.body.role);
+      return res.body;
+    }
+    throw new Error((res.body && res.body.error) || "登录失败");
+  });
+}
+
+/* 登出：POST /api/auth/logout（带当前令牌），之后清本地会话 */
+export function logout(){
+  var t = getToken();
+  return fetch("/api/auth/logout", {
+    method:"POST", headers:{"Content-Type":"application/json", "X-Token": t || ""},
+    body: "{}"
+  }).finally(function(){ clearSession(); });
 }
 
 export { readTokens, loadPrefs, savePrefs, withToken, api };

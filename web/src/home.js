@@ -8,11 +8,12 @@ import { refreshLan, bindLanToggle, setArg, openSide, closeSide, askConfirm, clo
 
 import { openRunDrawer } from "./runs.js";
 import { todoOpenCount, tdIsToday, todoToggle, tdOverdue, tdFmt } from "./todo.js";
+import "./home-screen.css";
 const state = store.state;
 
 /* ================= 首页 =================
-   一屏回答四件事：能不能跑（服务/Cookie/Quark）、有什么（任务与分组）、
-   要做什么（今日待办）、刚发生了什么（最近运行）。点区块直接跳到对应视图。 */
+   一屏回答三件事：有什么（任务与分组）、要做什么（今日待办）、
+   刚发生了什么（最近运行）。点区块直接跳到对应视图。 */
 export function homeSection(title, icon, rightHtml){
   var s = document.createElement("div");
   s.className = "home-sec";
@@ -30,7 +31,7 @@ export function homeHero(){
   h.className = "hero";
   h.innerHTML = '<div class="hero-eyebrow">AEOLUS WORKBENCH</div>'+
                 '<h1 class="hero-title">风神工作台</h1>'+
-                '<p class="hero-sub">'+esc(heroDate())+' · 工作台概览：服务状态、实时任务与今日待办，一目了然。</p>';
+                '<p class="hero-sub">'+esc(heroDate())+' · 工作台概览：实时任务与今日待办，一目了然。</p>';
   return h;
 }
 export function homeStat(icon, color, label, value, unit){
@@ -65,35 +66,64 @@ export function todayYmd(){
   var d = new Date(), p = function(n){ return (n<10?"0":"")+n; };
   return d.getFullYear()+"-"+p(d.getMonth()+1)+"-"+p(d.getDate());
 }
+/* 首页「各站点标准达成」：拉全部站点报表，逐站渲染 9 列（含三档差值）。
+   差值 = 达标人数 − 门槛人数 / 规模目标 / 封顶人数，正数绿（达标）、负数红（缺口）。 */
+function _renderHomeStd(host){
+  api("/api/standard/station-report?team=__all__").then(function(j){
+    if(!j || j.ok===false){
+      host.innerHTML = '<div class="empty">标准达成加载失败：'+esc((j&&j.error)||"未知错误")+'</div>';
+      return;
+    }
+    var rows = j.rows || [];
+    if(!rows.length){
+      host.innerHTML = '<div class="empty">'+(j.data_note||"暂无标准达成数据，请先在标准达成点「刷新数据」")+'</div>';
+      return;
+    }
+    host.innerHTML = _homeStdTable(rows);
+  }).catch(function(e){
+    host.innerHTML = '<div class="empty">请求失败：'+esc(String(e))+'</div>';
+  });
+}
+function _homeStdTable(rows){
+  var heads = ["站点名称","规模目标","门槛值","封顶值","达标人数","达成率","门槛差值","目标差值","封顶差值"];
+  var html = '<table class="scr-tbl"><thead><tr>';
+  heads.forEach(function(h){ html += "<th>"+esc(h)+"</th>"; });
+  html += "</tr></thead><tbody>";
+  rows.forEach(function(r){
+    var scale = r.scale_target, th = r.threshold_count, cap = r.cap_count;
+    var ach = r.achieved_num, rate = r.achieved_rate;
+    html += "<tr>"+
+      '<td class="nm">'+esc(r.team_name || r.team_id)+
+        '<span class="sub">'+esc(r.team_id || "")+"</span></td>"+
+      "<td>"+_stdFmt(scale)+"</td>"+
+      "<td>"+_stdFmt(th)+"</td>"+
+      "<td>"+_stdFmt(cap)+"</td>"+
+      '<td class="ach">'+_stdFmt(ach)+"</td>"+
+      _stdCellRate(rate)+
+      _stdCellDiff(_stdDiff(ach, th))+
+      _stdCellDiff(_stdDiff(ach, scale))+
+      _stdCellDiff(_stdDiff(ach, cap))+
+    "</tr>";
+  });
+  html += "</tbody></table>";
+  return html;
+}
+function _stdFmt(v){ return (v===null || v===undefined) ? "—" : String(v); }
+function _stdDiff(a, b){ return (a==null || b==null) ? null : (a - b); }
+function _stdCellRate(rate){
+  if(rate==null) return "<td>—</td>";
+  var cls = rate>=100 ? "ok" : (rate>=90 ? "low" : "bad");
+  var w = Math.min(100, rate) + "%";
+  return '<td class="scr-rate '+cls+'"><span>'+rate+'%</span>'+
+    '<span class="track"><i style="width:'+w+'"></i></span></td>';
+}
+function _stdCellDiff(d){
+  if(d==null) return "<td>—</td>";
+  var cls = d>0 ? "ok" : (d<0 ? "bad" : "");
+  return '<td class="'+(cls ? "diff "+cls : "")+'">'+(d>0 ? "+" : "")+d+"</td>";
+}
 export function renderHomeView(host){
-  host.appendChild(viewHead("首页", "工作台概览 · 服务状态、实时任务概览与今日待办", "house", TK.brand, ""));
-
-  /* --- 服务状态 --- */
-  host.appendChild(homeSection("服务状态", "info", '<span class="hp">每 60s 自动探测</span>'));
-  var sg = document.createElement("div");
-  sg.className = "stat-grid";
-
-  var cv, cc;
-  if(state.connected === true)       { cv = "已连接"; cc = TK.ok; }
-  else if(state.connected === false) { cv = "已断开"; cc = TK.err; }
-  else                               { cv = "连接中"; cc = TK.neutral; }
-  sg.appendChild(homeStat("check-circle", cc, "工作台服务", cv));
-
-  var kv, kc;
-  if(!state.cookie)                          { kv = "待校验"; kc = TK.neutral; }
-  else if(state.cookie.status === "valid")   { kv = "有效";   kc = TK.ok; }
-  else if(state.cookie.status === "invalid") { kv = "已失效"; kc = TK.err; }
-  else                                       { kv = "未知";   kc = TK.neutral; }
-  sg.appendChild(homeStat("user-check", kc, "风神 Cookie", kv));
-
-  var qv, qc;
-  if(!state.quark)                            { qv = "待校验"; qc = TK.neutral; }
-  else if(state.quark.status === "valid")     { qv = "有效";   qc = TK.ok; }
-  else if(state.quark.status === "invalid")   { qv = "已失效"; qc = TK.err; }
-  else if(state.quark.status === "nocache")   { qv = "未兑换"; qc = TK.neutral; }
-  else                                        { qv = "未知";   qc = TK.neutral; }
-  sg.appendChild(homeStat("layers", qc, "Quark DA", qv));
-  host.appendChild(sg);
+  host.appendChild(homeHero());
 
   /* --- 任务概览（实时） --- */
   host.appendChild(homeSection("任务概览", "layers", '<span class="hp">实时统计</span>'));
@@ -110,6 +140,14 @@ export function renderHomeView(host){
   kp.appendChild(homeStat("grid", TK.info, "任务总数", String(state.tasks.length), "个"));
   kp.appendChild(homeStat("clock", TK.neutral, "运行记录", String(state.history.length), "次"));
   host.appendChild(kp);
+
+  /* --- 各站点标准达成（今日） --- */
+  host.appendChild(homeSection("各站标准达成", "target", '<span class="hp">数据随刷新更新</span>'));
+  var _stdWrap = document.createElement("div");
+  _stdWrap.className = "scr-tbl-wrap std-apple-card";
+  _stdWrap.innerHTML = '<div class="empty">标准达成加载中…</div>';
+  host.appendChild(_stdWrap);
+  _renderHomeStd(_stdWrap);
 
   /* --- 快捷任务 --- */
   if(state.tasks.length){

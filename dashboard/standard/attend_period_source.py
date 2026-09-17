@@ -140,12 +140,19 @@ def _station_periods(periods):
 
 
 # ----------------------- 构建唯一真相源 -----------------------
-def build_dataset(team, date, cookie=None):
-    """构建统一数据集。team="__all__" 时逐站 compute 一次、合并 rider_rows 并逐站投影站点行。"""
+def build_dataset(team, date, cookie=None, teams=None):
+    """构建统一数据集。team="__all__" 时逐站 compute 一次、合并 rider_rows 并逐站投影站点行。
+
+    teams: 显式站点 id 列表，覆盖 team=="__all__" 时的默认 attend_period_teams 配置，
+           用于数据权限裁剪（服务端已过滤出用户可见站点）。
+    """
     team = str(team)
     if cookie is None:
         cookie, _ = ensure_cookies()
-    teams = APT.get_teams() if team == "__all__" else [team]
+    if teams is not None:
+        teams = [str(t) for t in teams]
+    else:
+        teams = APT.get_teams() if team == "__all__" else [team]
 
     rider_rows = []
     station_rows = []
@@ -181,12 +188,15 @@ def build_dataset(team, date, cookie=None):
     }
 
 
-def get_dataset(team, date, refresh):
+def get_dataset(team, date, refresh, teams=None):
     """单一入口：读取（refresh=False）或更新（refresh=True）统一数据集。
 
     refresh=False 且缓存命中 -> 返回带 source="cache" 的 ds；
     缓存未命中 -> 返回 None（调用方应返回 need_refresh 提示前端点查询）。
     refresh=True  -> 重建并写入缓存（频控由调用方 server 负责）。
+
+    teams: 仅 refresh=True 且 team=="__all__" 时生效，用于数据权限裁剪
+           （只合并这些站点，而非 attend_period_teams 配置的全部站点）。
     """
     key = (str(team), date)
     if not refresh and key in _DS_CACHE:
@@ -196,7 +206,7 @@ def get_dataset(team, date, refresh):
         return ds
     if not refresh:
         return None
-    ds = build_dataset(team, date)
+    ds = build_dataset(team, date, teams=teams)
     _DS_CACHE[key] = ds
     return ds
 

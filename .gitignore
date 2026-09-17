@@ -68,6 +68,13 @@ web/dist/
 # 后端 API token —— 真实密钥（server.py 的 _API_TOKEN_PATH 落在项目根）
 .api_token
 
+# RBAC 用户库与审计日志（含口令哈希 / 操作记录，本地状态，不提交）
+.users.json
+.audit.jsonl
+# RBAC 角色配置（可配置 + 继承）与密码策略（本地状态，不提交）
+.roles.json
+.pwpolicy.json
+
 # LAN 开关本地状态
 .lan_enabled
 
@@ -76,6 +83,8 @@ server/runs/
 server/logs/
 server/_final_shots/
 server/data/recent_groups.json
+# 数据权限：上次成功获取的站点明细（失败回退用，本地状态，不提交）
+server/data/data_perms_teams_last.json
 
 # 本地工具缓存
 .vite/

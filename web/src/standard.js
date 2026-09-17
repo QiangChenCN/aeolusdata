@@ -740,8 +740,7 @@ export function _stdRenderRiders(host, refresh, done){
       ["全天有效单量","valid_orders"],["全天有效时长","valid_online_min"],
       ["达成标准","achieved_label"],["单量差值","next_level_order_gap"],
       ["时长差值","prev_level_duration_gap"],["在线状态","online_status"],
-      ["预计达标","est_achievable_label"],["全天单量","full_day_orders"],
-      ["全天在线时长","full_day_online_min"]];
+      ["配送中单量","delivering_orders"],["预计达标","est_achievable_label"]];
 
     // 骑手候选池：供筛选下拉使用（每次渲染后刷新，天然只含本次查询站点的骑手）
     _std.riderPool=(j.rows||[]).map(function(r){
@@ -815,7 +814,7 @@ export function _stdRenderRiders(host, refresh, done){
           if(os==="未排班"){ var c=r.online_status_code; os=(c===3)?"下线":((c===2)?"小休":"在线"); }
           var oc=(os==="在线")?"rate-ok":((os==="小休"||os==="申请小休")?"rate-warn":"rate-bad");
           return '<td><span class="rate '+oc+'">'+esc(os)+'</span></td>'; }
-        if(k==="valid_online_min"||k==="full_day_online_min") return "<td>"+_stdFmtHm(r[k])+"</td>";
+        if(k==="valid_online_min") return "<td>"+_stdFmtHm(r[k])+"</td>";
         if(k==="prev_level_duration_gap"){
           // 时长差值：0 或缺失表示「这一轴已够 / 无从比较」，置灰弱化（值本身不改）
           var dv=r[k];

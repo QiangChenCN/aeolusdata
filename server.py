@@ -35,6 +35,11 @@ from datetime import datetime
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
 
+# RBAC 权限核心（纯标准库：用户库 / 会话 / 角色权限 / 审计）
+import auth
+# 数据权限（行级隔离，按 team 维度）：本模块管「能看哪些站点的数据」
+import dataperm
+
 # P0：结构化日志替代散落 print（诊断/异常走 logger；启动横幅保留 print 给用户看）
 # logging 是标准库，不引入第三方依赖。
 log = logging.getLogger("workbench")
@@ -238,8 +243,6 @@ def load_history():
 # 5 分钟 TTL：弹窗反复开关不重打风神；TTL 到了再走一次 xtop 接口。
 _TEAMS_CACHE = {"data": None, "ts": 0}
 _TEAMS_CACHE_TTL = 300
-
-
 def _teams_with_names():
     """全部站点 [(team_id, name)]：优先 /api/teams 的 5 分钟内存缓存，否则兜底三站。
 
@@ -630,6 +633,7 @@ class RunManager:
         值为 cid 直接记；值是群名则尝试解析成 cid（解析不动就不记，避免脏数据）。
         补群名只用内存缓存（peek_groups），绝不为了一个名字去打 dws
         —— 运行按钮不能因为登记最近使用而卡住。
+        缓存冷、拿不到群名时**不写群号**：交给 recent() 事后用全量缓存回填真名。
         """
         val = str((args or {}).get("--group") or "").strip()
         if not val:
@@ -647,7 +651,7 @@ class RunManager:
                 if g["id"] == gid:
                     title = g["title"]
                     break
-            group_picker.note_used(gid, title or gid)
+            group_picker.note_used(gid, title)
         except Exception:
             pass
 
@@ -1466,6 +1470,119 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", "0")
         self.end_headers()
 
+    # ---- RBAC 鉴权辅助 ----
+    def _extract_token(self):
+        """从 X-Token 头 / ?token= 查询参数 / wb_session Cookie 取出令牌。"""
+        t = self.headers.get("X-Token")
+        if not t:
+            q = parse_qs(urlparse(self.path).query)
+            t = (q.get("token") or [None])[0]
+        if not t:
+            ck = self.headers.get("Cookie") or ""
+            m = re.search(r"(?:^|;\s*)wb_session=([^;]+)", ck)
+            if m:
+                t = m.group(1)
+        return t
+
+    def _auth_user(self):
+        return auth.get_session(self._extract_token())
+
+    # ---------------- 数据权限（行级隔离）闸门 ----------------
+    # 当前系统报表以 team（站点）为隔离维度；本闸门把「请求了哪个 team」与
+    # 「当前登录用户被允许看哪些 team」做比对，杜绝越权读取他人站点数据。
+    def _enforce_team_scope(self, requested_team):
+        """按当前会话对 team 维度做行级隔离。返回 (mode, val)：
+          ("all",   None) -> 用户可看全部，原 '__all__' 分支按 universe 走
+          ("scoped", ids) -> 受限用户看 '__all__'，ids 为被允许的 team id 集合
+          ("one",   tid)  -> 单站请求且被允许（tid 即请求值，已通过校验）
+          ("deny",  None) -> 已发送 403，调用方必须 return
+        admin 角色永远全量；无规则用户默认全量（见 dataperm.DEFAULT_SCOPE）。
+        """
+        s = self.session
+        role = (s or {}).get("role")
+        if role == "admin":
+            return ("all", None) if requested_team == "__all__" else ("one", requested_team)
+        ids = dataperm.allowed_team_ids(s["user"], role)   # set 或 None
+        if ids is None:
+            return ("all", None) if requested_team == "__all__" else ("one", requested_team)
+        if requested_team == "__all__":
+            return ("scoped", ids)
+        if str(requested_team) in ids:
+            return ("one", requested_team)
+        auth.audit("data:scope", False, s["user"], self.client_address[0],
+                   s["role"], "GET", "team=%s" % requested_team)
+        self._json({"ok": False, "error": "无权访问该站点数据",
+                    "code": "DATA_SCOPE_DENIED"}, 403)
+        return ("deny", None)
+
+    def _scoped_universe(self, universe):
+        """universe: [(id, name), ...]（某报表默认覆盖的全部站点）。
+        返回当前用户被允许的子集（admin/无限制 -> 原样；受限 -> 仅保留可见站点）。
+        供无 team 参数的聚合型报表（数据大屏）按权限裁剪。
+        """
+        s = self.session
+        role = (s or {}).get("role")
+        if role == "admin":
+            return list(universe)
+        ids = dataperm.allowed_team_ids(s["user"], role)
+        if ids is None:
+            return list(universe)
+        return [t for t in universe if str(t[0]) in ids]
+
+    def _handle_login(self):
+        data = self._body()
+        if not isinstance(data, dict):
+            data = {}
+        uname = (data.get("username") or "")
+        pw = (data.get("password") or "")
+        ip = self.client_address[0]
+        res = auth.login(uname, pw, ip)
+        if not res:
+            self._json({"ok": False, "error": "用户名或密码错误"}, 401)
+            return
+        token, role = res
+        body = json.dumps({"ok": True, "token": token, "user": uname,
+                           "role": role, "expires_in": auth.SESSION_TTL},
+                          ensure_ascii=False).encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Set-Cookie",
+            "wb_session=%s; Path=/; HttpOnly; SameSite=Lax; Max-Age=%d"
+            % (token, auth.SESSION_TTL))
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _handle_logout(self):
+        t = self._extract_token()
+        if t:
+            auth.logout(t)
+        body = b'{"ok":true}'
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Set-Cookie", "wb_session=; Path=/; HttpOnly; Max-Age=0")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _handle_change_pw(self):
+        s = self._auth_user()
+        if not s:
+            self._json({"ok": False, "error": "unauthorized"}, 401)
+            return
+        data = self._body()
+        if not isinstance(data, dict):
+            data = {}
+        try:
+            auth.change_password(s["user"],
+                                 data.get("old_password") or "",
+                                 data.get("new_password") or "")
+            self._json({"ok": True})
+        except ValueError as e:
+            self._json({"ok": False, "error": str(e)}, 400)
+        except Exception as e:
+            self._json({"ok": False, "error": "服务器错误：" + str(e)}, 500)
+
     def do_GET(self):
         u = urlparse(self.path)
         p = u.path
@@ -1480,11 +1597,33 @@ class Handler(BaseHTTPRequestHandler):
         if _serve_static_get(self, p):
             return
 
-        # H2: 所有 /api/* 接口强制鉴权（X-Token + 同源 Origin）+ 路由表分发
         if p.startswith("/api/"):
-            if not self._check_auth():
-                self._json({"ok": False, "error": "unauthorized"}, 403)
+            # 登录态自检：无需有效会话也可访问（前端据此决定是否弹登录框）
+            if p == "/api/auth/me":
+                s = self._auth_user()
+                if s:
+                    self._json({"authenticated": True, "user": s["user"], "role": s["role"]})
+                else:
+                    self._send(401,
+                        json.dumps({"authenticated": False, "error": "unauthorized"},
+                                   ensure_ascii=False),
+                        "application/json; charset=utf-8")
                 return
+            s = self._auth_user()
+            if not s:
+                self._json({"ok": False, "error": "unauthorized"}, 401)
+                return
+            self.session = s
+            # 路由 → 权限（GET 未列出默认 view）
+            perm = auth.GET_ROUTE_PERMS.get(p, "view")
+            if not auth.has_perm(s["role"], perm):
+                auth.audit(perm, False, s["user"], self.client_address[0],
+                           s["role"], "GET", p)
+                self._json({"ok": False, "error": "forbidden", "need": perm}, 403)
+                return
+            if perm in auth.SENSITIVE_AUDIT:
+                auth.audit(perm, True, s["user"], self.client_address[0],
+                           s["role"], "GET", p)
             fn = GET_ROUTES.get(p)
             if fn is not None:
                 fn(self, qs)
@@ -1539,11 +1678,23 @@ class Handler(BaseHTTPRequestHandler):
             self._send(403, "局域网访问已关闭", "text/plain; charset=utf-8")
             return
 
-        # H2: 所有 /api/* 接口强制鉴权（X-Token + 同源 Origin）+ 路由表分发
         if p.startswith("/api/"):
-            if not self._check_auth():
-                self._json({"ok": False, "error": "unauthorized"}, 403)
+            # 认证端点：无需有效会话
+            if p == "/api/auth/login":
+                self._handle_login()
                 return
+            if p == "/api/auth/logout":
+                self._handle_logout()
+                return
+            # 个人改密：已登录即可（perm="self"），无需管理员权限
+            if p == "/api/account/change-pw":
+                self._handle_change_pw()
+                return
+            s = self._auth_user()
+            if not s:
+                self._json({"ok": False, "error": "unauthorized"}, 401)
+                return
+            self.session = s
             # 非 JSON 请求体一律拒绝（防畸形/非预期请求）
             ct = self.headers.get("Content-Type") or ""
             if int(self.headers.get("Content-Length") or 0) > 0 \
@@ -1551,6 +1702,14 @@ class Handler(BaseHTTPRequestHandler):
                 self._json({"ok": False, "error": "仅接受 application/json 请求体"}, 415)
                 return
             data = self._body()
+            perm = auth.POST_ROUTE_PERMS.get(p, "view")
+            if not auth.has_perm(s["role"], perm):
+                auth.audit(perm, False, s["user"], self.client_address[0],
+                           s["role"], "POST", p)
+                self._json({"ok": False, "error": "forbidden", "need": perm}, 403)
+                return
+            auth.audit(perm, True, s["user"], self.client_address[0],
+                       s["role"], "POST", p)
             fn = POST_ROUTES.get(p)
             if fn is not None:
                 fn(self, data)
@@ -1572,13 +1731,18 @@ def _get_std_achievement(self, qs):
     start = (qs.get("start") or [""])[0] or CACHE.today_ymd()
     end = (qs.get("end") or [""])[0] or CACHE.today_ymd()
     refresh = (qs.get("refresh") or ["0"])[0] == "1"
+    mode, val = self._enforce_team_scope(team)
+    if mode == "deny":
+        return
     if team == MT.ALL_TEAM_ID:
         if refresh:
             self._json({"ok": False, "code": "USE_REFRESH_ALL",
                         "error": "全部站点不支持同步实时拉取，请点「刷新数据」走全量刷新",
                         "rows": [], "summary": None}, 400)
             return
-        self._json(MT.achievement_all(_configured_teams(), start, end))
+        _teams = _configured_teams() if mode == "all" else \
+            [t for t in _configured_teams() if t[0] in val]
+        self._json(MT.achievement_all(_teams, start, end))
         return
     if refresh:
         _ok, _wait = _rate_check(self, "achievement")
@@ -1608,13 +1772,18 @@ def _get_std_riders(self, qs):
     tc = (qs.get("tc") or [""])[0] or None
     month = (qs.get("month") or [""])[0].strip() or None
     refresh = (qs.get("refresh") or ["0"])[0] == "1"
+    mode, val = self._enforce_team_scope(team)
+    if mode == "deny":
+        return
     if team == MT.ALL_TEAM_ID:
         if refresh:
             self._json({"ok": False, "code": "USE_REFRESH_ALL",
                         "error": "全部站点不支持同步实时拉取，请点「刷新数据」走全量刷新",
                         "rows": [], "summary": None}, 400)
             return
-        self._json(MT.riders_all(_configured_teams(), start, end,
+        _teams = _configured_teams() if mode == "all" else \
+            [t for t in _configured_teams() if t[0] in val]
+        self._json(MT.riders_all(_teams, start, end,
                                  time_code=tc, month=month))
         return
     if refresh:
@@ -1645,10 +1814,15 @@ def _get_std_station_report(self, qs):
     start = (qs.get("start") or [""])[0] or CACHE.today_ymd()
     end = (qs.get("end") or [""])[0] or CACHE.today_ymd()
     month = (qs.get("month") or [""])[0].strip() or None
+    mode, val = self._enforce_team_scope(team)
+    if mode == "deny":
+        return
     if team == MT.ALL_TEAM_ID:
         try:
             from dashboard.standard import station_report as SR
-            self._json(SR.build_all(_configured_teams(), start, end, month))
+            _teams = _configured_teams() if mode == "all" else \
+                [t for t in _configured_teams() if t[0] in val]
+            self._json(SR.build_all(_teams, start, end, month))
         except Exception as e:
             self._json({"ok": False, "error": "%s: %s" % (type(e).__name__, e),
                         "team": team, "rows": [], "data_status": "error"})
@@ -1737,8 +1911,11 @@ def _post_std_refresh_all(self, data):
     from dashboard.standard import refresh_all as RA
     from dashboard.standard import cache as CACHE
     if RA.status().get("running"):
-        self._json({"ok": False, "code": "BUSY", "error": "已有刷新任务在运行",
-                    "status": RA.status()}, 409)
+        # 已有刷新在跑：不再报错 409，而是把当前进度返回给前端，
+        # 由前端转入轮询（始终只跑一个全量刷新，这里只是「接入」已存在的任务）。
+        self._json({"ok": True, "already_running": True,
+                    "msg": "已有刷新任务在运行，已接入进度轮询",
+                    "status": RA.status()})
         return
     _ok, _wait = _rate_check(self, "refresh-all")
     if not _ok:
@@ -1805,6 +1982,9 @@ def _get_ap_valid(self, qs):
     team = (qs.get("team") or ["917521136"])[0]
     date = (qs.get("start") or [""])[0] or CACHE.today_ymd()
     refresh = (qs.get("refresh") or ["0"])[0] == "1"
+    mode, val = self._enforce_team_scope(team)
+    if mode == "deny":
+        return
     if not refresh:
         self._json({"ok": True, "need_refresh": True, "rows": [],
                     "summary": None, "team": team, "date": date,
@@ -1819,7 +1999,9 @@ def _get_ap_valid(self, qs):
         if team == "__all__":
             from dashboard.standard import attend_period_all as APA
             from dashboard.standard import attend_period_teams as APT
-            data = APA.valid_all(APT.get_teams(), date)
+            _ids = APT.get_teams() if mode == "all" else \
+                [t for t in APT.get_teams() if t in val]
+            data = APA.valid_all(_ids, date)
         else:
             from dashboard import attend_period as AP
             data = AP.compute_valid(team, date)
@@ -1836,6 +2018,9 @@ def _get_ap_rider_detail(self, qs):
     team = (qs.get("team") or ["917521136"])[0]
     date = (qs.get("start") or [""])[0] or CACHE.today_ymd()
     refresh = (qs.get("refresh") or ["0"])[0] == "1"
+    mode, val = self._enforce_team_scope(team)
+    if mode == "deny":
+        return
     if not refresh:
         self._json({"ok": True, "need_refresh": True, "rows": [], "periods": [],
                     "summary": None, "team": team, "date": date,
@@ -1848,7 +2033,13 @@ def _get_ap_rider_detail(self, qs):
         return
     try:
         from dashboard.standard import attend_period_source as APSRC
-        ds = APSRC.get_dataset(team, date, refresh=True)
+        if team == "__all__":
+            from dashboard.standard import attend_period_teams as APT
+            _ids = APT.get_teams() if mode == "all" else \
+                [t for t in APT.get_teams() if t in val]
+            ds = APSRC.get_dataset("__all__", date, refresh=True, teams=_ids)
+        else:
+            ds = APSRC.get_dataset(team, date, refresh=True)
         self._json(APSRC.to_rider_detail(ds))
     except Exception as e:
         self._json({"ok": False, "error": "%s: %s" % (type(e).__name__, e),
@@ -1863,6 +2054,9 @@ def _get_ap_station_data(self, qs):
     team = (qs.get("team") or ["917521136"])[0]
     date = (qs.get("start") or [""])[0] or CACHE.today_ymd()
     refresh = (qs.get("refresh") or ["0"])[0] == "1"
+    mode, val = self._enforce_team_scope(team)
+    if mode == "deny":
+        return
     if not refresh:
         self._json({"ok": True, "need_refresh": True, "rows": [], "periods": [],
                     "team": team, "date": date, "source": "none",
@@ -1874,7 +2068,13 @@ def _get_ap_station_data(self, qs):
         return
     try:
         from dashboard.standard import attend_period_source as APSRC
-        ds = APSRC.get_dataset(team, date, refresh=True)
+        if team == "__all__":
+            from dashboard.standard import attend_period_teams as APT
+            _ids = APT.get_teams() if mode == "all" else \
+                [t for t in APT.get_teams() if t in val]
+            ds = APSRC.get_dataset("__all__", date, refresh=True, teams=_ids)
+        else:
+            ds = APSRC.get_dataset(team, date, refresh=True)
         self._json(APSRC.to_station_data(ds))
     except Exception as e:
         self._json({"ok": False, "error": "%s: %s" % (type(e).__name__, e),
@@ -1888,6 +2088,9 @@ def _get_ap_dataset(self, qs):
     team = (qs.get("team") or ["__all__"])[0]
     date = (qs.get("start") or [""])[0] or CACHE.today_ymd()
     refresh = (qs.get("refresh") or ["0"])[0] == "1"
+    mode, val = self._enforce_team_scope(team)
+    if mode == "deny":
+        return
     if not refresh:
         self._json({"ok": True, "need_refresh": True, "dataset": None,
                     "team": team, "date": date, "source": "none",
@@ -1899,7 +2102,13 @@ def _get_ap_dataset(self, qs):
         return
     try:
         from dashboard.standard import attend_period_source as APSRC
-        ds = APSRC.get_dataset(team, date, refresh=True)
+        if team == "__all__":
+            from dashboard.standard import attend_period_teams as APT
+            _ids = APT.get_teams() if mode == "all" else \
+                [t for t in APT.get_teams() if t in val]
+            ds = APSRC.get_dataset("__all__", date, refresh=True, teams=_ids)
+        else:
+            ds = APSRC.get_dataset(team, date, refresh=True)
         self._json({"ok": True, "team": ds["team"], "date": ds["date"],
                     "fetched_at": ds["fetched_at"], "source": ds["source"],
                     "dataset": {"rider_detail": APSRC.to_rider_detail(ds),
@@ -1937,8 +2146,16 @@ def _get_ap_teams(self, qs):
         from dashboard.standard import attend_period_teams as APT
         res = _fetch_all_teams()
         raw = res.get("teams") or res.get("fallback") or []
-        all_list = [{"id": str(t.get("id")), "name": t.get("name")} for t in raw]
-        self._json({"ok": res.get("ok", True), "teams": APT.get_teams(),
+        s = self.session
+        _ids = None
+        if (s or {}).get("role") != "admin":
+            _ids = dataperm.allowed_team_ids(s["user"], s["role"])
+        all_list = [{"id": str(t.get("id")), "name": t.get("name")} for t in raw
+                    if _ids is None or str(t.get("id")) in _ids]
+        _cfg = APT.get_teams()
+        if _ids is not None:
+            _cfg = [t for t in _cfg if str(t) in _ids]
+        self._json({"ok": res.get("ok", True), "teams": _cfg,
                     "all": all_list, "source": res.get("source"),
                     "error": res.get("error")})
     except Exception as e:
@@ -2073,6 +2290,9 @@ def _get_lan_set(self, qs):
 
 
 def _get_groups(self, qs):
+    # ?id=<cid> → 按群号精确反查群名（前端把已保存的 gid 回填成群名用）；
+    # ?q=<关键词> → 模糊搜索。两者都只返回群名作 title，绝不回退成群号。
+    gid = ((qs.get("id") or [""])[0] or "").strip()
     q = (qs.get("q") or [""])[0]
     try:
         limit = int((qs.get("limit") or [0])[0] or 0) or 20
@@ -2080,7 +2300,10 @@ def _get_groups(self, qs):
         limit = 20
     try:
         import group_picker
-        self._json({"ok": True, **group_picker.search(q, limit)})
+        if gid:
+            self._json({"ok": True, **group_picker.by_id(gid)})
+        else:
+            self._json({"ok": True, **group_picker.search(q, limit)})
     except Exception as e:
         try:
             import group_picker
@@ -2094,7 +2317,18 @@ def _get_groups(self, qs):
 def _get_teams(self, qs):
     if ROOT not in sys.path:
         sys.path.insert(0, ROOT)
-    self._json(_fetch_all_teams())
+    res = _fetch_all_teams()
+    # 数据权限：非管理员只暴露其可见站点，避免站点清单泄露
+    s = self.session
+    if (s or {}).get("role") != "admin":
+        ids = dataperm.allowed_team_ids(s["user"], s["role"])
+        if ids is not None:
+            res = dict(res)
+            for _k in ("teams", "all", "fallback"):
+                _lst = res.get(_k) or []
+                res[_k] = [t for t in _lst
+                           if str(t.get("id") if isinstance(t, dict) else t) in ids]
+    self._json(res)
 
 
 def _get_history(self, qs):
@@ -2232,7 +2466,6 @@ def _serve_static_get(self, p):
         except Exception:
             self._send(500, "index.html 缺失（请先 npm run build）", "text/plain; charset=utf-8")
             return True
-        data = data.replace(b"__SERVER_API_TOKEN__", API_TOKEN.encode("utf-8"))
         self._send(200, data, "text/html; charset=utf-8")
         return True
     if p.startswith("/assets/"):
@@ -2290,7 +2523,8 @@ def _get_ov_site_orders(self, qs):
     if not start:
         start = (_dt.date.fromisoformat(end) - _dt.timedelta(days=6)).isoformat()
     try:
-        payload = SO.build_site_orders(start, end)
+        _allowed = self._scoped_universe(_configured_teams())
+        payload = SO.build_site_orders(start, end, teams=[t[0] for t in _allowed] or None)
     except Exception as e:
         payload = {"ok": False, "error": "%s: %s" % (type(e).__name__, e),
                    "range": {"start": start, "end": end}, "sites": [], "totals": {}}
@@ -2312,12 +2546,239 @@ def _get_ov_standard(self, qs):
     month = (qs.get("month") or [""])[0].strip() or None
     try:
         from dashboard.standard import station_report as SR
-        payload = SR.build_all(_configured_teams(), date, date, month)
+        payload = SR.build_all(self._scoped_universe(_configured_teams()), date, date, month)
     except Exception as e:
         payload = {"ok": False, "error": "%s: %s" % (type(e).__name__, e),
                    "start": date, "end": date, "rows": []}
     payload["date"] = date
     self._json(payload)
+
+
+def _get_ov_assessment(self, qs):
+    """考核结算大屏 —— 跨源聚合（运力达标 / 大网质量 / 时段出勤 / 历史对比 / 红黄灯）。
+
+    只读 dashboard/data 三源缓存（与「标准达成」「时段出勤」同源，零口径漂移），
+    时段出勤复用 attend_period_source 的进程内数据集缓存（用户未点查询则留空提示）。
+    支持 ?date=YYYY-MM-DD（默认今天）与 ?refresh=1（清模块缓存重算）。
+    """
+    if ROOT not in sys.path:
+        sys.path.insert(0, ROOT)
+    from dashboard.standard import cache as CACHE
+    date = (qs.get("date") or [""])[0].strip() or CACHE.today_ymd()
+    refresh = (qs.get("refresh") or [""])[0].strip() in ("1", "true", "yes")
+    try:
+        from dashboard.standard import assessment_overview as AO
+        payload = AO.build_assessment(date, self._scoped_universe(_configured_teams()), refresh=refresh)
+    except Exception as e:
+        payload = {"ok": False, "error": "%s: %s" % (type(e).__name__, e), "date": date}
+    self._json(payload)
+
+
+# ===================== 账号 / 角色 / 策略 管理接口（模块级处理器） =====================
+def _admin_err(self, code, msg):
+    self._json({"ok": False, "error": msg}, code)
+
+def _get_admin_users(self, qs):
+    self._json({"ok": True, "users": auth.list_users_safe()})
+
+def _get_admin_roles(self, qs):
+    catalog = [{"perm": p, "label": l, "group": g} for (p, l, g) in auth.PERM_CATALOG]
+    self._json({"ok": True, "roles": auth.list_roles(),
+                "catalog": catalog, "all_perms": sorted(auth.ALL_PERMS)})
+
+def _get_policy(self, qs):
+    self._json({"ok": True, "policy": auth.get_policy(), "defaults": auth.PW_POLICY_DEFAULT})
+
+# 数据权限专用：站点明细持久化（仅供本接口「失败回退」用，不影响 /api/teams 等既有行为）
+_DP_TEAMS_LAST_PATH = os.path.join(ROOT, "server", "data", "data_perms_teams_last.json")
+
+
+def _dp_load_teams_last():
+    """数据权限上次成功获取的站点明细 [{id, name}]；文件缺失 / 损坏 → []。"""
+    try:
+        with open(_DP_TEAMS_LAST_PATH, "r", encoding="utf-8") as f:
+            obj = json.load(f)
+    except Exception:
+        return []
+    teams = (obj or {}).get("teams")
+    if not isinstance(teams, list):
+        return []
+    out = []
+    for t in teams:
+        tid = str((t or {}).get("id") or "").strip()
+        if tid:
+            out.append({"id": tid, "name": (t or {}).get("name") or tid})
+    return out
+
+
+def _dp_save_teams_last(teams):
+    """原子写：把本次成功获取的站点明细落盘，供数据权限接口下次失败回退。"""
+    try:
+        os.makedirs(os.path.dirname(_DP_TEAMS_LAST_PATH), exist_ok=True)
+        tmp = _DP_TEAMS_LAST_PATH + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump({"teams": teams,
+                       "saved_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")},
+                      f, ensure_ascii=False, indent=2)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, _DP_TEAMS_LAST_PATH)
+    except Exception as e:
+        log.warning("[data-perms] 站点明细落盘失败：%s" % e)
+
+
+def _get_data_perms(self, qs):
+    """数据权限管理：返回账号清单、组织树(业务线→城市→站点)、当前规则、可选站点清单。
+
+    站点清单以风神为准：主动调 _fetch_all_teams() 拉取（5 分钟缓存复用）。
+    该拉取失败（source="fallback"）时，回退到**本接口上次成功获取的明细**；
+    从未成功过则返回空。此回退仅作用于数据权限，不改动 /api/teams 的行为。
+    """
+    if ROOT not in sys.path:
+        sys.path.insert(0, ROOT)
+    _ft = _fetch_all_teams()
+    if _ft.get("source") != "fallback" and _ft.get("teams"):
+        _dp_save_teams_last(_ft["teams"])
+        _items, _src = _ft["teams"], "xtop"
+    else:
+        _items = _dp_load_teams_last()
+        _src = "cache" if _items else "none"
+    all_teams = [{"id": str(t.get("id")), "name": t.get("name") or str(t.get("id"))}
+                 for t in _items if t.get("id")]
+    org = {}        # city -> [{"id", "name"}]
+    ungrouped = []  # 未归入任何城市的站点（供组织编辑器归类）
+    for t in all_teams:
+        c = dataperm.city_of(t["id"])
+        if c:
+            org.setdefault(c, []).append(t)
+        else:
+            ungrouped.append(t)
+    self._json({"ok": True,
+                "users": auth.list_users_safe(),
+                "rules": dataperm.list_rules(),
+                "all_teams": all_teams,
+                "teams_source": _src,   # "xtop"(风神) / "cache"(上次明细) / "none"
+                "org": org,
+                "ungrouped": ungrouped,
+                "cities": dataperm.cities(),
+                "business_lines": dataperm.business_lines(),
+                "bl_of_city": {c: (dataperm.business_line_of(c) or "") for c in dataperm.cities()},
+                "default_new_site": dataperm.get_default_new_site(),
+                "default_scope": dataperm.DEFAULT_SCOPE})
+
+def _post_data_perms(self, data):
+    """保存 / 删除某用户的数据权限规则，或保存组织树。
+
+    组织树：body {action:"set_org", cities:{城市:[站点id...]}, default_new_site?}
+    规则：   body {username, action?, scope?, teams?, cities?, inherit_new?}
+    """
+    act = (data.get("action") or "set")
+    if act == "set_org":
+        cities_map = data.get("cities") or {}
+        bl_map = data.get("business_lines") or {}
+        dns = data.get("default_new_site")
+        ok, msg = dataperm.set_org(cities_map, dns, bl_map)
+        auth.audit("data:org", ok, self.session["user"], self.client_address[0],
+                   "business_lines=%d cities=%d" % (len(bl_map or {}), len(cities_map or {})))
+        self._json({"ok": ok, "error": (msg or None)}, 200 if ok else 400)
+        return
+    uname = (data.get("username") or "").strip()
+    if not uname:
+        self._json({"ok": False, "error": "用户名不能为空"}, 400)
+        return
+    if act == "delete":
+        ok, msg = dataperm.delete_rule(uname)
+    else:
+        scope = data.get("scope") or "all"
+        teams = data.get("teams") or []
+        cities = data.get("cities") or []
+        business_lines = data.get("business_lines") or []
+        inherit_new = bool(data.get("inherit_new"))
+        ok, msg = dataperm.set_rule(uname, scope, teams, cities=cities,
+                                    business_lines=business_lines, inherit_new=inherit_new)
+    auth.audit("data:perm", ok, self.session["user"], self.client_address[0], uname)
+    self._json({"ok": ok, "error": (msg or None)}, 200 if ok else 400)
+
+def _post_admin_add_user(self, data):
+    try:
+        auth.add_user((data.get("username") or "").strip(),
+                      data.get("password") or "", data.get("role") or "")
+        self._json({"ok": True})
+    except ValueError as e:
+        _admin_err(self, 400, str(e))
+    except Exception as e:
+        _admin_err(self, 500, "服务器错误：" + str(e))
+
+def _post_admin_update_user(self, data):
+    try:
+        uname = (data.get("username") or "").strip()
+        kw = {}
+        if data.get("role") is not None:
+            kw["role"] = data.get("role")
+        if data.get("disabled") is not None:
+            kw["disabled"] = bool(data.get("disabled"))
+        auth.update_user(uname, **kw)
+        self._json({"ok": True})
+    except ValueError as e:
+        _admin_err(self, 400, str(e))
+    except Exception as e:
+        _admin_err(self, 500, "服务器错误：" + str(e))
+
+def _post_admin_reset_pw(self, data):
+    try:
+        auth.reset_password((data.get("username") or "").strip(), data.get("password") or "")
+        self._json({"ok": True})
+    except ValueError as e:
+        _admin_err(self, 400, str(e))
+    except Exception as e:
+        _admin_err(self, 500, "服务器错误：" + str(e))
+
+def _post_admin_delete_user(self, data):
+    s = self._auth_user()
+    cur = s["user"] if s else None
+    try:
+        auth.delete_user((data.get("username") or "").strip(), current_user=cur)
+        self._json({"ok": True})
+    except ValueError as e:
+        _admin_err(self, 400, str(e))
+    except Exception as e:
+        _admin_err(self, 500, "服务器错误：" + str(e))
+
+def _post_admin_create_role(self, data):
+    try:
+        auth.create_role(data.get("name") or "", data.get("perms"), data.get("parents"))
+        self._json({"ok": True})
+    except ValueError as e:
+        _admin_err(self, 400, str(e))
+    except Exception as e:
+        _admin_err(self, 500, "服务器错误：" + str(e))
+
+def _post_admin_update_role(self, data):
+    try:
+        auth.update_role(data.get("name") or "", data.get("perms"), data.get("parents"))
+        self._json({"ok": True})
+    except ValueError as e:
+        _admin_err(self, 400, str(e))
+    except Exception as e:
+        _admin_err(self, 500, "服务器错误：" + str(e))
+
+def _post_admin_delete_role(self, data):
+    try:
+        auth.delete_role(data.get("name") or "")
+        self._json({"ok": True})
+    except ValueError as e:
+        _admin_err(self, 400, str(e))
+    except Exception as e:
+        _admin_err(self, 500, "服务器错误：" + str(e))
+
+def _post_set_policy(self, data):
+    try:
+        pol = auth.set_policy(data or {})
+        self._json({"ok": True, "policy": pol})
+    except ValueError as e:
+        _admin_err(self, 400, str(e))
+    except Exception as e:
+        _admin_err(self, 500, "服务器错误：" + str(e))
 
 
 GET_ROUTES = {
@@ -2352,6 +2813,7 @@ GET_ROUTES = {
     "/api/todo/runs": _get_todo_runs,
     "/api/overview/site-orders": _get_ov_site_orders,
     "/api/overview/standard": _get_ov_standard,
+    "/api/overview/assessment": _get_ov_assessment,
 }
 
 POST_ROUTES = {
@@ -2372,6 +2834,25 @@ POST_ROUTES = {
     "/api/groups/used": _post_groups_used,
     "/api/groups/forget": _post_groups_forget,
 }
+
+# 管理类路由（账号 / 角色 / 策略；鉴权由 POST_ROUTE_PERMS/GET_ROUTE_PERMS 的权限点控制）
+GET_ROUTES.update({
+    "/api/admin/users": _get_admin_users,
+    "/api/admin/roles": _get_admin_roles,
+    "/api/policy":      _get_policy,
+    "/api/data-perms":  _get_data_perms,
+})
+POST_ROUTES.update({
+    "/api/admin/user":         _post_admin_add_user,
+    "/api/admin/user/update":  _post_admin_update_user,
+    "/api/admin/user/reset-pw": _post_admin_reset_pw,
+    "/api/admin/user/delete":  _post_admin_delete_user,
+    "/api/admin/role":         _post_admin_create_role,
+    "/api/admin/role/update":   _post_admin_update_role,
+    "/api/admin/role/delete":   _post_admin_delete_role,
+    "/api/policy":             _post_set_policy,
+    "/api/data-perms":         _post_data_perms,
+})
 
 
 def _detect_lan_ip():
@@ -2397,6 +2878,8 @@ def main():
     if "--host" in sys.argv:
         host = sys.argv[sys.argv.index("--host") + 1]
     srv = ThreadingHTTPServer((host, port), Handler)
+    # RBAC：首次运行无用户库则建默认管理员（admin / admin123 或 WB_ADMIN_PASSWORD）
+    auth.ensure_bootstrap()
     url = "http://127.0.0.1:%d" % port
     lan_ip = _detect_lan_ip()
     lan_url = ("http://%s:%d" % (lan_ip, port)) if lan_ip else None

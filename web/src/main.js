@@ -1,7 +1,7 @@
 "use strict";
 import { TK, TK_MAP, RISK_LABEL, RISK_CLS, STATUS_CLS, STATUS_TXT, ICON } from "./tokens.js";
 import { store, groupOf, taskById, countInGroup, producerOf, missingText, visibleTasks, taskState, argValue } from "./store.js";
-import { api, readTokens, __API_TOKEN__, withToken, loadPrefs, savePrefs } from "./api.js";
+import { api, readTokens, withToken, loadPrefs, savePrefs, login, logout, getToken, getSessionUser, clearSession, setUnauthorizedHandler } from "./api.js";
 import { svg, esc, hexA, toast, viewHead } from "./ui.js";
 import { bus } from "./bus.js";
 import { refreshLan, bindLanToggle, setArg, openSide, closeSide, askConfirm, closeConfirm, bindConfirmUI } from "./behavior.js";
@@ -511,13 +511,6 @@ function init(){
   syncHeaderHeight();
   window.addEventListener("resize", syncHeaderHeight);
   state.sseBroken = false;  // SSE 状态旗标：true = 已断，重连中
-  loadState();
-  /* 站点列表不再启动期预拉：改为首次展开多选下拉时惰性拉一次（见 ensureTeams）。
-     这样打开工作台 / 运行其它任务都不会多出站点接口的往返。 */
-  connect();
-  startCookiePolling();
-  bindLanToggle();
-  refreshLan();
   /* A3 运行记录详情抽屉：关闭逻辑（遮罩 / 关闭按钮 / Esc） */
   var _rs = document.getElementById("runScrim");
   if(_rs){
@@ -528,9 +521,85 @@ function init(){
       if(e.key === "Escape" && _rs.classList.contains("show")) closeRunDrawer();
     });
   }
+  bootstrap();
+}
+
+/* --- RBAC 登录引导 ---
+   页面启动先判定登录态：有 token 且 /api/auth/me 通过 → 启动应用；
+   否则弹登录框。任何接口收到 401（onUnauthorized）也弹登录框。 */
+function bootstrap(){
+  setUnauthorizedHandler(function(){ showLogin(true); });
+  if(getToken()){
+    api("/api/auth/me").then(function(r){
+      if(r && r.authenticated){ startApp(); }
+      else { clearSession(); showLogin(false); }
+    }).catch(function(){ clearSession(); showLogin(false); });
+  } else {
+    showLogin(false);
+  }
+}
+
+function showLogin(forced){
+  var mask = document.getElementById("loginMask");
+  var err = document.getElementById("loginErr");
+  var user = document.getElementById("loginUser");
+  var pass = document.getElementById("loginPass");
+  var btn = document.getElementById("loginBtn");
+  if(!mask) return;
+  if(err) err.textContent = forced ? "登录态已失效，请重新登录" : "";
+  mask.style.display = "flex";
+  if(user) setTimeout(function(){ user.focus(); }, 30);
+  if(mask.__bound) return;          // 仅绑定一次
+  mask.__bound = true;
+  function submit(){
+    var u = (user && user.value || "").trim();
+    var p = (pass && pass.value || "");
+    if(!u || !p){ if(err) err.textContent = "请输入用户名和密码"; return; }
+    if(err) err.textContent = "";
+    if(btn){ btn.disabled = true; btn.textContent = "登录中…"; }
+    login(u, p).then(function(){
+      // 登录成功：刷新页面，由 bootstrap 重新判定并启动应用（保证状态干净）
+      location.reload();
+    }).catch(function(e){
+      if(err) err.textContent = (e && e.message) ? e.message : "登录失败";
+      if(btn){ btn.disabled = false; btn.textContent = "登录"; }
+    });
+  }
+  if(btn) btn.onclick = submit;
+  if(pass) pass.addEventListener("keydown", function(e){ if(e.key === "Enter") submit(); });
+}
+
+/* 登录成功后启动应用（网络相关部分：状态拉取 / SSE / Cookie 轮询 / 局域网开关） */
+function startApp(){
+  loadState();
+  /* 站点列表不再启动期预拉：改为首次展开多选下拉时惰性拉一次（见 ensureTeams）。 */
+  connect();
+  startCookiePolling();
+  bindLanToggle();
+  refreshLan();
   setInterval(function(){
     if(!state.connected) loadState();
   }, 8000);
+  showUserChip();
+}
+
+/* 右上角用户芯片：显示当前用户 / 角色，提供退出登录 */
+function showUserChip(){
+  var chip = document.getElementById("userChip");
+  if(!chip) return;
+  var u = getSessionUser() || {};
+  var role = u.role || "";
+  var roleTxt = role === "admin" ? "管理员"
+              : (role === "operator" ? "运营"
+              : (role === "viewer" ? "只读" : role));
+  chip.querySelector("#userChipName").textContent = u.user || "?";
+  chip.querySelector("#userChipRole").textContent = roleTxt;
+  chip.style.display = "flex";
+  var out = document.getElementById("userChipLogout");
+  if(out && !out.__bound){
+    out.__bound = true;
+    out.onclick = function(){ logout().finally(function(){ location.reload(); }); };
+  }
 }
 
 if(document.readyState === "loading"){

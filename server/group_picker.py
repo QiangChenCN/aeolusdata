@@ -64,23 +64,48 @@ def _write_recent(items):
 
 
 def recent(limit=10):
-    """最近使用过的群（按最近使用时间倒序）。"""
+    """最近使用过的群（按最近使用时间倒序）。
+
+    标题回填：历史记录里的 title 可能缺失、或被误写成群号（早期 note_used 曾以 gid 兜底），
+    这里用全量缓存把真名找回来；仍取不到名字的条目**直接跳过**——绝不让群号出现在界面上。
+    """
     items = _read_recent()
     items.sort(key=lambda x: -(x.get("used_at") or 0))
-    return [_out(x, recent=True) for x in items[:limit]]
+    pool = {g["id"]: g["title"] for g in peek_groups()}
+    out = []
+    for x in items:
+        gid = x.get("id")
+        if not gid:
+            continue
+        t = (x.get("title") or "").strip()
+        if (not t) or t == gid:
+            t = (pool.get(gid) or "").strip()
+        if not t:
+            continue
+        out.append(_out({"id": gid, "title": t}, recent=True))
+        if len(out) >= limit:
+            break
+    return out
 
 
 def note_used(gid, title=""):
-    """登记一次使用。同群只保留一条，提到队首；超出上限丢弃最旧的。"""
+    """登记一次使用。同群只保留一条，提到队首；超出上限丢弃最旧的。
+
+    title 为空、或恰好等于群号时，存空串而非群号——避免把 id 当成群名持久化，
+    真名留待 recent() 用全量缓存回填。
+    """
     gid = (gid or "").strip()
     if not gid:
         return False
+    t = (title or "").strip()
+    if t == gid:
+        t = ""
     with _lock:
         items = _read_recent()
         items = [x for x in items if x.get("id") != gid]
         items.insert(0, {
             "id": gid,
-            "title": (title or "").strip() or gid,
+            "title": t,
             "used_at": int(time.time()),
         })
         _write_recent(items[:RECENT_MAX])
@@ -245,13 +270,38 @@ def resolve(q_or_id):
 def _out(item, recent=False):
     d = {
         "id": item.get("id", ""),
-        "title": item.get("title") or item.get("id", ""),
+        "title": item.get("title") or "",      # 不以 id 兜底：界面只显示群名，群号仅作取值
         "score": item.get("score", 100 if recent else 0),
         "recent": bool(recent),
     }
     if item.get("memberCount") is not None:
         d["memberCount"] = item["memberCount"]
     return d
+
+
+def by_id(gid):
+    """按 openConversationId 精确反查群名（把已保存的 gid 回填成界面上的群名）。
+
+    顺序：全量缓存 → 缓存空时才强制拉一次 → 最近使用里的真名。
+    一律不返回 id 当 title——界面不得露出群号。
+    返回 {groups:[{id,title}], source}
+    """
+    gid = (gid or "").strip()
+    if not gid:
+        return {"groups": [], "source": "none"}
+    pools = [all_groups()]
+    if not pools[0]:
+        pools.append(all_groups(force=True))
+    for pool in pools:
+        for g in pool:
+            if g.get("id") == gid and g.get("title"):
+                return {"groups": [_out({"id": gid, "title": g["title"]})], "source": "cache"}
+    for x in _read_recent():
+        if x.get("id") == gid:
+            t = (x.get("title") or "").strip()
+            if t and t != gid:
+                return {"groups": [_out({"id": gid, "title": t}, recent=True)], "source": "recent"}
+    return {"groups": [], "source": "none"}
 
 
 # ------------------------------------------------------------------ 自检
