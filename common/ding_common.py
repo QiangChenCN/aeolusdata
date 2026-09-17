@@ -98,8 +98,58 @@ def resolve_dws_cmd():
 NODE = _resolve_node()   # 仅回退用，供旧调用方兼容
 DWS  = get_path("DING_DWS_JS",
                 "C:/Users/ChenQiang/.workbuddy/binaries/node/cli-connector-packages/node_modules/dingtalk-workspace-cli/bin/dws.js")  # 兼容旧调用方；新代码请用 resolve_dws_cmd()
-# 中文字体（Windows 默认黑体路径；非 Windows 或字体位置不同请设 DING_FONT_PATH）
-FONT_PATH = get_path("DING_FONT_PATH", "C:/Windows/Fonts/simhei.ttf")
+def resolve_font_path():
+    """解析可用中文字体路径（跨平台自动探测）。
+
+    背景：旧实现直接回退 Windows 黑体路径，非 Windows 机器上 truetype 必失败，
+    调用方静默落到 ImageFont.load_default()（不含 CJK 字形）→ 渲染图片中文全变方块。
+
+    优先级：
+      1) 环境变量/.env 的 DING_FONT_PATH（存在才用，尊重显式指定）
+      2) 各平台常见 CJK 字体路径逐个探测
+      3) Linux fontconfig 兜底：fc-match 找任意声明支持中文的字体文件
+      4) 都没有 → 回退 Windows 黑体默认值（保持原行为，并告警）
+    """
+    env_fp = get_path("DING_FONT_PATH", "")
+    if env_fp and os.path.isfile(env_fp):
+        return env_fp
+
+    candidates = [
+        # Windows
+        "C:/Windows/Fonts/simhei.ttf",
+        "C:/Windows/Fonts/msyh.ttc",
+        "C:/Windows/Fonts/msyh.ttf",
+        # Linux（apt install fonts-wqy-zenhei / fonts-noto-cjk 后的典型位置）
+        "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc",
+        "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc",
+        "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+        "/usr/share/fonts/opentype/noto/NotoSansCJKsc-Regular.otf",
+        "/usr/share/fonts/truetype/droid/DroidSansFallbackFull.ttf",
+        # macOS
+        "/System/Library/Fonts/PingFang.ttc",
+        "/System/Library/Fonts/STHeiti Light.ttc",
+    ]
+    for p in candidates:
+        if os.path.isfile(p):
+            return p
+
+    # fontconfig 兜底（绝大多数 Linux 发行版自带）
+    try:
+        out = subprocess.run(
+            ["fc-match", "-f", "%{file}", ":lang=zh"],
+            capture_output=True, text=True, timeout=5,
+        ).stdout.strip()
+        if out and os.path.isfile(out):
+            return out
+    except Exception:
+        pass
+
+    log.warning("未找到可用中文字体，回退默认路径（渲染中文将变方块，"
+                "请安装 fonts-wqy-zenhei 或设 DING_FONT_PATH）: %s", candidates[0])
+    return candidates[0]
+
+
+FONT_PATH = resolve_font_path()
 
 # ---------- 目标群 ----------
 # GROUP_ID（生产群 openConversationId）改为按群名运行时解析，见文件末尾 resolve_production_group_id()。

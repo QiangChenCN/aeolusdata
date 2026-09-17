@@ -13,6 +13,7 @@
 """
 import os
 import datetime
+import logging
 import theme_colors as C
 from PIL import Image, ImageDraw, ImageFont
 
@@ -32,10 +33,11 @@ except Exception:
 
 # ───────────── 通用工具 ─────────────
 def _font(size, bold=False):
-    p = os.environ.get("DING_FONT_PATH") or "C:/Windows/Fonts/simhei.ttf"
     try:
-        return ImageFont.truetype(p, size)
+        return ImageFont.truetype(_FONT_DEFAULT, size)
     except Exception:
+        logging.getLogger("report_render").warning(
+            "中文字体加载失败（%s），回退 PIL 默认字体——中文将渲染为方块", _FONT_DEFAULT)
         return ImageFont.load_default()
 
 

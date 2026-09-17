@@ -155,8 +155,11 @@ IMG_PATH = os.path.join(DATA_DIR, "unsat_detail.png")
 CSV_PATH = os.path.join(DATA_DIR, "violations.csv")
 LOG_PATH = os.path.join(DATA_DIR, "unsat.log")
 
-# 中文字体
-FONT_PATH = env("UNSAT_FONT_PATH", "C:/Windows/Fonts/simhei.ttf")
+# 中文字体：UNSAT_FONT_PATH 显式指定优先；否则复用 ding_common 的跨平台自动探测
+# （旧默认 Windows 黑体路径在 Linux 上必失败 → 渲染中文变方块）
+from ding_common import FONT_PATH as _DING_FONT_PATH
+_FONT_ENV = env("UNSAT_FONT_PATH", "")
+FONT_PATH = _FONT_ENV if _FONT_ENV and os.path.isfile(_FONT_ENV) else _DING_FONT_PATH
 
 # 主色：淘宝闪购橙
 BRAND_COLOR = "#FF5000"
