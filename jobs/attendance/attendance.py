@@ -473,9 +473,9 @@ def parse_args():
     while i < len(argv):
         a = argv[i]
         if a == "--group" and i + 1 < len(argv):
-            group_id = argv[i + 1]; i += 2; continue
+            group_id = _coerce_group(argv[i + 1]); i += 2; continue
         if a.startswith("--group="):
-            group_id = a.split("=", 1)[1]; i += 1; continue
+            group_id = _coerce_group(a.split("=", 1)[1]); i += 1; continue
         if a == "--group-name" and i + 1 < len(argv):
             name = argv[i + 1]; i += 2
             gid, gtitle = resolve_group_id_safe(name)
@@ -529,6 +529,29 @@ def resolve_group_id_safe(name):
     except SystemExit as e:
         print("✗", e)
         sys.exit(1)
+
+
+# 群 ID（openConversationId / conversationId）通常是较长 base64url 串；群名常含中文、
+# 且不会是纯该字符集，形态明显不同——据此区分「直接传 ID」还是「按群名解析」。
+_GROUP_ID_CHARS = set(
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=_-")
+
+
+def _is_group_id_like(v):
+    return bool(v) and len(v) >= 12 and all(c in _GROUP_ID_CHARS for c in v)
+
+
+def _coerce_group(val):
+    """`--group` 既能接 ID 也能接群名。
+
+    识别为非 ID（如中文群名）时自动按名解析，避免把群名原样传给 dws
+    触发 OPEN_CID_INVALID（dws 的 --group 要的是 openConversationId）。
+    """
+    if _is_group_id_like(val):
+        return val
+    gid, gtitle = resolve_group_id_safe(val)
+    print(f"[send] --group 按群名「{val}」解析到群：{gtitle} ({gid})")
+    return gid
 
 
 def resolve_test_group():
