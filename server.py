@@ -107,29 +107,6 @@ API_TOKEN = _load_or_create_token()
 # H2: 允许访问接口的 Origin 白名单（仅本机环回），由 main() 按实际端口填充。
 SRV_ORIGINS = set()
 
-# H3: 局域网访问开关（持久化到 .lan_enabled；默认开启，与历史需求一致：每次启动自动局域网可访问）
-_LAN_FLAG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".lan_enabled")
-def _load_lan_enabled():
-    """读取局域网开关状态；文件缺失则默认开启。"""
-    try:
-        with open(_LAN_FLAG_PATH, "r", encoding="utf-8") as _f:
-            return _f.read().strip().lower() in ("1", "true", "yes", "on")
-    except FileNotFoundError:
-        return True
-LAN_ENABLED = _load_lan_enabled()
-SRV_PORT = 8917   # 由 main() 按 --port 覆盖，仅供 /api/lan/status 报告
-
-def _set_lan_enabled(val):
-    global LAN_ENABLED
-    LAN_ENABLED = bool(val)
-    try:
-        with open(_LAN_FLAG_PATH, "w", encoding="utf-8") as _f:
-            _f.write("true" if LAN_ENABLED else "false")
-    except OSError:
-        pass
-
-def _is_loopback_addr(ip):
-    return ip in ("127.0.0.1", "::1", "localhost") or (ip or "").startswith("127.")
 
 # —— 标准达成「查询（实时刷新）」频控（2026-09-09）——
 # 目的：实时拉取直连风神接口，间隔太近会触发上游「请求太频繁」。
@@ -1585,11 +1562,6 @@ class Handler(BaseHTTPRequestHandler):
         p = u.path
         qs = parse_qs(u.query)
 
-        # H3: 局域网开关——关闭时拒绝非本机地址（网关优先于鉴权）
-        if not _is_loopback_addr(self.client_address[0]) and not LAN_ENABLED:
-            self._send(403, "局域网访问已关闭", "text/plain; charset=utf-8")
-            return
-
         # 静态资源（无鉴权）：/、/index.html、/tokens.css、/favicon、/vendor/、/web/
         if _serve_static_get(self, p):
             return
@@ -1669,11 +1641,6 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         p = urlparse(self.path).path
-
-        # H3: 局域网开关——关闭时拒绝非本机地址（网关优先于鉴权）
-        if not _is_loopback_addr(self.client_address[0]) and not LAN_ENABLED:
-            self._send(403, "局域网访问已关闭", "text/plain; charset=utf-8")
-            return
 
         if p.startswith("/api/"):
             # 认证端点：无需有效会话
@@ -2277,15 +2244,6 @@ def _get_state(self, qs):
                 "registry": MGR.registry_view()})
 
 
-def _get_lan_status(self, qs):
-    self._json({"ok": True, "enabled": LAN_ENABLED,
-                "lan_ip": _detect_lan_ip(), "port": SRV_PORT})
-
-
-def _get_lan_set(self, qs):
-    self._json({"ok": False, "error": "method not allowed"}, 405)
-
-
 def _get_groups(self, qs):
     # ?id=<cid> → 按群号精确反查群名（前端把已保存的 gid 回填成群名用）；
     # ?q=<关键词> → 模糊搜索。两者都只返回群名作 title，绝不回退成群号。
@@ -2404,11 +2362,6 @@ def _get_todo_runs(self, qs):
     except Exception:
         limit = 20
     self._json({"ok": True, "runs": todo_store.item_runs(iid, limit)})
-
-
-def _post_lan_set(self, data):
-    _set_lan_enabled(bool((data or {}).get("enabled")))
-    self._json({"ok": True, "enabled": LAN_ENABLED})
 
 
 def _post_run(self, data):
@@ -2780,8 +2733,6 @@ def _post_set_policy(self, data):
 
 GET_ROUTES = {
     "/api/state": _get_state,
-    "/api/lan/status": _get_lan_status,
-    "/api/lan/set": _get_lan_set,
     "/api/groups": _get_groups,
     "/api/teams": _get_teams,
     "/api/standard/achievement": _get_std_achievement,
@@ -2814,7 +2765,6 @@ GET_ROUTES = {
 }
 
 POST_ROUTES = {
-    "/api/lan/set": _post_lan_set,
     "/api/standard/teams-config": _post_std_teams_config,
     "/api/standard/refresh-all": _post_std_refresh_all,
     "/api/standard/grade-standards": _post_std_grade_standards,
@@ -2866,9 +2816,7 @@ def _detect_lan_ip():
 
 
 def main():
-    global SRV_PORT
     port = 8917
-    SRV_PORT = port
     host = "0.0.0.0"   # 默认绑定全部网卡，局域网内其他设备可访问
     if "--port" in sys.argv:
         port = int(sys.argv[sys.argv.index("--port") + 1])

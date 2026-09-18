@@ -40,14 +40,6 @@ header{
 .dot{width:7px;height:7px;border-radius:var(--r-circle);background:var(--muted-2)}
 .dot.on{background:var(--ok);box-shadow:var(--ring-ok)}
 .dot.off{background:var(--err);box-shadow:var(--ring-err)}
-.lan-pill{cursor:default}
-.lan-pill .st-full{margin-right:2px}
-.lan-pill .switch{position:relative;display:inline-block;width:34px;height:18px;flex:none}
-.lan-pill .switch input{opacity:0;width:0;height:0}
-.lan-pill .slider{position:absolute;inset:0;background:var(--muted-2);border-radius:999px;transition:.18s;cursor:pointer}
-.lan-pill .slider:before{content:"";position:absolute;height:14px;width:14px;left:2px;top:2px;background:#fff;border-radius:50%;transition:.18s}
-.lan-pill .switch input:checked + .slider{background:var(--ok)}
-.lan-pill .switch input:checked + .slider:before{transform:translateX(16px)}
 .hd-btn{display:flex;align-items:center;gap:var(--sp-6);padding:var(--sp-7) var(--sp-12);border-radius:var(--r-xl);border:var(--bw) solid var(--border);
   background:var(--white);color:var(--text);font-size:var(--fs-control);white-space:nowrap;transition:var(--dur-base)}
 .hd-btn:hover{border-color:var(--brand);color:var(--brand);background:var(--brand-soft)}
@@ -1081,7 +1073,6 @@ header{
   .hd-t b{font-size:clamp(15px,4.5vw,17px)}
   .hd-sp{display:none}
   .status{order:5;white-space:nowrap}
-  .lan-pill{order:6}
 }
 
 /* 任务工具条：搜索 + 状态筛选 + 列表/看板切换（E5/A2） */
@@ -1173,13 +1164,6 @@ header{
     </div>
     <div class="status cookie-pill" id="quarkCap" title="Quark DA cookie 状态：复用 quark_sdk.quark 的 FbiSiteAction 探针（返回 HTML 登录页 = 失效）。四态——有效 / 已失效 / 未兑换（尚无缓存）/ 未知（探针异常）。本胶囊只读，不写 cookie、不重兑；跑一次装备点亮等 Quark 任务会自动产生缓存并续期。页面打开且可见时每 60s±15s 校验一次；切回前台立即刷一次。" data-page-node-id="JZcrVti113mhxKWSZX2qna">
       <span class="dot" id="quarkDot" data-page-node-id="tSK2kIlMzIfMCLmZ1GrNv4"></span><span id="quarkTxt" class="st-full" data-page-node-id="l1Gs59sZ3nB5I7uZndyy2M">Quark 待校验</span><span id="quarkTxtS" class="st-short" data-page-node-id="8xX2bAeJocyKHVb8c6lWwH">校验中</span>
-    </div>
-    <div class="status lan-pill" id="lanCap" title="局域网访问开关">
-      <span class="dot" id="lanDot"></span><span id="lanTxt" class="st-full">局域网</span>
-      <label class="switch" title="切换局域网访问">
-        <input type="checkbox" id="lanToggle">
-        <span class="slider"></span>
-      </label>
     </div>
     <!-- 右上角用户芯片：仅展示用户名；角色与退出按钮悬停（或聚焦）时以浮层展示 -->
     <div id="userChip" class="user-chip" tabindex="0" aria-haspopup="true">

@@ -667,7 +667,6 @@ POST_ROUTE_PERMS = {
     "/api/standard/thresholds":   "config:write",
     "/api/attend-period/config":  "config:write",
     "/api/attend-period/teams":   "config:write",
-    "/api/lan/set":               "config:write",
     "/api/todo/lists":            "todo:write",
     "/api/todo/items":            "todo:write",
     "/api/todo/trigger":          "todo:write",

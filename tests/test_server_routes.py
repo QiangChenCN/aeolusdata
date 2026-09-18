@@ -32,8 +32,8 @@ def _make_handler(path="/api/x", auth_ok=True, static_ok=False):
 
 
 def test_route_tables_complete():
-    assert len(server.GET_ROUTES) == 29
-    assert len(server.POST_ROUTES) == 16
+    assert len(server.GET_ROUTES) == 34
+    assert len(server.POST_ROUTES) == 24
     # 每个 handler 都应是可调用对象
     for fn in list(server.GET_ROUTES.values()) + list(server.POST_ROUTES.values()):
         assert callable(fn)
@@ -58,13 +58,6 @@ def test_get_state_dispatches_and_returns_ok():
     server.Handler.do_GET(h)
     h._json.assert_called_once()
     assert h._json.call_args[0][0]["ok"] is True
-
-
-def test_get_lan_set_is_method_not_allowed():
-    h = _make_handler("/api/lan/set")
-    server.Handler.do_GET(h)
-    h._json.assert_called_once()
-    assert h._json.call_args[0][0]["error"] == "method not allowed"
 
 
 def test_post_unknown_returns_404():

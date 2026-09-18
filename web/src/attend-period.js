@@ -3,7 +3,7 @@ import { api, savePrefs, loadPrefs, readTokens, withToken, ensureTeams } from ".
 import { svg, esc, hexA, toast, debounce, viewHead } from "./ui.js";
 import { TK, TK_MAP, RISK_LABEL, RISK_CLS, STATUS_CLS, STATUS_TXT, ICON } from "./tokens.js";
 import { bus } from "./bus.js";
-import { refreshLan, bindLanToggle, setArg, openSide, closeSide, askConfirm, closeConfirm, bindConfirmUI, lockScroll, unlockScroll } from "./behavior.js";
+import { setArg, openSide, closeSide, askConfirm, closeConfirm, bindConfirmUI, lockScroll, unlockScroll } from "./behavior.js";
 import "./attend-period.css";   /* 时段出勤样式（原 _apEnsureStyle 运行时注入 <style>，改为静态引入） */
 import { _apRenderSettings } from "./attend-period-settings.js";   /* 系统设置面板（已外提为独立模块） */
 import { FALLBACK_TEAM_ID, FALLBACK_TEAMS } from "./teams.js";   /* 站点兜底清单（与后端 teams_config.TEAM_NAMES 同步） */

@@ -4,7 +4,7 @@ import { api, savePrefs, loadPrefs, readTokens, withToken, requestRaw } from "./
 import { svg, esc, hexA, toast, debounce, viewHead } from "./ui.js";
 import { TK, TK_MAP, RISK_LABEL, RISK_CLS, STATUS_CLS, STATUS_TXT, ICON } from "./tokens.js";
 import { bus } from "./bus.js";
-import { refreshLan, bindLanToggle, setArg, openSide, closeSide, askConfirm, closeConfirm, bindConfirmUI, lockScroll, unlockScroll } from "./behavior.js";
+import { setArg, openSide, closeSide, askConfirm, closeConfirm, bindConfirmUI, lockScroll, unlockScroll } from "./behavior.js";
 import { renderModalDiag, lineEl } from "./todo.js";
 const state = store.state;
 

@@ -3,7 +3,7 @@ import { api, savePrefs, loadPrefs, readTokens, withToken, ensureTeams } from ".
 import { svg, esc, hexA, toast, viewHead } from "./ui.js";
 import { TK, TK_MAP, RISK_LABEL, RISK_CLS, STATUS_CLS, STATUS_TXT, ICON } from "./tokens.js";
 import { bus } from "./bus.js";
-import { refreshLan, bindLanToggle, setArg, openSide, closeSide, askConfirm, closeConfirm, bindConfirmUI, lockScroll, unlockScroll } from "./behavior.js";
+import { setArg, openSide, closeSide, askConfirm, closeConfirm, bindConfirmUI, lockScroll, unlockScroll } from "./behavior.js";
 import "./standard.css";   /* 标准达成视图样式（原 _stdEnsureStyle 运行时注入 <style>，改为静态引入） */
 import { _stdRenderSettings } from "./standard-settings.js";   /* 「系统设置」页（已拆分为独立模块） */
 import { FALLBACK_TEAMS } from "./teams.js";   /* 站点兜底清单（与后端 teams_config.TEAM_NAMES 同步） */

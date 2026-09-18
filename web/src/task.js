@@ -3,7 +3,7 @@ import { api, savePrefs, loadPrefs, readTokens, withToken, ensureTeams } from ".
 import { svg, esc, hexA, toast, debounce, viewHead } from "./ui.js";
 import { TK, TK_MAP, RISK_LABEL, RISK_CLS, STATUS_CLS, STATUS_TXT, ICON } from "./tokens.js";
 import { bus } from "./bus.js";
-import { refreshLan, bindLanToggle, setArg, openSide, closeSide, askConfirm, closeConfirm, bindConfirmUI, lockScroll, unlockScroll } from "./behavior.js";
+import { setArg, openSide, closeSide, askConfirm, closeConfirm, bindConfirmUI, lockScroll, unlockScroll } from "./behavior.js";
 import { skeletonCards } from "./home.js";
 const state = store.state;
 /* 视图层共享状态统一归 store.ui（单一归属）；此处取别名，既有 `_taskFilter.q` 等写法不变。

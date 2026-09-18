@@ -224,13 +224,6 @@ input:focus, select:focus, textarea:focus{
 .params{ border-radius:var(--r-card); background:#FBFBFD }
 .cf-body .row, .cf-body .field{ margin-bottom:var(--sp-12) }
 
-/* ---------- 开关（Apple iOS 风格） ---------- */
-.lan-pill .slider{ background:#E4E4E7; border-radius:999px }
-.lan-pill .slider:before{ height:16px; width:16px; left:1px; top:1px;
-  box-shadow:0 2px 4px rgba(0,0,0,.20) }
-.lan-pill .switch input:checked + .slider{ background:#34C759 }
-.lan-pill .switch input:checked + .slider:before{ transform:translateX(16px) }
-
 /* ---------- 标签 / 徽章（胶囊化） ---------- */
 .gchip, .badge{ border-radius:999px; font-size:12px; letter-spacing:.01em; line-height:1.4 }
 .gchip{ padding:3px 10px }

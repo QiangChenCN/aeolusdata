@@ -4,7 +4,7 @@ import { store, groupOf, taskById, countInGroup, producerOf, missingText, visibl
 import { api, readTokens, withToken, loadPrefs, savePrefs, login, logout, getToken, getSessionUser, clearSession, setUnauthorizedHandler } from "./api.js";
 import { svg, esc, hexA, toast, viewHead } from "./ui.js";
 import { bus } from "./bus.js";
-import { refreshLan, bindLanToggle, setArg, openSide, closeSide, askConfirm, closeConfirm, bindConfirmUI } from "./behavior.js";
+import { setArg, openSide, closeSide, askConfirm, closeConfirm, bindConfirmUI } from "./behavior.js";
 import { renderHeader, renderNav, renderMain } from "./nav.js";
 import { renderAttendPeriodView } from "./attend-period.js";
 import { renderStandardView } from "./standard.js";
@@ -569,14 +569,12 @@ function showLogin(forced){
   if(pass) pass.addEventListener("keydown", function(e){ if(e.key === "Enter") submit(); });
 }
 
-/* 登录成功后启动应用（网络相关部分：状态拉取 / SSE / Cookie 轮询 / 局域网开关） */
+/* 登录成功后启动应用（网络相关部分：状态拉取 / SSE / Cookie 轮询） */
 function startApp(){
   loadState();
   /* 站点列表不再启动期预拉：改为首次展开多选下拉时惰性拉一次（见 ensureTeams）。 */
   connect();
   startCookiePolling();
-  bindLanToggle();
-  refreshLan();
   setInterval(function(){
     if(!state.connected) loadState();
   }, 8000);

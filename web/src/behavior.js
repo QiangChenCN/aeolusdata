@@ -1,49 +1,10 @@
-// behavior.js —— 行为层（交互行为工具）：滚动锁、确认弹窗、侧栏、LAN 开关、参数落盘
+// behavior.js —— 行为层（交互行为工具）：滚动锁、确认弹窗、侧栏、参数落盘
 // 依赖：store（state.args 等）、api（接口/偏好）、ui（toast/esc）
 import { store } from "./store.js";
 import { api, savePrefs } from "./api.js";
 import { toast, esc } from "./ui.js";
 
 const state = store.state;
-
-/* 局域网访问开关：读取状态 + 切换 */
-export function refreshLan(){
-  var cap = document.getElementById("lanCap");
-  var tog = document.getElementById("lanToggle");
-  var dot = document.getElementById("lanDot");
-  var txt = document.getElementById("lanTxt");
-  if(!tog) return;
-  api("/api/lan/status").then(function(r){
-    if(!r || !r.ok) return;
-    tog.checked = !!r.enabled;
-    dot.className = "dot " + (r.enabled ? "on" : "off");
-    txt.textContent = "局域网：" + (r.enabled ? "开" : "关");
-    if(r.enabled && r.lan_ip){
-      cap.title = "局域网访问已开启 · 同网段设备可访问 http://" + r.lan_ip + ":" + (r.port||8909);
-    } else {
-      cap.title = "局域网访问已关闭 · 仅本机可访问（localhost）";
-    }
-  }).catch(function(){});
-}
-export function bindLanToggle(){
-  var tog = document.getElementById("lanToggle");
-  if(!tog) return;
-  tog.addEventListener("change", function(){
-    var want = tog.checked;
-    api("/api/lan/set", { method:"POST",
-        headers:{"Content-Type":"application/json"},
-        body: JSON.stringify({enabled: want}) })
-      .then(function(r){
-        if(r && r.ok){
-          refreshLan();
-          toast(want ? "已开启局域网访问" : "已关闭局域网访问（仅本机可访问）");
-        } else {
-          tog.checked = !want; toast("局域网开关切换失败");
-        }
-      })
-      .catch(function(){ tog.checked = !want; toast("局域网开关切换失败"); });
-  });
-}
 
 export function setArg(tid, flag, val){
   if(!state.args[tid]) state.args[tid] = {};

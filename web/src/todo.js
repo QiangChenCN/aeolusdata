@@ -3,7 +3,7 @@ import { api, savePrefs, loadPrefs, readTokens, withToken, ensureTeams } from ".
 import { svg, esc, hexA, toast, debounce, viewHead } from "./ui.js";
 import { TK, TK_MAP, RISK_LABEL, RISK_CLS, STATUS_CLS, STATUS_TXT, ICON } from "./tokens.js";
 import { bus } from "./bus.js";
-import { refreshLan, bindLanToggle, setArg, openSide, closeSide, askConfirm, closeConfirm, bindConfirmUI, lockScroll, unlockScroll } from "./behavior.js";
+import { setArg, openSide, closeSide, askConfirm, closeConfirm, bindConfirmUI, lockScroll, unlockScroll } from "./behavior.js";
 /* 数据层已拆到 todo-core.js（本地缓存 / 后端 API / 纯数据工具）。这里导入本模块用到的，
    并原样再导出给 nav / main / home / runs 的既有导入路径。 */
 import { TODO_KEY, todoDefaultLists, todoLocalClone, todoDropLocal, todoReload, todoApi, todoMigrateLocal, loadTodo, saveTodo, todoOpenCount, todoUid, todoListById, taskNameOf, tdPad, tdToday, tdNowHM, tdShift, tdFmt, tdOverdue, tdIsToday, todoView, todoFind, todoCountsByList, todoFiltered, todoSort, defaultListId, todoToggle, todoAdd, todoRemove } from "./todo-core.js";
