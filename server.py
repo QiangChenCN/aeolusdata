@@ -36,9 +36,9 @@ from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
 
 # RBAC 权限核心（纯标准库：用户库 / 会话 / 角色权限 / 审计）
-import auth
+from core import auth
 # 数据权限（行级隔离，按 team 维度）：本模块管「能看哪些站点的数据」
-import dataperm
+from core import dataperm
 
 # P0：结构化日志替代散落 print（诊断/异常走 logger；启动横幅保留 print 给用户看）
 # logging 是标准库，不引入第三方依赖。

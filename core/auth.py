@@ -30,7 +30,7 @@ import hashlib
 import threading
 from datetime import datetime
 
-ROOT = os.path.dirname(os.path.abspath(__file__))
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # auth 现位于 core/ 下，上溯一级到项目根
 USERS_FILE = os.path.join(ROOT, ".users.json")
 AUDIT_FILE = os.path.join(ROOT, ".audit.jsonl")
 ROLES_FILE = os.path.join(ROOT, ".roles.json")

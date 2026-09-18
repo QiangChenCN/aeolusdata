@@ -16,8 +16,10 @@ import os
 import sys
 import getpass
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import auth
+_PROJ_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # manage_users 现位于 core/ 下，上溯一级到项目根
+if _PROJ_ROOT not in sys.path:
+    sys.path.insert(0, _PROJ_ROOT)
+from core import auth
 
 
 def _pw(args):

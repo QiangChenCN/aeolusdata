@@ -36,7 +36,7 @@ import os
 import json
 import threading
 
-ROOT = os.path.dirname(os.path.abspath(__file__))
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # dataperm 现位于 core/ 下，上溯一级到项目根
 DATA_PERMS_FILE = os.path.join(ROOT, ".data_perms.json")
 DEFAULT_SCOPE = "all"            # 无规则时的默认作用域（向后兼容，不限制）
 _LOCK = threading.Lock()

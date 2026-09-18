@@ -1,5 +1,5 @@
 import sys, os
-ROOT = os.path.dirname(os.path.abspath(__file__))
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # 脚本位于 tools/ 下，上溯一级到项目根
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
