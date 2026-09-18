@@ -1355,7 +1355,7 @@ def todo_payload():
 def _is_loopback_origin(origin):
     """同源/本机回环来源放行；非回环来源仅作兜底——真正闸门是 token（见 _check_auth）。
 
-    本服务现默认绑 0.0.0.0（局域网可访问），非回环的局域网来源即合法用户；
+    本服务默认仅绑本机回环（127.0.0.1），局域网其他设备不可直达；
     但无 token 的外站嵌入请求仍会被此处挡掉（拿不到数据）。
     解析失败（非法 Origin 字符串）一律按「非回环」处理，交给 token 这一道真闸门拦截。
     """
@@ -2802,22 +2802,9 @@ POST_ROUTES.update({
 })
 
 
-def _detect_lan_ip():
-    """探测本机用于出公网的局域网 IP（仅用于打印可访问地址，不影响绑定）。"""
-    try:
-        import socket
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        s.connect(("8.8.8.8", 80))
-        ip = s.getsockname()[0]
-        s.close()
-        return ip
-    except Exception:
-        return None
-
-
 def main():
     port = 8917
-    host = "0.0.0.0"   # 默认绑定全部网卡，局域网内其他设备可访问
+    host = "127.0.0.1"   # 默认仅绑定本机回环，仅限本机访问（局域网不可达）
     if "--port" in sys.argv:
         port = int(sys.argv[sys.argv.index("--port") + 1])
     if "--host" in sys.argv:
@@ -2826,21 +2813,14 @@ def main():
     # RBAC：首次运行无用户库则建默认管理员（admin / admin123 或 WB_ADMIN_PASSWORD）
     auth.ensure_bootstrap()
     url = "http://127.0.0.1:%d" % port
-    lan_ip = _detect_lan_ip()
-    lan_url = ("http://%s:%d" % (lan_ip, port)) if lan_ip else None
-    # H2: token 是真正的闸门（见 _check_auth）；SRV_ORIGINS 仅作回环兜底，
-    #     这里把本机环回 + 探测到的局域网 IP 都加入白名单。
+    # H2: token 是真正的闸门（见 _check_auth）；SRV_ORIGINS 仅作本机回环兜底。
     SRV_ORIGINS.clear()
     SRV_ORIGINS.update({"http://127.0.0.1:%d" % port,
                         "http://localhost:%d" % port})
-    if lan_ip:
-        SRV_ORIGINS.add("http://%s:%d" % (lan_ip, port))
     print("=" * 60)
     print(" 风神数据处理 · 任务运行工作台")
     print("=" * 60)
     print(" 本机访问: %s" % url)
-    if lan_url:
-        print(" 局域网访问: %s  (同网段其他设备可用此地址)" % lan_url)
     print(" 绑定地址: %s:%d" % (host, port))
     print(" 项目目录: %s" % ROOT)
     print(" 解释器  : %s" % PYTHON)
