@@ -17,7 +17,7 @@
 4. **known_group_numbers 兜底**：chat-list-all 会漏掉部分群（如「🤖机器人测试」），
    用 groups.json 登记的群号走 +chat-get-by-id 动态补进来。
 
-存储：server/data/recent_groups.json（纯数据，已 gitignore）
+存储：workbench/data/recent_groups.json（纯数据，已 gitignore）
 """
 import os
 import json

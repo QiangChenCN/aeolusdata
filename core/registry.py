@@ -66,5 +66,5 @@ class TaskRegistry:
         return [t for t in self._tasks.values() if t.schedulable]
 
 
-# 进程内默认注册表（应用组合根 server/main.py 未来注入）
+# 进程内默认注册表（应用组合根 workbench/main.py 未来注入）
 registry = TaskRegistry()

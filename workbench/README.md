@@ -238,7 +238,7 @@ cd E:\WorkBuddy\风神数据处理
 ## 四、文件结构
 
 ```
-server/
+workbench/
 ├── tasks.json       ← 任务注册表（唯一配置源，改这里就能增删任务）
 ├── server.py        ← 后端服务（纯标准库，零第三方依赖）
 ├── index.html       ← 工作台页面（单文件，全内联）
@@ -298,7 +298,7 @@ start_workbench.bat        ← 双击启动
 
 ### 增删任务
 
-编辑 `server/tasks.json`，然后点页面上的「重载任务清单」按钮即可，不用重启服务。
+编辑 `workbench/tasks.json`，然后点页面上的「重载任务清单」按钮即可，不用重启服务。
 
 ```jsonc
 {

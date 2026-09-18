@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""把各脚本里的 NODES 定义同步进 server/tasks.json。
+"""把各脚本里的 NODES 定义同步进 workbench/tasks.json。
 
 为什么要有这个脚本
 ------------------
@@ -32,7 +32,7 @@ import sys
 # 本文件位于 tools/ 下；项目根 = tools 的父目录。
 BASE = os.path.dirname(os.path.abspath(__file__))          # tools/
 PROJ_ROOT = os.path.dirname(BASE)                          # 项目根
-TASKS_JSON = os.path.join(PROJ_ROOT, "server", "tasks.json")
+TASKS_JSON = os.path.join(PROJ_ROOT, "workbench", "tasks.json")
 
 # task_id -> (脚本相对路径, 源码里的节点变量名, 默认结束节点 id)
 # 默认结束节点一般是末节点（None = 用末节点）；个别脚本末节点是排查用的，

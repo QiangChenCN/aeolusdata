@@ -22,7 +22,7 @@ import re
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-ROOT = os.path.dirname(HERE)   # 仓库根目录（server/ 的上一级）：实际页面在根 index.html，令牌在 web/tokens.css
+ROOT = os.path.dirname(HERE)   # 仓库根目录（workbench/ 的上一级）：实际页面在根 index.html，令牌在 web/tokens.css
 INDEX_HTML = os.path.join(ROOT, "index.html")
 TOKENS_CSS = os.path.join(ROOT, "web", "tokens.css")
 

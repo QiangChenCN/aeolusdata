@@ -264,7 +264,7 @@ GET https://httpizza.ele.me/alsc-lpd-omp-inspection-prod/qc/fs/judgement/queryQc
 <script> --begin <节点id> --end <节点id>     :: 只跑这段连续区间；不传 = 全跑
 ```
 
-- 节点清单的**单一事实来源是脚本源码里的 `NODES`**，`server/tasks.json` 由
+- 节点清单的**单一事实来源是脚本源码里的 `NODES`**，`workbench/tasks.json` 由
   `sync_nodes.py`（AST 只读提取，`--write` 写入，幂等）同步过去，界面步进条据此渲染。
 - `end` 早于 `begin`、或 id 不在节点表里 → 打印 `✗ …` 并 `exit 1`。
 - 区间内**筛出 0 条属正常中止**：抛 `nodeflow.Stop`，exit 0，不发消息不打扰。
@@ -278,7 +278,7 @@ GET https://httpizza.ele.me/alsc-lpd-omp-inspection-prod/qc/fs/judgement/queryQc
 - **SDK 自带的诊断入口不参与**：`python -m aeolus_sdk.login`（登录诊断）不是任务，
   不在 `tasks.json` 里，也不接 nodeflow —— SDK 是被人 import 的库，保持零外部依赖。
 
-各脚本节点一览见 `server/README.md` 第三节任务清单。
+各脚本节点一览见 `workbench/README.md` 第三节任务清单。
 
 ---
 

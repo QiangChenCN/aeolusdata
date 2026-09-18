@@ -5,7 +5,7 @@
 纯 Python 标准库实现，无任何第三方依赖。
 
 职责：
-  1. 读取 server/tasks.json 任务注册表
+  1. 读取 workbench/tasks.json 任务注册表
   2. 串行调度任务（全局单队列 —— 刻意串行，避免 aeolus_sdk/cookie.txt 并发争抢）
   3. 子进程执行 + 实时日志流式输出（SSE）
   4. 失败时按已知错误模式给出可读的诊断建议
@@ -57,7 +57,7 @@ try:
 except Exception:
     xlrd = None
 
-HERE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "server")   # server/ 包目录：tasks.json / runs / data / 兄弟模块
+HERE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "workbench")   # workbench/ 包目录：tasks.json / runs / data / 兄弟模块
 ROOT = os.path.dirname(os.path.abspath(__file__))                            # 项目根目录（server.py 已移到根）
 VENDOR = os.path.join(ROOT, "web", "vendor")   # 本地开源前端库（如 Tabulator），不引 CDN；统一放根目录 web/
 WEB_DIR = os.path.join(ROOT, "web")              # 工作台前端文件集中目录（index 在根，其余在 web/）
@@ -356,7 +356,7 @@ def _check_aeolus_cookie():
                 "checked_at": checked_at}
     req = urllib.request.Request(
         "https://httpizza.ele.me/lpd.meepo.session/aeolus/validToken",
-        headers={"Cookie": cookie, "User-Agent": "server/1.0"},
+        headers={"Cookie": cookie, "User-Agent": "workbench/1.0"},
     )
     try:
         with urllib.request.urlopen(req, timeout=10) as r:
@@ -1146,8 +1146,8 @@ def _is_sensitive_path(rel):
     if not norm or norm == ".":
         return True  # 不允许直接读 ROOT 本身
     parts = norm.split("/")
-    # server/data 等运行数据目录
-    if len(parts) >= 2 and parts[0] == "server" and parts[1] == "data":
+    # workbench/data 等运行数据目录
+    if len(parts) >= 2 and parts[0] == "workbench" and parts[1] == "data":
         return True
     for part in parts:
         low = part.lower()
@@ -2587,7 +2587,7 @@ def _get_policy(self, qs):
     self._json({"ok": True, "policy": auth.get_policy(), "defaults": auth.PW_POLICY_DEFAULT})
 
 # 数据权限专用：站点明细持久化（仅供本接口「失败回退」用，不影响 /api/teams 等既有行为）
-_DP_TEAMS_LAST_PATH = os.path.join(ROOT, "server", "data", "data_perms_teams_last.json")
+_DP_TEAMS_LAST_PATH = os.path.join(ROOT, "workbench", "data", "data_perms_teams_last.json")
 
 
 def _dp_load_teams_last():

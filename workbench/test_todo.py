@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """工作内容模块 · 边界情况测试
 
-跑法：python server/test_todo.py
+跑法：python workbench/test_todo.py
 （用临时库，不碰用户的真实待办数据）
 
 覆盖的是需求里点名的那几个点：迁移、重复规则、重启恢复、

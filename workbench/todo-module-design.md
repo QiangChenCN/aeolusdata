@@ -1,7 +1,7 @@
 # 工作内容（提醒事项）模块 · 设计说明
 
 数据从 localStorage 迁到 SQLite，新增重复规则、任务关联与定时自动执行。
-库文件：`server/data/todo.db`（已在 .gitignore 中排除，含 WAL sidecar）。
+库文件：`workbench/data/todo.db`（已在 .gitignore 中排除，含 WAL sidecar）。
 
 ---
 
@@ -226,7 +226,7 @@ UNIQUE 约束上。
 ## 7. 测试
 
 ```
-python server/test_todo.py     # 40 项：迁移 / 重复 / 调度 / 重启恢复 / 重试 / 去重 / 关联
+python workbench/test_todo.py     # 40 项：迁移 / 重复 / 调度 / 重启恢复 / 重试 / 去重 / 关联
 ```
 
 覆盖的关键断言：同一到期时刻只能 claim 一次（IntegrityError）、超宽限记 missed 不补跑、

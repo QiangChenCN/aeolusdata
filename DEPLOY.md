@@ -48,7 +48,7 @@ git add .gitignore \
         dashboard/standard/site_orders.py \
         dashboard/standard/assessment_overview.py \
         index.html run.sh \
-        server.py server/group_picker.py \
+        server.py workbench/group_picker.py \
         web/src/ \
         auth.py dataperm.py manage_users.py \
         .data_perms.json org_tree.json

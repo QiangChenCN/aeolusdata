@@ -93,6 +93,6 @@ def main():
                     top, [(x["name"][:14], x["card"]) for x in row]))
     json.dump(report, open(r"E:\WorkBuddy\风神数据处理\server\_card_heights.json", "w", encoding="utf-8"),
               ensure_ascii=False, indent=1)
-    print("\n明细已写入 server/_card_heights.json")
+    print("\n明细已写入 workbench/_card_heights.json")
 
 main()
