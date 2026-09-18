@@ -8,7 +8,7 @@ import { refreshLan, bindLanToggle, setArg, openSide, closeSide, askConfirm, clo
 
 import { openRunDrawer } from "./runs.js";
 import { todoOpenCount, tdIsToday, todoToggle, tdOverdue, tdFmt } from "./todo.js";
-import "./home-screen.css";
+import "./home.css";
 const state = store.state;
 
 /* ================= 首页 =================
