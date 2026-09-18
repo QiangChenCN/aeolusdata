@@ -481,7 +481,7 @@ def _build(team_id, start, end, month, riders_raw, orders, target_tc, source):
     _cur = _d0
     while _cur <= _d1:
         _ymd = _cur.strftime("%Y-%m-%d")
-        day_bounds.append((_ymd_to_ms(_ymd, False), _ymd_to_ms(_ymd, True)))
+        day_bounds.append((_ymd, _ymd_to_ms(_ymd, False), _ymd_to_ms(_ymd, True)))
         _cur += datetime.timedelta(days=1)
     allday_orders, allday_all, completed_name, valid_by_date = _aggregate_rider_data(
         orders, team_id, day_bounds)
