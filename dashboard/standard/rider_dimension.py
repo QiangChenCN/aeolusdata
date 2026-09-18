@@ -182,9 +182,10 @@ def current_slot_code():
 def _aggregate_rider_data(orders, team_id, day_bounds):
     """单遍扫描同时产出「全天有效单量 / 全天完成单量 / 今日有完成单骑手」三份结果。
 
-    替代 _build 原先对 orders 做三遍独立扫描（_aggregate_rider_orders /
-    _aggregate_rider_all_orders / riders_with_completed_orders_today），把逐单的
+    替代 _build 原先对 orders 做多遍独立扫描（_aggregate_rider_orders /
+    riders_with_completed_orders_today 等），把逐单的
     有效性判定、团队过滤、trackingId 兜底去重、接单时间归属一次性算完，CPU 降到 1/3。
+    （全站报表的「有单骑手数」也复用本函数产出的 full_day_orders，不再单独全扫。）
 
     日界用整数毫秒比较（落在 day_bounds 任一自然日区间内即算），不逐单构造 datetime。
     口径与三个原函数逐一一致：有效单=完成+非作弊+非逆向+非改派；完成单=仅卡状态；
@@ -196,6 +197,7 @@ def _aggregate_rider_data(orders, team_id, day_bounds):
     name_by_rider = {}      # 今日有完成单的骑手 → 最佳姓名（补齐未排班骑手用）
     seen_valid = set()
     seen_completed = set()
+    valid_by_date = {}      # 团队级有效单（按日期），等价于 AC._count_valid_orders_by_date
     for o in orders or []:
         if team_str:
             ot = _order_val(o, TEAM_KEYS)
@@ -211,15 +213,32 @@ def _aggregate_rider_data(orders, team_id, day_bounds):
             ms = int(raw)
         except (ValueError, TypeError):
             continue
-        if not any(s <= ms <= e for s, e in day_bounds):
+        d = None
+        for ymd, s, e in day_bounds:
+            if s <= ms <= e:
+                d = ymd
+                break
+        if d is None:
             continue
         rid = _order_val(o, RIDER_ID_KEYS)
-        if rid is None:
-            continue
-        rs = str(rid)
+        rs = str(rid) if rid is not None else None
         tid = o.get("trackingId")
-        # 完成单（仅卡状态）：先计完成，再在其上判定有效（省一次状态求值）
-        if _is_completed(o):
+        # 团队级有效单（与 AC._count_valid_orders_by_date 同口径：完成+非作弊+非逆向+非改派、
+        # trackingId 去重、含无骑手单）。同一有效单只在首次出现计入，并同时归属到具体骑手
+        # （rs 非空时）—— 这样刷新期 AC 直接复用本字典，省掉 AC 对 orders 的二次全扫描。
+        if _is_valid_order(o):
+            _count = True
+            if tid is not None:
+                if tid in seen_valid:
+                    _count = False
+                else:
+                    seen_valid.add(tid)
+            if _count:
+                valid_by_date[d] = valid_by_date.get(d, 0) + 1
+                if rs is not None:
+                    valid_by_rider[rs] = valid_by_rider.get(rs, 0) + 1
+        # 骑手级全天完成单（仅卡状态，不叠加作弊/逆向/改派过滤）
+        if _is_completed(o) and rs is not None:
             if tid is not None:
                 if tid not in seen_completed:
                     seen_completed.add(tid)
@@ -231,14 +250,7 @@ def _aggregate_rider_data(orders, team_id, day_bounds):
             nm = _order_val(o, RIDER_NAME_KEYS) or ""
             if nm:
                 name_by_rider[rs] = nm
-            if _is_valid_order(o):
-                if tid is not None:
-                    if tid not in seen_valid:
-                        seen_valid.add(tid)
-                        valid_by_rider[rs] = valid_by_rider.get(rs, 0) + 1
-                else:
-                    valid_by_rider[rs] = valid_by_rider.get(rs, 0) + 1
-    return valid_by_rider, completed_by_rider, name_by_rider
+    return valid_by_rider, completed_by_rider, name_by_rider, valid_by_date
 
 
 def _aggregate_rider_orders(orders, team_id, today_ymd):
@@ -289,52 +301,7 @@ def _aggregate_rider_orders(orders, team_id, today_ymd):
     return counts
 
 
-def _aggregate_rider_all_orders(orders, team_id, today_ymd):
-    """按骑手聚合「全天单量」，返回 {rider_id_str: count}。
 
-    口径（2026-09-11 用户定稿）：
-      · 仅统计状态为「配送成功 / 已完成（40）」的订单（即 _is_completed）
-      · 不额外剔除作弊、逆向单、改派单、异常上报等任何记录
-      · 日期归属：骑手接单时间（acceptAtLast）的北京时间日期 = today_ymd
-      · 去重：按 trackingId 兜底去重，同一单只计一次
-      · 跨午夜单归属接单当天，不会被两天各计一次
-      · 按 team_id 过滤（team_str 非空时），避免跨站串数据
-
-    与「全天有效单量」的区别：有效单在「配送成功」基础上，再剔除作弊 / 逆向 / 改派；
-    而「全天单量」只卡状态，保留所有配送成功的记录。
-    """
-    team_str = str(team_id).strip() if team_id else None
-    counts = {}
-    seen = set()
-    for o in orders:
-        if not _is_completed(o):
-            continue
-        rid = _order_val(o, RIDER_ID_KEYS)
-        if rid is None:
-            continue
-        if team_str:
-            ot = _order_val(o, TEAM_KEYS)
-            if ot is not None and str(ot).strip() != team_str:
-                continue
-        raw = _order_val(o, ACCEPT_KEYS)
-        if raw is None:
-            raw = _order_val(o, CREATE_KEYS)
-        if raw is None:
-            continue
-        try:
-            ms = int(raw)
-        except (ValueError, TypeError):
-            continue
-        if _std_ymd(_ms_to_bj(ms)) != today_ymd:
-            continue
-        tid = o.get("trackingId")
-        if tid is not None:
-            if tid in seen:
-                continue
-            seen.add(tid)
-        rs = str(rid)
-        counts[rs] = counts.get(rs, 0) + 1
-    return counts
 
 
 # ===================== 未排班但有单的骑手 =====================
@@ -516,7 +483,7 @@ def _build(team_id, start, end, month, riders_raw, orders, target_tc, source):
         _ymd = _cur.strftime("%Y-%m-%d")
         day_bounds.append((_ymd_to_ms(_ymd, False), _ymd_to_ms(_ymd, True)))
         _cur += datetime.timedelta(days=1)
-    allday_orders, allday_all, completed_name = _aggregate_rider_data(
+    allday_orders, allday_all, completed_name, valid_by_date = _aggregate_rider_data(
         orders, team_id, day_bounds)
 
     # 全天达成门槛 = 等级标准的「标准1」（最低一档）。
@@ -691,6 +658,7 @@ def _build(team_id, start, end, month, riders_raw, orders, target_tc, source):
         "start": start,
         "end": end,
         "basis": "day",                       # 口径标记：按整天统计
+        "order_stats": {"valid_by_date": valid_by_date},  # 供刷新期 AC 复用（等价于 AC._count_valid_orders_by_date）
         "att_time_code": target_tc,           # 仅考勤取数用，不参与达成判定
         "att_time_name": TIME_SLOTS.get(target_tc, (None, None, "未知"))[2],
         "cache_time": CACHE.latest_cache_time(team_id, start) if source == "cache" else None,
@@ -762,10 +730,14 @@ def compute(team_id, time_code=None, start=None, end=None, cookie=None, month=No
         if orders is not None:
             _log("运单明细复用已落盘 %d 条（跳过拉取）" % len(orders))
         else:
-            orders = OF.fetch_orders(sess, start_ms, end_ms)
-            # 明细接口返回账号权限下全站数据，落盘前必须按本站点隔离，
-            # 否则 per-team 缓存文件混入其它站数据 → 多站点汇总重复计数。
-            CACHE.save_raw("orders", team_id, OR.filter_by_team(orders, team_id), s)
+            # 导出优先（异步导出一次拿全站，零分页、无限流风险），失败/残缺回落分页。
+            # time_field 与 refresh_all._fetch_shared_orders 一致（运单终态时间），避免漏掉
+            # 「生成早于当天、当天完成」的跨日单，也保证与共享落盘的口径不分裂。
+            # 按 teamId 精确取本站份（缺失的行归 _unknown 不落盘），与共享落盘口径完全一致。
+            grouped = OF.fetch_orders_grouped(sess, start_ms, end_ms,
+                                              time_field="trackingFinish")
+            orders = grouped.get(str(team_id)) or []
+            CACHE.save_raw("orders", team_id, orders, s)
         CACHE.save_raw("att", team_id, {
             "tc": target_tc, "rows": riders_raw,
             "fetched_at": today.isoformat(timespec="seconds"),
@@ -775,7 +747,10 @@ def compute(team_id, time_code=None, start=None, end=None, cookie=None, month=No
         return _empty(team_id, s, e, "error",
                       "%s: %s" % (type(ex).__name__, ex),
                       month=month, time_code=time_code)
-    return _build(team_id, s, e, month, riders_raw, orders, target_tc, "live")
+    res = _build(team_id, s, e, month, riders_raw, orders, target_tc, "live")
+    CACHE.put_result("rider", team_id, s, month, "live", res)
+    CACHE.put_result("rider", team_id, s, month, "cache", res)
+    return res
 
 
 def recompute(team_id, time_code=None, start=None, end=None, month=None):
@@ -791,6 +766,9 @@ def recompute(team_id, time_code=None, start=None, end=None, month=None):
     e = end or _std_ymd(today)
     if not month:
         month = today.strftime("%Y-%m")
+    cached = CACHE.get_result("rider", team_id, s, month, "cache")
+    if cached is not None:
+        return cached
     orders = CACHE.load_raw("orders", team_id, s)
     att = CACHE.load_raw("att", team_id, s)
     if orders is None or att is None:
@@ -799,7 +777,9 @@ def recompute(team_id, time_code=None, start=None, end=None, month=None):
     target_tc = att.get("tc")
     _log("本地重算 运单%d条 考勤%d人 时段%s" % (
         len(orders), len(riders_raw), target_tc))
-    return _build(team_id, s, e, month, riders_raw, orders, target_tc, "cache")
+    res = _build(team_id, s, e, month, riders_raw, orders, target_tc, "cache")
+    CACHE.put_result("rider", team_id, s, month, "cache", res)
+    return res
 
 
 if __name__ == "__main__":

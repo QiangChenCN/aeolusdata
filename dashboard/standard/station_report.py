@@ -80,6 +80,11 @@ def build_one(team_id, start, end, month, source="cache"):
     """
     team_id = str(team_id)
     date = start
+    if not month:
+        month = datetime.datetime.now(BJ).strftime("%Y-%m")
+    cached = CACHE.get_result("station_report", team_id, date, month, "cache")
+    if cached is not None:
+        return cached
     sched = CACHE.load_raw("sched", team_id, date)
     orders = CACHE.load_raw("orders", team_id, date)
     att = CACHE.load_raw("att", team_id, date)
@@ -91,8 +96,6 @@ def build_one(team_id, start, end, month, source="cache"):
             "data_status": "no_data",
             "data_note": "今日尚有站点数据未落盘，请先在「标准达成」点「刷新数据」拉取",
         }
-    if not month:
-        month = datetime.datetime.now(BJ).strftime("%Y-%m")
 
     # —— 骑手维度：复用 RD._build 聚合 achieved / grade（口径与骑手维度完全一致）——
     riders_raw = (att or {}).get("rows") or []
@@ -117,8 +120,9 @@ def build_one(team_id, start, end, month, source="cache"):
     else:
         scale_target = scheduled_num = None
 
-    # —— 有单骑手数：is_completed + 当天单量≥1 ——
-    allday_all = RD._aggregate_rider_all_orders(orders, team_id, date)
+    # —— 有单骑手数：直接复用 RD._build 已算好的 full_day_orders（= 当天完成单按骑手计数），
+    #    不再对 orders 做一次等价全扫描（_aggregate_rider_all_orders 已删除）——
+    allday_all = {str(r["rider_id"]): r["full_day_orders"] for r in rd_rows}
     rider_with_order = sum(1 for c in allday_all.values() if c >= 1)
 
     # —— 实际出勤人数：按老板口径 = 有单骑手数（运单明细 配送成功 且 当天单量≥1）——
@@ -147,7 +151,7 @@ def build_one(team_id, start, end, month, source="cache"):
     threshold_count = _tc.get("threshold_count")
     cap_count = _tc.get("cap_count")
 
-    return {
+    result = {
         "team_id": team_id,
         "team_name": TEAM_NAMES.get(team_id, team_id),
         "need_refresh": False,
@@ -169,6 +173,8 @@ def build_one(team_id, start, end, month, source="cache"):
         "std1": std[1], "std2": std[2], "std3": std[3], "std4": std[4], "std5": std[5],
         "peak_incentive": peak_incentive,
     }
+    CACHE.put_result("station_report", team_id, date, month, "cache", result)
+    return result
 
 
 def build_all(teams, start, end, month=None):

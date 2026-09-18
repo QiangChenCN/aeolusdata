@@ -277,7 +277,9 @@ def _run(teams, start_date, end_date, time_code, month):
 
                 # 2) 站点维度：排班目标（+ 复用运单）+ 考勤 → 生成站点结果
                 _set_current(tid, "拉取排班目标 / 生成站点数据")
-                ac = AC.compute(tid, start_date, end_date, reuse_orders=shared)
+                ac = AC.compute(tid, start_date, end_date,
+                                reuse_orders=shared, reuse_att=True,
+                                reuse_order_counts=rd.get("order_stats", {}).get("valid_by_date"))
                 bad, why = _failed(ac)
                 if bad:
                     raise RuntimeError("站点维度：%s" % why)

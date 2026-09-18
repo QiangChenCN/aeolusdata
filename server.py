@@ -1901,10 +1901,12 @@ def _post_std_grade_standards(self, data):
     if not tid or not mo:
         self._json({"ok": False, "error": "team_id 与 month 都必填"}, 400)
         return
+    from dashboard.standard import cache as _CACHE
     try:
         from dashboard.standard import grade_standards as _GS
         if action == "delete":
             deleted = _GS.delete(tid, mo)
+            _CACHE.clear_results()
             self._json({"ok": True, "deleted": deleted})
             return
         order = data.get("order")
@@ -1916,6 +1918,7 @@ def _post_std_grade_standards(self, data):
             self._json({"ok": False, "error": "duration_h 须是长度为 5 的数组"}, 400)
             return
         saved = _GS.save(tid, mo, order, dur_h)
+        _CACHE.clear_results()
         self._json({"ok": True, "saved": saved})
     except Exception as e:
         self._json({"ok": False, "error": "%s: %s" % (type(e).__name__, e)}, 400)
@@ -1926,10 +1929,12 @@ def _post_std_thresholds(self, data):
         sys.path.insert(0, ROOT)
     try:
         from dashboard.standard import threshold_config as _TC
+        from dashboard.standard import cache as _CACHE
         tp = data.get("threshold_pct")
         cp = data.get("cap_pct")
         month = data.get("month")
         saved = _TC.save(tp, cp, month)
+        _CACHE.clear_results()
         self._json({"ok": True, **saved})
     except ValueError as e:
         self._json({"ok": False, "error": str(e)}, 400)

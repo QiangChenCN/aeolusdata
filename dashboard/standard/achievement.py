@@ -416,7 +416,8 @@ def _data_status(day_rows, has_orders, start, end):
     return "ok", None
 
 
-def _build(team_id, start, end, sched_rows, orders, att_payload, source):
+def _build(team_id, start, end, sched_rows, orders, att_payload, source,
+           reuse_order_counts=None):
     """把三源原始数据组装成前端结果结构（纯本地计算，不发任何 HTTP 请求）。
 
     实时路径（compute）与本地重算路径（recompute）共用本函数，
@@ -424,8 +425,11 @@ def _build(team_id, start, end, sched_rows, orders, att_payload, source):
     """
     team_name = TEAM_NAMES.get(team_id, "team " + team_id)
     has_orders = bool(orders)
-    order_counts = (_count_valid_orders_by_date(orders, team_id, start, end)
-                    if has_orders else {})
+    # reuse_order_counts：刷新期由 RD._build 算好的团队级有效单（与 _count_valid_orders_by_date
+    # 等价），直接复用，省掉 AC 对 orders 的二次全扫描。未提供时走原路径。
+    order_counts = (reuse_order_counts if reuse_order_counts is not None
+                   else (_count_valid_orders_by_date(orders, team_id, start, end)
+                         if has_orders else {}))
     day_rows = _day_target_rows(sched_rows)
     attendance = _snapshot_from_rows(sched_rows, att_payload) if sched_rows else None
     rows = _enrich(day_rows, order_counts, has_orders)
@@ -477,7 +481,8 @@ def _empty(team_id, start, end, source, error=None, need_refresh=False):
     }
 
 
-def compute(team_id, start, end, reuse_orders=False):
+def compute(team_id, start, end, reuse_orders=False, reuse_att=False,
+             reuse_order_counts=None):
     """实时拉取路径 —— 仅点「查询」按钮时走。
 
     拉三源 → 原始层落盘 → 调 _build 组装。要点：
@@ -514,20 +519,34 @@ def compute(team_id, start, end, reuse_orders=False):
         else:
             start_ms = _ymd_to_ms(start, False)
             end_ms = _ymd_to_ms(end, True)
-            orders = OF.fetch_orders(sess, start_ms, end_ms)
-            # 明细接口返回账号权限下全站数据，落盘前必须按本站点隔离，
-            # 否则 per-team 缓存文件混入其它站数据 → 多站点汇总重复计数。
-            CACHE.save_raw("orders", team_id, OR.filter_by_team(orders, team_id), date)
+            # 导出优先（异步导出一次拿全站，零分页、无限流风险），失败/残缺回落分页。
+            # time_field 与 refresh_all._fetch_shared_orders 一致（运单终态时间），避免漏掉
+            # 「生成早于当天、当天完成」的跨日单，也保证与共享落盘的口径不分裂。
+            # 按 teamId 精确取本站份（缺失的行归 _unknown 不落盘），与共享落盘口径完全一致。
+            grouped = OF.fetch_orders_grouped(sess, start_ms, end_ms,
+                                              time_field="trackingFinish")
+            orders = grouped.get(str(team_id)) or []
+            CACHE.save_raw("orders", team_id, orders, date)
 
         # 3) 实时考勤（连同时段码落盘）
-        att_payload = fetch_attendance(team_id, sched_rows, cookie=cookie) if sched_rows else None
+        #    reuse_att：复用骑手维度刚落盘的同一份考勤，避免一次全量刷新里
+        #    每站考勤被拉两次（耗时翻倍 + 平白增加限流风险）。
+        att_payload = None
+        if reuse_att:
+            att_payload = CACHE.load_raw("att", team_id, date)
+        if att_payload is None and sched_rows:
+            att_payload = fetch_attendance(team_id, sched_rows, cookie=cookie)
         if att_payload:
             CACHE.save_raw("att", team_id, att_payload, date)
     except Exception as e:
         return _empty(team_id, start, end, "error",
                       "%s: %s" % (type(e).__name__, e))
 
-    return _build(team_id, start, end, sched_rows, orders, att_payload, "live")
+    res = _build(team_id, start, end, sched_rows, orders, att_payload, "live",
+                 reuse_order_counts=reuse_order_counts)
+    CACHE.put_result("achievement", team_id, date, None, "live", res)
+    CACHE.put_result("achievement", team_id, date, None, "cache", res)
+    return res
 
 
 def recompute(team_id, start, end):
@@ -539,6 +558,9 @@ def recompute(team_id, start, end):
     """
     team_id = str(team_id)
     date = start
+    cached = CACHE.get_result("achievement", team_id, date, None, "cache")
+    if cached is not None:
+        return cached
     sched_rows = CACHE.load_raw("sched", team_id, date)
     orders = CACHE.load_raw("orders", team_id, date)
     att_payload = CACHE.load_raw("att", team_id, date)
@@ -547,7 +569,9 @@ def recompute(team_id, start, end):
     _log("本地重算 排班%d行 运单%d条 考勤%s" % (
         len(sched_rows), len(orders),
         ("%d人" % len(att_payload.get("rows") or [])) if att_payload else "无"))
-    return _build(team_id, start, end, sched_rows, orders or [], att_payload, "cache")
+    res = _build(team_id, start, end, sched_rows, orders or [], att_payload, "cache")
+    CACHE.put_result("achievement", team_id, date, None, "cache", res)
+    return res
 
 
 if __name__ == "__main__":

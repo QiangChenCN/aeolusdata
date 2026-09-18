@@ -26,6 +26,7 @@
 import os
 import json
 import datetime
+import threading
 
 BJ = datetime.timezone(datetime.timedelta(hours=8))
 
@@ -130,6 +131,7 @@ def save_raw(kind, team, payload, date=None):
         os.makedirs(_CACHE_DIR, exist_ok=True)
         with open(p, "w", encoding="utf-8") as f:
             json.dump(payload, f, ensure_ascii=False)
+        _invalidate_results(team, date)
         return True
     except Exception:
         return False
@@ -177,3 +179,55 @@ def latest_cache_time(team, date=None):
         except Exception:
             pass
     return latest.strftime("%Y-%m-%d %H:%M:%S") if latest else None
+
+
+# ===================== 进程内结果缓存（2026-09-18 新增）=====================
+# 解决「切站点 / 切维度 / 首屏加载」每次都重新读数 MB 原始 JSON + 重跑聚合的体感卡顿。
+# 与原始层同生命周期：save_raw 写原始层时自动失效对应 team/date 的结果；
+# 等级标准 / 门槛配置变更时由对应接口调用 clear_results() 整体清空（避免旧口径）。
+# 命中即返回浅拷贝（覆盖 source 字段），不改动缓存中的原对象。
+_RESULT_LOCK = threading.Lock()
+_RESULT_CACHE = {}  # key=(module, team, date, month, source) -> 聚合结果 dict
+
+
+def _result_key(module, team_id, date, month, source):
+    return (module, str(team_id), str(date), str(month), str(source))
+
+
+def get_result(module, team_id, date, month=None, source="cache"):
+    """命中进程内结果缓存则返回浅拷贝（覆盖 source 字段），未命中返回 None。
+
+    用于 recompute / build_one：原始层已有落盘时直接复用上次算好的聚合结果，
+    省掉对 orders 原始 JSON 的反复 json.load + 全量扫描 + 聚合。
+    """
+    k = _result_key(module, team_id, date, month, source)
+    with _RESULT_LOCK:
+        v = _RESULT_CACHE.get(k)
+    if v is None:
+        return None
+    out = dict(v)
+    out["source"] = source
+    return out
+
+
+def put_result(module, team_id, date, month, source, value):
+    """写入进程内结果缓存。value 为已算好的聚合结果 dict。"""
+    k = _result_key(module, team_id, date, month, source)
+    with _RESULT_LOCK:
+        _RESULT_CACHE[k] = value
+    return value
+
+
+def clear_results():
+    """清空全部进程内结果缓存（等级标准 / 门槛配置变更后调用，避免读到旧口径）。"""
+    with _RESULT_LOCK:
+        _RESULT_CACHE.clear()
+
+
+def _invalidate_results(team_id, date):
+    """save_raw 写原始层时调用：失效该 team/date 下所有模块/口径的结果缓存。"""
+    tid, d = str(team_id), str(date)
+    with _RESULT_LOCK:
+        drop = [k for k in _RESULT_CACHE if k[1] == tid and k[2] == d]
+        for k in drop:
+            _RESULT_CACHE.pop(k, None)
