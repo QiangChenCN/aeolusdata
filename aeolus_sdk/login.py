@@ -25,9 +25,36 @@ import re
 import json
 from urllib.parse import quote
 
-# ===== 登录凭据（仅此一处维护；敏感信息建议收紧文件权限或移到独立配置）=====
-ACCOUNT_RAW = "19022010758"
-PASSWORD_RAW = "chen456852."
+# ===== 登录凭据（不再硬编码进源码）=====
+# 按以下顺序读取，命中即返回：
+#   1) 环境变量 AEOLUS_ACCOUNT / AEOLUS_PASSWORD
+#   2) 本地未跟踪文件 aeolus_sdk/credentials.json  {"account": "...", "password": "..."}
+#      （该文件已在 .gitignore 中排除，请勿提交）
+# 注：旧凭据曾硬编码在本文件并提交到 git 历史，建议同步到风神后台轮换该密码。
+def _load_credentials():
+    acc = os.environ.get("AEOLUS_ACCOUNT")
+    pwd = os.environ.get("AEOLUS_PASSWORD")
+    if acc and pwd:
+        return acc, pwd
+    cred_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "credentials.json")
+    try:
+        with open(cred_file, encoding="utf-8") as f:
+            d = json.load(f)
+        acc = d.get("account")
+        pwd = d.get("password")
+        if acc and pwd:
+            return acc, pwd
+    except FileNotFoundError:
+        pass
+    except Exception:
+        pass
+    raise RuntimeError(
+        "未找到风神登录凭据。请设置环境变量 AEOLUS_ACCOUNT / AEOLUS_PASSWORD，"
+        "或在 aeolus_sdk/credentials.json 中配置 account/password（该文件已被 .gitignore 排除）。"
+    )
+
+
+ACCOUNT_RAW, PASSWORD_RAW = _load_credentials()
 # =========================================================================
 
 APP_NAME = "LOGISTICS_COMPANY"
@@ -58,8 +85,10 @@ _HEADERS = {
 }
 
 _CTX = ssl.create_default_context()
-_CTX.check_hostname = False
-_CTX.verify_mode = ssl.CERT_NONE
+if os.environ.get("AEOLUS_INSECURE_TLS"):
+    # 默认保持证书校验（防中间人）。仅在确有自签/内网 CA 问题时临时开启。
+    _CTX.check_hostname = False
+    _CTX.verify_mode = ssl.CERT_NONE
 
 # 登录态探针：专门校验 AEOLUS_MOZI_TOKEN 是否有效（浏览器实际用的校验接口）。
 #   GET https://httpizza.ele.me/lpd.meepo.session/aeolus/validToken

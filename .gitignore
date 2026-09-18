@@ -2,6 +2,7 @@
 minio_config.json
 cookie.txt
 cookie.txt.lock
+aeolus_sdk/credentials.json
 quark_cookie.txt
 quark_da_cookies.txt
 quark_da_cache.json

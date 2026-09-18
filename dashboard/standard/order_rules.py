@@ -77,6 +77,24 @@ def norm_team(v):
     return str(v).strip() if v is not None else None
 
 
+def filter_by_team(orders, team_id):
+    """按站点隔离运单：保留 team 字段缺失或 == team_id 的运单。
+
+    明细接口返回的是「账号权限下全站」数据，没有站点参数。落盘前必须按站点
+    隔离，否则 per-team 的原始层缓存文件会混入其它站点数据 —— 多站点汇总时
+    重复计数（见 assessment_overview._build_trend 把各站 orders 文件合并统计）。
+    过滤口径与聚合侧 _aggregate_rider_data 完全一致：team 字段显式属于别的站
+    才丢弃，缺失（无法判定归属）则保留，与聚合计算行为保持单一来源。
+    """
+    team_str = str(team_id).strip()
+    out = []
+    for o in (orders or []):
+        ot = order_val(o, TEAM_KEYS)
+        if ot is None or str(ot).strip() == team_str:
+            out.append(o)
+    return out
+
+
 def _is_truthy_flag(v):
     """把 布尔 / "1" / "true" / 数字 统一判成「是否标记」。"""
     if v is None:
@@ -152,6 +170,6 @@ def ms_to_ymd(ms):
 __all__ = [
     "BJ", "RIDER_ID_KEYS", "RIDER_NAME_KEYS", "TEAM_KEYS",
     "CREATE_KEYS", "ACCEPT_KEYS", "EXCLUDE_TYPE_KEYS",
-    "order_val", "norm_team", "is_excluded_type", "is_completed",
+    "order_val", "norm_team", "filter_by_team", "is_excluded_type", "is_completed",
     "is_valid_order", "accept_ms", "ms_to_ymd",
 ]

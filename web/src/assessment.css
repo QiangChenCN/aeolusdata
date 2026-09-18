@@ -45,6 +45,7 @@
 
 /* 通用面板（沿用 .scr-panel） */
 .asm-2{ display:grid; grid-template-columns:1.2fr 1fr; gap:var(--scr-gap) }
+/* ══ 响应式断点（全站统一尺度）══ 复用数值见 standard.css 顶部注释；勿另写魔法数字 */
 @media (max-width:1080px){ .asm-2{ grid-template-columns:1fr } }
 
 /* 堆叠条（标准1~5） */

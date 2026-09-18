@@ -178,6 +178,7 @@
 .ap-time-cancel:hover{border-color:var(--accent,#FF5000);color:var(--accent,#FF5000)}
 .ap-time-ok{border:1px solid var(--accent,#FF5000);background:var(--accent,#FF5000);color:#fff}
 .ap-time-ok:hover{filter:brightness(.95)}
+/* ══ 响应式断点（全站统一尺度）══ 复用数值见 standard.css 顶部注释；勿另写魔法数字 */
 @media(max-width:360px){
   .ap-time-modal{padding:16px 12px 14px}
   .ap-time-col{flex:0 0 64px;width:64px}
@@ -292,8 +293,8 @@
 .ap-rider-table{table-layout:auto;font-size:13px;margin:0;border-collapse:separate;border-spacing:0}
 .ap-rider-table thead th{position:sticky;top:0;z-index:5;background:var(--surface-sunken,#f6f7f9)}
 .ap-rider-table thead th.sticky-col{z-index:6}
-.ap-rider-table tbody tr:nth-child(4n+1) td:not(.sticky-col),
-.ap-rider-table tbody tr:nth-child(4n+2) td:not(.sticky-col){background:rgba(0,0,0,.022)}
+.ap-rider-table tbody tr.ap-odd td:not(.sticky-col){background:rgba(0,0,0,.022)}
+.ap-rider-table tbody tr.ap-spacer td{padding:0;background:transparent}
 .ap-rider-table tbody tr.ap-rider-detail td{background:var(--surface-sunken,#fafbfc)}
 .ap-rider-row{cursor:pointer}
 .ap-rider-row:hover td{background:var(--surface-sunken,#fafbfc)}

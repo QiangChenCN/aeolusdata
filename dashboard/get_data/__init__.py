@@ -32,6 +32,8 @@ from get_data.schedule_statistics import query as _sched_query
 from get_data.attendance import fetch_team as fetch_attendance          # 签名一致，直接别名
 from get_data.delivery import fetch as _delivery_fetch
 from aeolus_sdk import login as _L
+# 站点名唯一兜底源（与 dashboard.standard.teams_config.TEAM_NAMES 同源，避免散落硬编码）
+from dashboard.standard.teams_config import TEAM_NAMES
 
 __all__ = [
     "fetch_schedule", "fetch_attendance", "fetch_delivery",
@@ -92,9 +94,4 @@ def flatten_schedule(rows):
     return out
 
 
-# 看板通用站点清单（team_id -> 站点名），各看板共享，避免散落硬编码。
-TEAM_NAMES = {
-    "917521130": "东莞市黄江镇站-UB",
-    "917521136": "东莞市长安万科站-UB",
-    "917521139": "东莞市大岭山大学城站-UB",
-}
+# TEAM_NAMES 已从 dashboard.standard.teams_config 重导出（见上方 import），此处不再重复定义。

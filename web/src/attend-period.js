@@ -6,6 +6,7 @@ import { bus } from "./bus.js";
 import { refreshLan, bindLanToggle, setArg, openSide, closeSide, askConfirm, closeConfirm, bindConfirmUI, lockScroll, unlockScroll } from "./behavior.js";
 import "./attend-period.css";   /* 时段出勤样式（原 _apEnsureStyle 运行时注入 <style>，改为静态引入） */
 import { _apRenderSettings } from "./attend-period-settings.js";   /* 系统设置面板（已外提为独立模块） */
+import { FALLBACK_TEAM_ID, FALLBACK_TEAMS } from "./teams.js";   /* 站点兜底清单（与后端 teams_config.TEAM_NAMES 同步） */
 const state = store.state;
 
 /* 时段出勤（一级菜单「数据看板」→ 子页「时段出勤」）。
@@ -90,7 +91,7 @@ export function renderAttendPeriodView(host){
       var ids = (j && j.teams) || [];
       var nameMap = {};
       (j && j.all || []).forEach(function(t){ nameMap[String(t.id)] = t.name; });
-      if(!ids.length) ids = ["917521136"];   // 兜底：绝不空白
+      if(!ids.length) ids = [FALLBACK_TEAM_ID];   // 兜底：绝不空白
       sel.innerHTML = "";
       var allOpt = document.createElement("option");
       allOpt.value = "__all__"; allOpt.textContent = "全部站点"; sel.appendChild(allOpt);
@@ -109,7 +110,7 @@ export function renderAttendPeriodView(host){
     }).catch(function(){
       // 兜底渲染：forceAll 时优先保证「全部站点」选项存在，避免异常态下仍落到具体站点
       sel.innerHTML = (forceAll ? '<option value="__all__">全部站点</option>' : '') +
-        '<option value="917521136">长安万科站</option>';
+        '<option value="' + FALLBACK_TEAM_ID + '">' + (FALLBACK_TEAMS.find(function(t){ return String(t.id) === FALLBACK_TEAM_ID; }) || {}).name + '</option>';
       if(_ap.team) sel.value = _ap.team;
     });
   }
@@ -498,43 +499,50 @@ export function renderAttendPeriodView(host){
     _apToggleSort(el.getAttribute('data-sort'));
     _apRenderRiderGrid();
   }
-  function _apRenderRiderGrid(){
-    var body = document.getElementById("apRiderBody");
-    if(!body) return;
+  /* ============ 骑手明细：虚拟滚动（窗口化） ============
+     长列表（全部站点视图可达上千骑手 × 十几列）若一次性 innerHTML 整表，
+     每次搜索键入/排序都会重建数千 DOM，卡顿明显。这里做窗口化：仅渲染可视区 + 上下 overscan，
+     滚动时只重建 tbody（容器不重建 → scrollTop 保持）。展开明细 / 小列表仍整表渲染，避免 spacer 高度误差。 */
+  var WINDOW_THRESHOLD = 100;   // 超过该骑手数才窗口化；少则整表（避免小列表滚动抖动）
+  var OVERSCAN = 8;             // 可视区上下额外渲染行数，防快速滚动露白
+  var _apRiderView = null;      // 计算缓存：{ rows, periods, j, isViewAll, viewTeam, totalRiders }
+  var _apRiderViewDirty = true; // 数据/筛选/排序变化 → 需重算
+  var _apRowH = 38;             // 主行估算高度（首绘后实测校准）
+  var _apExpandedRid = null;    // 当前展开行（手风琴：单一）
+  var _apScrollAttached = false;
+  var _apScrollRAF = false;
+  var _apHeadSig = "";          // 表头签名，滚动时不变则跳过 thead 重绘（防抖动）
+
+  /* 重算（重）：过滤 + 排序 + 达标率，仅在数据/筛选/排序变化时触发 */
+  function _apComputeRiderRows(){
     var j = _apRiderData;
+    if(!j || !j.rows){
+      _apRiderView = { rows:[], periods:[], j:j||null, isViewAll:true, viewTeam:_ap.team, totalRiders:0 };
+      _apRiderViewDirty = false; return;
+    }
     var now = new Date();
-    if(!j) return;
-    var isAll = (j.team === "__all__");
-    if(!j.ok){ body.innerHTML = '<div class="ap-err">加载失败：'+(j.error?esc(j.error):"未知错误")+'</div>'; return; }
-    if(j.need_refresh){ body.innerHTML = _apRiderEmptyGlyph("user-check"); return; }
-    if(!j.periods || !j.periods.length){ body.innerHTML = _apRiderEmptyGlyph("user-check"); return; }
-    var allRows = j.rows||[];
-    var periods = j.periods;
+    var periods = j.periods || [];
     var jdate = j.date || _apToday();
     periods.forEach(function(pd){
       pd._start = _apPeriodDate(jdate, pd.start_time);
       pd._end = _apPeriodDate(jdate, pd.end_time);
-      // 跨午夜时段（如 夜宵2 22:00–00:00）：结束时间早于开始 → 结束日 +1 天，避免被误判为「已过」
       if(pd._start && pd._end && pd._end <= pd._start){ pd._end = new Date(pd._end.getTime() + 86400000); }
     });
-    // 达标率 / 「仅看未达标」均按「已过的排班时段」(end<=now) 重算，与实时时刻对齐
-    allRows.forEach(function(r){ r._passedRate = _apPassedRate(r, periods, now); });
-    // 视图筛选：仅「全部站点」展示全部；选定单站时从缓存中筛出该站骑手（不发起请求）
-    var viewTeam = _ap.team;
-    var isViewAll = !viewTeam || viewTeam === "__all__";
-    var viewRows = isViewAll ? allRows : allRows.filter(function(r){ return String(r.team_id) === String(viewTeam); });
-    if(!viewRows.length){ body.innerHTML = _apRiderEmptyGlyph("user-check"); return; }
-
+    (j.rows||[]).forEach(function(r){ r._passedRate = _apPassedRate(r, periods, now); });
+    var isViewAll = !_ap.team || _ap.team === "__all__";
+    var viewRows = isViewAll ? j.rows : j.rows.filter(function(r){ return String(r.team_id) === String(_ap.team); });
     var q = (_apRiderFilter.q||"").trim().toLowerCase();
     var rows = viewRows.slice();
     if(q) rows = rows.filter(function(r){ return (r.rider_name||"").toLowerCase().indexOf(q)>=0 || String(r.rider_id).toLowerCase().indexOf(q)>=0; });
     if(_apRiderFilter.onlyFail) rows = rows.filter(function(r){ return r._passedRate != null && r._passedRate < 100; });
-    rows.sort(_apSortCmp);   // 统一按 _ap.sortKey / _ap.sortDir 排序（稳定排序）
+    rows.sort(_apSortCmp);
+    _apRiderView = { rows:rows, periods:periods, j:j, isViewAll:isViewAll, viewTeam:_ap.team, totalRiders:viewRows.length };
+    _apRiderViewDirty = false;
+  }
 
-    var colspanN = periods.length + 5;   // 骑手ID + 骑手姓名 + 所属站点 + 达标率 + 全天 + 剩余时段
-    var totalRiders = viewRows.length;
-
-    var html = '<div class="ap-rider-scroll"><table class="ap-table ap-rider-table"><thead><tr>'+
+  /* 表头 HTML（<tr>…</tr>） */
+  function _apRiderHeadHtml(periods){
+    var html = '<tr>'+
       _apSortableTh('rid','骑手ID','sticky-col ap-rid')+
       _apSortableTh('rname','骑手姓名','sticky-col ap-rname')+
       _apSortableTh('site','所属站点','sticky-col ap-site-col')+
@@ -551,75 +559,146 @@ export function renderAttendPeriodView(host){
       html += '<th class="center" data-sort="p:'+pd.time_code+'"'+aria+' title="'+esc(title)+'">'+esc(pd.time_name||String(pd.time_code))+
         '<div class="ap-th-range">'+(pd.start_time||"")+'–'+(pd.end_time||"")+'</div>'+ic+'</th>';
     });
-    html += '</tr></thead><tbody>';
-    if(!rows.length){
-      html += '<tr><td class="ap-empty-row" colspan="'+colspanN+'"></td></tr>';
-    }
-    rows.forEach(function(r){
-      var rate = r._passedRate;
-      var rateCls = rate==null? "na" : (rate>=100? "ok":"warn"); if(rate!=null && rate<80) rateCls="bad";
-      var fdCls, fdGlyph, fdSub, fdTitle;
-      if(!r.full_day_configured){
-        fdCls = "na"; fdGlyph = "?"; fdSub = "未配置"; fdTitle = "系统设置中未配置全天标准";
-      } else if(r.full_day_achieved === true){
-        fdCls = "ok"; fdGlyph = "✓";
-        fdSub = (r.full_day_orders_req ? (r.full_day_orders+" / "+r.full_day_orders_req) : "—");
-        fdTitle = "全天达标：单量 "+r.full_day_orders+" / "+r.full_day_orders_req+"，有效在线 "+r.full_day_online_h+"h / "+r.full_day_online_req_h+"h";
-      } else if(r.full_day_achieved === false){
-        fdCls = "bad"; fdGlyph = "✗";
-        fdSub = (r.full_day_orders_req ? (r.full_day_orders+" / "+r.full_day_orders_req) : "—");
-        fdTitle = "全天未达标：单量 "+r.full_day_orders+" / "+r.full_day_orders_req+"，有效在线 "+r.full_day_online_h+"h / "+r.full_day_online_req_h+"h";
-      } else {
-        fdCls = "na"; fdGlyph = "?"; fdSub = "—"; fdTitle = "";
-      }
-      html += '<tr class="ap-rider-row" data-rid="'+esc(r.rider_id)+'">'+
-        '<td class="sticky-col ap-rid">'+esc(r.rider_id)+'</td>'+
-        '<td class="sticky-col ap-rname">'+esc(r.rider_name||"—")+'</td>'+
-        '<td class="sticky-col ap-site-col">'+esc(r.team_name||"—")+'</td>'+
-        '<td class="center"><div class="ap-rate"><div class="ap-rate-bar ap-rate-'+rateCls+'" style="width:'+(rate==null?0:rate)+'%"></div>'+
-          '<span class="ap-rate-txt">'+(rate==null?'—':rate+'%')+'</span></div></td>'+
-        '<td class="center ap-cell ap-cell-'+fdCls+'" title="'+esc(fdTitle)+'">'+
-          '<span class="ap-glyph">'+fdGlyph+'</span><span class="ap-cell-sub">'+esc(fdSub)+'</span></td>';
-      periods.forEach(function(pd){
-        var c = r.cells[pd.time_code];
-        if(!c || !c.scheduled){ html += '<td class="center ap-cell-rest" title="该时段无排班">·</td>'; return; }
-        if(pd._start && now < pd._start){   // 时段尚未开始（已排班）→ 显示「未开始」
-          html += '<td class="center ap-cell ap-cell-future" title="尚未开始（排班 '+esc(pd.start_time||"")+'–'+esc(pd.end_time||"")+'）">未开始</td>';
-          return;
-        }
-        var detail = '单量 '+_apNum(c.orders)+' / 要求 '+pd.orders_req+'；有效在线 '+
-          (c.online_sec!=null? Math.round(c.online_sec/60)+'分':'—')+' / 要求 '+pd.online_req_h+'h';
-        var cellCls, glyph, running = (pd._end && now < pd._end);
-        if(c.achieved===true){ cellCls="ok"; glyph="✓"; }
-        else if(c.achieved===false){ cellCls="bad"; glyph="✗"; }
-        else { cellCls="na"; glyph="?"; }
-        var ratio = pd.orders_req? ((c.orders||0)+'/'+pd.orders_req) : '—';
-        html += '<td class="center ap-cell ap-cell-'+cellCls+(running?' ap-cell-now':'')+'" title="'+esc(detail)+(running?'（进行中）':'')+'">'+
-          '<span class="ap-glyph">'+glyph+'</span><span class="ap-cell-sub">'+ratio+'</span></td>';
-      });
-      html += '</tr>';
-      html += '<tr class="ap-rider-detail" data-drid="'+esc(r.rider_id)+'" style="display:none"><td class="sticky-col" colspan="'+colspanN+'">'+
+    return html + '</tr>';
+  }
+
+  /* 单行 HTML（含展开明细行；仅当该行被展开时追加；窗口化模式下 _apExpandedRid 必为空故不追加） */
+  function _apRiderRowHtml(r, periods, idx){
+    var colspanN = periods.length + 5;
+    var rate = r._passedRate;
+    var rateCls = rate==null? "na" : (rate>=100? "ok":"warn"); if(rate!=null && rate<80) rateCls="bad";
+    var fdCls, fdGlyph, fdSub, fdTitle;
+    if(!r.full_day_configured){ fdCls="na"; fdGlyph="?"; fdSub="未配置"; fdTitle="系统设置中未配置全天标准"; }
+    else if(r.full_day_achieved === true){ fdCls="ok"; fdGlyph="✓"; fdSub=(r.full_day_orders_req?(r.full_day_orders+" / "+r.full_day_orders_req):"—"); fdTitle="全天达标：单量 "+r.full_day_orders+" / "+r.full_day_orders_req+"，有效在线 "+r.full_day_online_h+"h / "+r.full_day_online_req_h+"h"; }
+    else if(r.full_day_achieved === false){ fdCls="bad"; fdGlyph="✗"; fdSub=(r.full_day_orders_req?(r.full_day_orders+" / "+r.full_day_orders_req):"—"); fdTitle="全天未达标：单量 "+r.full_day_orders+" / "+r.full_day_orders_req+"，有效在线 "+r.full_day_online_h+"h / "+r.full_day_online_req_h+"h"; }
+    else { fdCls="na"; fdGlyph="?"; fdSub="—"; fdTitle=""; }
+    var now = new Date();
+    var open = (r.rider_id === _apExpandedRid);
+    var html = '<tr class="ap-rider-row '+(idx%2? "ap-odd":"ap-even")+(open? " ap-row-open":"")+'" data-rid="'+esc(r.rider_id)+'">'+
+      '<td class="sticky-col ap-rid">'+esc(r.rider_id)+'</td>'+
+      '<td class="sticky-col ap-rname">'+esc(r.rider_name||"—")+'</td>'+
+      '<td class="sticky-col ap-site-col">'+esc(r.team_name||"—")+'</td>'+
+      '<td class="center"><div class="ap-rate"><div class="ap-rate-bar ap-rate-'+rateCls+'" style="width:'+(rate==null?0:rate)+'%"></div>'+
+        '<span class="ap-rate-txt">'+(rate==null?'—':rate+'%')+'</span></div></td>'+
+      '<td class="center ap-cell ap-cell-'+fdCls+'" title="'+esc(fdTitle)+'">'+
+        '<span class="ap-glyph">'+fdGlyph+'</span><span class="ap-cell-sub">'+esc(fdSub)+'</span></td>';
+    periods.forEach(function(pd){
+      var c = r.cells[pd.time_code];
+      if(!c || !c.scheduled){ html += '<td class="center ap-cell-rest" title="该时段无排班">·</td>'; return; }
+      if(pd._start && now < pd._start){ html += '<td class="center ap-cell ap-cell-future" title="尚未开始（排班 '+esc(pd.start_time||"")+'–'+esc(pd.end_time||"")+'）">未开始</td>'; return; }
+      var detail = '单量 '+_apNum(c.orders)+' / 要求 '+pd.orders_req+'；有效在线 '+
+        (c.online_sec!=null? Math.round(c.online_sec/60)+'分':'—')+' / 要求 '+pd.online_req_h+'h';
+      var cellCls, glyph, running = (pd._end && now < pd._end);
+      if(c.achieved===true){ cellCls="ok"; glyph="✓"; }
+      else if(c.achieved===false){ cellCls="bad"; glyph="✗"; }
+      else { cellCls="na"; glyph="?"; }
+      var ratio = pd.orders_req? ((c.orders||0)+'/'+pd.orders_req) : '—';
+      html += '<td class="center ap-cell ap-cell-'+cellCls+(running?' ap-cell-now':'')+'" title="'+esc(detail)+(running?'（进行中）':'')+'">'+
+        '<span class="ap-glyph">'+glyph+'</span><span class="ap-cell-sub">'+ratio+'</span></td>';
+    });
+    html += '</tr>';
+    if(open){
+      html += '<tr class="ap-rider-detail" data-drid="'+esc(r.rider_id)+'"><td class="sticky-col" colspan="'+colspanN+'">'+
         _apRiderDetailHtml(r, periods)+'</td></tr>';
-    });
-    html += '</tbody></table></div>';
-    if(j.data_note){ html += '<div style="margin:8px 0;padding:6px 10px;border-left:3px solid #f59e0b;background:#fffbeb;color:#92400e;font-size:13px;border-radius:4px">'+esc(j.data_note)+'</div>'; }
-    body.innerHTML = html;
-    body.querySelectorAll(".ap-rider-row").forEach(function(tr){
-      tr.addEventListener("click", function(){
-        var rid = tr.getAttribute("data-rid");
-        var d = body.querySelector('.ap-rider-detail[data-drid="'+rid+'"]');
-        var willOpen = !!(d && d.style.display === "none");
-        // 手风琴：同一时间只允许一行展开 —— 先收起全部明细行与行高亮
-        body.querySelectorAll(".ap-rider-detail").forEach(function(x){ x.style.display="none"; });
-        body.querySelectorAll(".ap-rider-row.ap-row-open").forEach(function(x){ x.classList.remove("ap-row-open"); });
-        if(willOpen){ d.style.display=""; tr.classList.add("ap-row-open"); }   // 点已展开行=收起；点其它行=收起旧的、展开新的
-      });
-    });
+    }
+    return html;
+  }
+
+  /* 确保滚动外壳（.ap-rider-scroll > table > thead/tbody#apRiderTbody）存在；不存在则重建并绑定滚动监听 */
+  function _apEnsureRiderShell(body, v, colspanN){
+    var scroll = body.querySelector(".ap-rider-scroll");
+    if(!scroll){
+      body.innerHTML = '<div class="ap-rider-scroll"><table class="ap-table ap-rider-table"><thead></thead><tbody id="apRiderTbody"></tbody></table></div>';
+      scroll = body.querySelector(".ap-rider-scroll");
+      if(!_apScrollAttached){ body.addEventListener("scroll", _apOnRiderScroll, true); _apScrollAttached = true; }
+      _apHeadSig = "";   // 强制重绘 thead
+    }
+    var note = body.querySelector("#apRiderNote");
+    if(!note){ note = document.createElement("div"); note.id = "apRiderNote"; body.appendChild(note); }
+    note.innerHTML = (v.j && v.j.data_note) ? ('<div style="margin:8px 0;padding:6px 10px;border-left:3px solid #f59e0b;background:#fffbeb;color:#92400e;font-size:13px;border-radius:4px">'+esc(v.j.data_note)+'</div>') : "";
+  }
+
+  function _apRiderMeta(v){
     var meta = document.getElementById("apRiderMeta");
     if(meta){
-      var viewLabel = isViewAll ? "全部站点" : _apTeamName(viewTeam);
-      meta.textContent = viewLabel + " · " + (j.date||"") + " · 已加载 " + totalRiders + " 名骑手（缓存）";
+      var viewLabel = v.isViewAll ? "全部站点" : _apTeamName(v.viewTeam);
+      meta.textContent = viewLabel + " · " + (v.j.date||"") + " · 已加载 " + v.totalRiders + " 名骑手（缓存）";
     }
+  }
+
+  /* 滚动虚拟化：仅窗口化模式下，按 scrollTop 重算可视区并只重建 tbody（容器不重建 → scrollTop 保持） */
+  function _apOnRiderScroll(e){
+    var t = e.target;
+    if(!t || !t.classList || !t.classList.contains("ap-rider-scroll")) return;
+    if(_apRiderViewDirty || !_apRiderView) return;
+    var total = _apRiderView.rows.length;
+    if(_apExpandedRid || total <= WINDOW_THRESHOLD) return;
+    if(_apScrollRAF) return;
+    _apScrollRAF = true;
+    requestAnimationFrame(function(){ _apScrollRAF = false; _apPaintRiderGrid(); });
+  }
+
+  /* 轻量绘制：数据未就绪才重算；否则按窗口化/整表渲染 tbody，保留 scrollTop */
+  function _apPaintRiderGrid(){
+    var body = document.getElementById("apRiderBody");
+    if(!body) return;
+    if(_apRiderViewDirty || !_apRiderView) _apComputeRiderRows();
+    var v = _apRiderView;
+    var j = v.j;
+    if(!j) return;
+    if(!j.ok){ body.innerHTML = '<div class="ap-err">加载失败：'+(j.error?esc(j.error):"未知错误")+'</div>'; return; }
+    if(j.need_refresh){ body.innerHTML = _apRiderEmptyGlyph("user-check"); return; }
+    if(!v.periods.length){ body.innerHTML = _apRiderEmptyGlyph("user-check"); return; }
+
+    var colspanN = v.periods.length + 5;
+    var total = v.rows.length;
+    _apEnsureRiderShell(body, v, colspanN);
+    var scroll = body.querySelector(".ap-rider-scroll");
+    var thead = scroll.querySelector("thead");
+    var tbody = scroll.querySelector("#apRiderTbody");
+
+    if(!total){
+      thead.innerHTML = _apRiderHeadHtml(v.periods); _apHeadSig = _ap.sortKey+"|"+_ap.sortDir+"|"+v.periods.length;
+      tbody.innerHTML = '<tr><td class="ap-empty-row" colspan="'+colspanN+'">无匹配骑手</td></tr>';
+      _apRiderMeta(v); return;
+    }
+
+    var sig = _ap.sortKey + "|" + _ap.sortDir + "|" + v.periods.length;
+    if(sig !== _apHeadSig){ thead.innerHTML = _apRiderHeadHtml(v.periods); _apHeadSig = sig; }
+
+    var windowed = !_apExpandedRid && total > WINDOW_THRESHOLD;
+    if(!windowed){
+      var html = "";
+      for(var i=0;i<total;i++){ html += _apRiderRowHtml(v.rows[i], v.periods, i); }
+      tbody.innerHTML = html;
+    } else {
+      var ch = scroll.clientHeight || 600;
+      var vis = Math.ceil(ch / _apRowH) + 1;
+      var top = scroll.scrollTop || 0;
+      var start = Math.max(0, Math.floor(top / _apRowH) - OVERSCAN);
+      var end = Math.min(total - 1, start + vis + 2*OVERSCAN);
+      var sTop = '<tr class="ap-spacer"><td colspan="'+colspanN+'" style="height:'+(start*_apRowH)+'px;padding:0;border:0;line-height:0;font-size:0"></td></tr>';
+      var mid = "";
+      for(var i=start;i<=end;i++){ mid += _apRiderRowHtml(v.rows[i], v.periods, i); }
+      var sBot = '<tr class="ap-spacer"><td colspan="'+colspanN+'" style="height:'+((total-1-end)*_apRowH)+'px;padding:0;border:0;line-height:0;font-size:0"></td></tr>';
+      tbody.innerHTML = sTop + mid + sBot;
+    }
+    var fr = tbody.querySelector(".ap-rider-row");
+    if(fr){ var h = fr.offsetHeight; if(h>0) _apRowH = h; }
+    _apRiderMeta(v);
+  }
+
+  /* 公开入口：数据/筛选/排序变化 → 标记重算后绘制 */
+  function _apRenderRiderGrid(){ _apRiderViewDirty = true; _apPaintRiderGrid(); }
+
+  /* 行点击：手风琴展开/收起（事件委托，容器常驻故只绑一次） */
+  function _apOnRiderRowClick(e){
+    var tr = (e.target && e.target.closest) ? e.target.closest(".ap-rider-row") : null;
+    if(!tr || !tr.getAttribute) return;
+    var rid = tr.getAttribute("data-rid");
+    if(!rid) return;
+    _apExpandedRid = (_apExpandedRid === rid) ? null : rid;
+    _apPaintRiderGrid();   // 展开/收起切换窗口化↔整表，无需重算数据
   }
 
   function _apRenderRider(pane){
@@ -651,6 +730,7 @@ export function renderAttendPeriodView(host){
     if(qEl) qEl.addEventListener("input", debounce(function(){ _apRiderFilter.q = qEl.value; reGrid(); }, 120));
     // 表头点击排序（事件委托，容器常驻故只绑一次）：点击切换升/降序，零网络
     if(body) body.addEventListener("click", _apRiderHeadClick);
+    if(body) body.addEventListener("click", _apOnRiderRowClick);
     if(onlyFailEl){ onlyFailEl.checked = _apRiderFilter.onlyFail; onlyFailEl.addEventListener("change", function(){ _apRiderFilter.onlyFail = onlyFailEl.checked; reGrid(); }); }
     if(_apRiderData) _apRenderRiderGrid();
     else body.innerHTML = _apRiderEmptyGlyph("user-check");

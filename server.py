@@ -258,9 +258,8 @@ def _teams_with_names():
             out.append((tid, (t or {}).get("name") or tid))
     if out:
         return out
-    return [("917521130", "东莞市黄江镇站-UB"),
-            ("917521136", "东莞市长安万科站-UB"),
-            ("917521139", "东莞市大岭山大学城站-UB")]
+    from dashboard.standard import teams_config as TCFG
+    return [(tid, name) for tid, name in TCFG.TEAM_NAMES.items()]
 
 
 def _configured_teams():
@@ -305,11 +304,9 @@ def _fetch_all_teams():
         out["error"] = err or "风神接口未返回任何站点"
         # 兜底清单：与 attendance.FALLBACK_TEAMS 一致；写死三站，
         # 网络/登录异常时保底，绝不让选择器空白。
-        out["fallback"] = [
-            {"id": "917521130", "name": "东莞市黄江镇站-UB"},
-            {"id": "917521136", "name": "东莞市长安万科站-UB"},
-            {"id": "917521139", "name": "东莞市大岭山大学城站-UB"},
-        ]
+        from dashboard.standard import teams_config as TCFG
+        out["fallback"] = [{"id": tid, "name": name}
+                           for tid, name in TCFG.TEAM_NAMES.items()]
     _TEAMS_CACHE["data"] = out
     _TEAMS_CACHE["ts"] = now
     return out

@@ -54,11 +54,7 @@ from dashboard.standard import order_rules as OR
 
 BJ = datetime.timezone(datetime.timedelta(hours=8))
 
-TEAM_NAMES = {
-    "917521130": "东莞市黄江镇站-UB",
-    "917521136": "东莞市长安万科站-UB",
-    "917521139": "东莞市大岭山大学城站-UB",
-}
+from dashboard.standard.teams_config import TEAM_NAMES  # 站点名唯一兜底源（teams_config.py）
 
 # 全天达成门槛取自等级标准的第几档（levels[0]=未定级，levels[1]=标准1）。
 # 业务上「达成」= 至少达到最低一档标准，因此默认取 1（标准1）；要调高门槛改这里即可。
@@ -767,7 +763,9 @@ def compute(team_id, time_code=None, start=None, end=None, cookie=None, month=No
             _log("运单明细复用已落盘 %d 条（跳过拉取）" % len(orders))
         else:
             orders = OF.fetch_orders(sess, start_ms, end_ms)
-            CACHE.save_raw("orders", team_id, orders, s)
+            # 明细接口返回账号权限下全站数据，落盘前必须按本站点隔离，
+            # 否则 per-team 缓存文件混入其它站数据 → 多站点汇总重复计数。
+            CACHE.save_raw("orders", team_id, OR.filter_by_team(orders, team_id), s)
         CACHE.save_raw("att", team_id, {
             "tc": target_tc, "rows": riders_raw,
             "fetched_at": today.isoformat(timespec="seconds"),

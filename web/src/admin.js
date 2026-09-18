@@ -8,7 +8,7 @@ import "./admin.css";
 import { store } from "./store.js";
 import { TK } from "./tokens.js";
 import { api, getSessionUser } from "./api.js";
-import { svg, esc, hexA, toast, viewHead } from "./ui.js";
+import { svg, esc, hexA, toast, viewHead, emptyHtml } from "./ui.js";
 import { askConfirm } from "./behavior.js";
 
 const state = store.state;
@@ -171,11 +171,6 @@ function swRow(text, id, on, hint){
     + (hint ? '<span class="am-swrow-h">' + esc(hint) + '</span>' : '') + '</span>'
     + '<label class="am-sw"><input type="checkbox" id="' + id + '"' + (on ? " checked" : "") + '>'
     + '<span class="am-sw-tr"><span class="am-sw-kn"></span></span></label></div>';
-}
-
-/* 空状态 */
-function emptyHtml(icon, text){
-  return '<div class="am-empty">' + svg(icon, "ic") + '<div class="am-empty-t">' + esc(text) + '</div></div>';
 }
 
 /* 首字母头像 */

@@ -44,5 +44,20 @@ export function viewHead(title, sub, icon, color, rightHtml){
   return h;
 }
 
+/* 统一空态 / 加载态 / 错误态：复用既有 .empty / .aperr 样式，避免各页面各写一套。
+   emptyHtml 为 admin 专有的「图标 + 文案」空态（保留原标记，单一来源）。 */
+export function emptyHtml(icon, text){
+  return '<div class="am-empty">' + svg(icon, "ic") + '<div class="am-empty-t">' + esc(text) + '</div></div>';
+}
+export function showLoading(el, text){
+  if(el) el.innerHTML = '<div class="empty">' + esc(text || "加载中…") + '</div>';
+}
+export function showEmpty(el, text){
+  if(el) el.innerHTML = '<div class="empty">' + esc(text || "暂无数据") + '</div>';
+}
+export function showError(el, text){
+  if(el) el.innerHTML = '<div class="aperr">' + esc(text || "加载失败") + '</div>';
+}
+
 /* 自动导出：供其他模块导入的内部顶层符号 */
 export { toastTimer };

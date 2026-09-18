@@ -6,6 +6,7 @@ import { bus } from "./bus.js";
 import { refreshLan, bindLanToggle, setArg, openSide, closeSide, askConfirm, closeConfirm, bindConfirmUI, lockScroll, unlockScroll } from "./behavior.js";
 import "./standard.css";   /* 标准达成视图样式（原 _stdEnsureStyle 运行时注入 <style>，改为静态引入） */
 import { _stdRenderSettings } from "./standard-settings.js";   /* 「系统设置」页（已拆分为独立模块） */
+import { FALLBACK_TEAMS } from "./teams.js";   /* 站点兜底清单（与后端 teams_config.TEAM_NAMES 同步） */
 const state = store.state;
 
 /* 标准达成视图状态：单一归属 store.ui.std（standard.js 与 standard-settings.js 共享，
@@ -308,8 +309,7 @@ export function renderStandardView(host){
     api("/api/standard/grade-standards?month="+encodeURIComponent(mo)).then(function(gs){
       var cfgSet={}; (gs&&gs.configured_ids||[]).forEach(function(id){ cfgSet[String(id)]=1; });
       var list=(_std.teams||[]).filter(function(t){ return cfgSet[String(t.id)]; });
-      if(!list.length) list=[{id:"917521130",name:"东莞市黄江镇站-UB"},
-        {id:"917521136",name:"东莞市长安万科站-UB"},{id:"917521139",name:"东莞市大岭山大学城站-UB"}];
+      if(!list.length) list = FALLBACK_TEAMS;
       _stdTeamData=list;
       var found=String(_std.team)===_STD_ALL_TEAM || list.some(function(t){ return String(t.id)===String(_std.team); });
       if(!found){ _std.team=_STD_ALL_TEAM; }
@@ -318,8 +318,7 @@ export function renderStandardView(host){
       _stdFillTeamInput(); _stdRenderTeamList("");
       if(typeof _stdFillRiders==="function") _stdFillRiders();
     }).catch(function(){
-      var list=_std.teams.length?_std.teams:[{id:"917521130",name:"东莞市黄江镇站-UB"},
-        {id:"917521136",name:"东莞市长安万科站-UB"},{id:"917521139",name:"东莞市大岭山大学城站-UB"}];
+      var list=_std.teams.length?_std.teams:FALLBACK_TEAMS;
       _stdTeamData=list;
       var found=String(_std.team)===_STD_ALL_TEAM || list.some(function(t){ return String(t.id)===String(_std.team); });
       if(!found){ _std.team=_STD_ALL_TEAM; }

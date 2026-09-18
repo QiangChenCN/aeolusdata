@@ -23,6 +23,21 @@ _LOCK = threading.Lock()
 # 默认参与站点（用户日常看板的三个 -UB 站）
 DEFAULT_TEAMS = ["917521130", "917521136", "917521139"]
 
+# 已知站点兜底清单（id -> 站点名）——「站点名」的唯一兜底来源。
+# 真实站点目录由风神上游接口提供（server._fetch_all_teams → get_data.teams.fetch_teams），
+# 仅在登录失效 / 网络异常时，各模块与 /api/teams 用本清单兜底（绝不让选择器空白）。
+# 新增 / 改名站点：只改这一处即可（前端兜底常量同步见 web/src/teams.js）。
+TEAM_NAMES = {
+    "917521130": "东莞市黄江镇站-UB",
+    "917521136": "东莞市长安万科站-UB",
+    "917521139": "东莞市大岭山大学城站-UB",
+}
+
+
+def get_team_names():
+    """返回 {team_id: name} 兜底映射（深拷贝，避免调用方误改）。"""
+    return dict(TEAM_NAMES)
+
 
 def _atomic_write(obj):
     tmp = _PATH + ".tmp"

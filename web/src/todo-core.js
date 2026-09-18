@@ -2,7 +2,7 @@
 // 从 todo.js 拆出（原 19-171 行）。本模块不含任何 DOM 渲染，
 // 因此 todo.js（视图）与 todo-editors.js（编辑器）都可以安全依赖它，且不会形成循环。
 import { store } from "./store.js";
-import { api, getToken } from "./api.js";
+import { api } from "./api.js";
 import { toast } from "./ui.js";
 import { bus } from "./bus.js";
 const state = store.state;
@@ -38,14 +38,14 @@ export function todoReload(cb){
 
 /* 写操作统一入口：调接口 → 成功后重载。失败弹提示，不让界面和数据跑偏。 */
 export function todoApi(path, payload){
-  return fetch(path, {
-    method:"POST", headers:{ "Content-Type":"application/json", "X-Token":getToken() },
-    body: JSON.stringify(payload || {})
-  }).then(function(r){ return r.json(); })
-    .then(function(j){
-      if(!j || !j.ok) throw new Error((j && j.error) || "操作失败");
-      return j;
-    });
+  return api(path, {
+    method:"POST", headers:{ "Content-Type":"application/json" },
+    body: JSON.stringify(payload || {}),
+    _silent:true
+  }).then(function(j){
+    if(!j || !j.ok) throw new Error((j && j.error) || "操作失败");
+    return j;
+  });
 }
 /* 首次进入时把 localStorage 时代的旧数据搬进数据库（仅在服务端为空时执行） */
 export function todoMigrateLocal(){

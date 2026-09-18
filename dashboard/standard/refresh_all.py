@@ -100,15 +100,29 @@ def status():
     return snap
 
 
-def start(teams=None, start_date=None, end_date=None, time_code=None, month=None):
+def start(teams=None, start_date=None, end_date=None, time_code=None, month=None,
+          force=False):
     """启动全量刷新。返回 (ok, msg)。
 
     teams 为空时取 teams_config 的参与站点。已在跑 → ok=False, msg="已有刷新任务在运行"。
+
+    历史日期护栏：考勤/运单接口只服务「当天」，刷新非当天日期会用近空数据覆盖
+    历史快照（2026-09-17 事故根因）。因此默认拒绝刷新非当天日期；确需回填时
+    须显式 force=True，或设置环境变量 AEOLUS_ALLOW_HISTORICAL_REFRESH=1
+    （覆盖前请先备份 dashboard/standard/cache/）。
     """
     if not start_date:
         start_date = CACHE.today_ymd()
     if not end_date:
         end_date = start_date
+    today = CACHE.today_ymd()
+    if (start_date != today or end_date != today) and not force \
+            and not os.environ.get("AEOLUS_ALLOW_HISTORICAL_REFRESH"):
+        return False, (
+            "拒绝刷新历史日期 %s~%s：考勤/运单接口只服务当天，刷新会用近空数据覆盖"
+            "历史快照。如确需回填，请传 force=True 或设置环境变量 "
+            "AEOLUS_ALLOW_HISTORICAL_REFRESH=1（覆盖前请先备份缓存）。" % (start_date, end_date)
+        )
     if not teams:
         teams = TCFG.get_teams()
     teams = [str(t).strip() for t in (teams or []) if str(t).strip()]

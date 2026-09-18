@@ -65,11 +65,7 @@ from dashboard.standard import order_rules as OR
 
 BJ = datetime.timezone(datetime.timedelta(hours=8))
 
-TEAM_NAMES = {
-    "917521130": "东莞市黄江镇站-UB",
-    "917521136": "东莞市长安万科站-UB",
-    "917521139": "东莞市大岭山大学城站-UB",
-}
+from dashboard.standard.teams_config import TEAM_NAMES  # 站点名唯一兜底源（teams_config.py）
 
 # ---- 全天口径常量（2026-09-09 起，标准达成一律按整天统计，不再逐时段判定）----
 # 排班目标 timeList 中 timeCode=9999 的那一行就是「全天」汇总行，
@@ -519,7 +515,9 @@ def compute(team_id, start, end, reuse_orders=False):
             start_ms = _ymd_to_ms(start, False)
             end_ms = _ymd_to_ms(end, True)
             orders = OF.fetch_orders(sess, start_ms, end_ms)
-            CACHE.save_raw("orders", team_id, orders, date)
+            # 明细接口返回账号权限下全站数据，落盘前必须按本站点隔离，
+            # 否则 per-team 缓存文件混入其它站数据 → 多站点汇总重复计数。
+            CACHE.save_raw("orders", team_id, OR.filter_by_team(orders, team_id), date)
 
         # 3) 实时考勤（连同时段码落盘）
         att_payload = fetch_attendance(team_id, sched_rows, cookie=cookie) if sched_rows else None

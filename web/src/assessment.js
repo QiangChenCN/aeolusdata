@@ -221,14 +221,14 @@ function periodHeatPanel(j){
   // 排序：全天(9999) 置首，其余按 time_name 起始时间
   function hm(s){ if(!s || s.indexOf(":") < 0) return 9999; var a = s.split(":"); return parseInt(a[0], 10) * 60 + parseInt(a[1], 10); }
   periods.sort(function(a, b){
-    if(str(a.time_code) === "9999") return -1;
-    if(str(b.time_code) === "9999") return 1;
+    if(String(a.time_code) === "9999") return -1;
+    if(String(b.time_code) === "9999") return 1;
     return hm(a.time_name) - hm(b.time_name);
   });
   var head = "<tr><th>站点</th>" + periods.map(function(pd){ return "<th>" + esc(pd.time_name) + "</th>"; }).join("") + "</tr>";
   var body = pa.station_rows.map(function(r){
     var cells = periods.map(function(pd){
-      var m = r.metrics ? r.metrics[str(pd.time_code)] : null;
+      var m = r.metrics ? r.metrics[String(pd.time_code)] : null;
       if(!m){ var k = pd.time_code; m = r.metrics[k] !== undefined ? r.metrics[k] : (r.metrics[String(k)] || r.metrics[Number(k)] || null); }
       if(!m || m.rate == null) return '<td><span class="c none">—</span></td>';
       var v = m.rate;

@@ -223,6 +223,7 @@ select.am-in{ appearance:none; cursor:pointer;
 .am-fv .am-fl{ text-align:left; padding-top:0; flex:none; font-size:12.5px; color:var(--muted,#6b7280); font-weight:500; }
 .am-fv .am-in.am-w{ width:100%; }
 
+/* ══ 响应式断点（全站统一尺度）══ 复用数值见 standard.css 顶部注释；勿另写魔法数字 */
 @media (max-width:760px){
   .am-pcols{ grid-template-columns:1fr; }
 }

@@ -57,8 +57,16 @@
 .std-rider .std-table th:nth-child(4),.std-rider .std-table td:nth-child(4),
 .std-rider .std-table th:nth-child(7),.std-rider .std-table td:nth-child(7),
 .std-rider .std-table th:nth-child(11),.std-rider .std-table td:nth-child(11){text-align:center}
+/* ══ 响应式断点（全站统一尺度）══ 新增/修改媒体查询请复用以下数值，勿另写魔法数字：
+   ≤1280  xl    宽表字号压缩（站点报表 15 列）
+   ≤1080  lg    两栏面板→单栏（首页/评估/骑手表）；骑手表字号压缩
+   ≤900   md    首页双卡→单栏
+   ≤760   sm    管理表单/卡片→竖排
+   ≤680   xs    网格 5→3 / 管理角色列表横排
+   ≤560   xxs   骑手工具条换行
+   ≤360   xxxs  时段弹窗收窄                                  */
 /* 窄屏：仅缩小字号与内边距，列仍按内容撑开、可横向滚动查看 */
-@media (max-width:1100px){
+@media (max-width:1080px){
   .std-rider > .std-table{font-size:11px}
   .std-rider .std-table th,.std-rider .std-table td{padding:7px 7px}
 }

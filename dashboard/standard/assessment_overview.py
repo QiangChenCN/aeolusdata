@@ -40,11 +40,7 @@ from dashboard.standard import achievement as AC
 
 BJ = datetime.timezone(datetime.timedelta(hours=8))
 
-TEAM_NAMES = {
-    "917521130": "东莞市黄江镇站-UB",
-    "917521136": "东莞市长安万科站-UB",
-    "917521139": "东莞市大岭山大学城站-UB",
-}
+from dashboard.standard.teams_config import TEAM_NAMES  # 站点名唯一兜底源（teams_config.py）
 ALL_TEAM_ID = "__all__"
 
 # —— 红黄灯阈值 ——

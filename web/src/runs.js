@@ -1,10 +1,6 @@
 // 自动生成的模块头：统一依赖（未使用的导入会被打包器摇树移除）
-/* Tabulator 基础 + Simple 主题样式。此前**从未加载**（index.html 只链了 tokens/apple.css，
-   npm 包也不自带 CSS 导入）→ 产物预览的表格表头错乱、列不对齐（已截图确认）。
-   JS 已改为按需 import()，但样式必须随页面一起加载，否则表格没有布局。 */
-import "tabulator-tables/dist/css/tabulator_simple.min.css";
 import { store, groupOf, taskById, countInGroup, producerOf, missingText, visibleTasks, taskState, argValue } from "./store.js";
-import { api, savePrefs, loadPrefs, readTokens, withToken } from "./api.js";
+import { api, savePrefs, loadPrefs, readTokens, withToken, requestRaw } from "./api.js";
 import { svg, esc, hexA, toast, debounce, viewHead } from "./ui.js";
 import { TK, TK_MAP, RISK_LABEL, RISK_CLS, STATUS_CLS, STATUS_TXT, ICON } from "./tokens.js";
 import { bus } from "./bus.js";
@@ -203,7 +199,7 @@ export function selectArtifact(rel, type, name){
 }
 // 文本按编码稳健读取（BOM 优先 → UTF-8 → GBK → GB18030 兜底）
 export function fetchText(url){
-  return fetch(url).then(function(r){
+  return requestRaw(url).then(function(r){
     var hdrCT = r.headers.get("Content-Type") || "";
     var ce = /charset=([^;]+)/i.exec(hdrCT);
     var enc = ce ? ce[1].trim().toLowerCase() : "utf-8";
@@ -254,62 +250,21 @@ export function fmtBytes(b){
   if(b < 1048576) return (b/1024).toFixed(1) + " KB";
   return (b/1048576).toFixed(2) + " MB";
 }
-// ---- 表格应用：Tabulator（本地 vendor，MIT 许可，零外部依赖）----
-export function toTabulatorData(headers, rows){
-  var data = [], i, j, o;
-  for(i=0;i<rows.length;i++){
-    o = {};
-    for(j=0;j<headers.length;j++){
-      var v = rows[i][j];
-      o["c"+j] = (v===undefined||v===null) ? "" : String(v);
-    }
-    data.push(o);
-  }
-  return data;
-}
-export function toTabulatorColumns(headers){
-  return headers.map(function(h, idx){
-    var t = (h===undefined||h===null||h==="") ? ("列"+(idx+1)) : String(h);
-    return {
-      title: t, field: "c"+idx, minWidth: 110, resizable: true,
-      headerFilter: "input",
-      formatter: function(cell){ return esc(cell.getValue()); }
-    };
-  });
-}
+// ---- 产物预览表格：按需懒加载（详见 art-table.js）----
+// 薄壳：保留 mountTabulator(hostId, headers, rows) 集成契约，仅在用户打开产物预览时才
+// 动态拉取 Tabulator 的 JS+CSS 分块，主包（JS/CSS）均不含该库。
 export function mountTabulator(hostId, headers, rows){
   var host = document.getElementById(hostId);
   if(!host || host.classList.contains("tabulator") || host.dataset.tabInit) return; // 已初始化/初始化中则跳过
   host.dataset.tabInit = "1";
-  /* Tabulator 仅「产物预览」用到 → 动态 import 懒加载，不拖累首屏
-     （原为顶层 import，把整个表格库拽进主包）。 */
-  import("tabulator-tables").then(function(mod){
-    var T = mod.Tabulator || mod.default;
+  import("./art-table.js").then(function(m){
     var h = document.getElementById(hostId);
     if(!h || !h.dataset.tabInit) return;   // 异步加载期间宿主已被移除/重渲染
-    new T("#"+hostId, {
-      data: toTabulatorData(headers, rows),
-      columns: toTabulatorColumns(headers),
-      layout: "fitColumns",
-      height: "100%",
-      virtualDom: false,
-      pagination: true,
-      paginationSize: 50,
-      paginationSizeSelector: [25, 50, 100, 200],
-      movableColumns: true,
-      tooltipsHeader: true,
-      tooltips: function(cell){ var v = cell.getValue(); return (v && String(v).length>40) ? String(v) : false; },
-      rowFormatter: function(row){
-        var el = row.getElement();
-        el.classList.remove("zebra");
-        if(row.getPosition() % 2 === 1) el.classList.add("zebra");
-      },
-      placeholder: "（空表）"
-    });
+    m.mountTabulator(hostId, headers, rows);
   }).catch(function(e){
     var h = document.getElementById(hostId);
     if(h) delete h.dataset.tabInit;
-    console.error("[tabulator] 加载失败：", e);
+    console.error("[art-table] 加载失败：", e);
   });
 }
 export function renderTable(heads, rows, name, bytes){

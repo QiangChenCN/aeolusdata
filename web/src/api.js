@@ -83,30 +83,72 @@ function withToken(u){ var t = getToken(); return u + (u.indexOf("?")>=0 ? "&" :
 var onUnauthorized = null;
 export function setUnauthorizedHandler(fn){ onUnauthorized = fn; }
 
-function api(path, opts){
+/* 请求超时（毫秒）。可在入口处通过 window.__API_TIMEOUT_MS__ 覆盖（默认 20s）。
+   无超时会让网络卡住的请求一直挂起 → 页面白屏，故统一加超时。 */
+export const API_TIMEOUT_MS = (typeof window !== "undefined" && window.__API_TIMEOUT_MS__)
+  ? Number(window.__API_TIMEOUT_MS__) : 20000;
+
+/* 底层 fetch 封装：注入令牌头 + 超时（AbortController）+ 401 回调。
+   返回 Response（不 json、不抛非 2xx），便于 login/fetchText 等需要原始响应的场景复用。 */
+function _timeoutFetch(path, opts){
   opts = opts || {};
   var t = getToken();
   opts.headers = Object.assign({}, opts.headers, { "X-Token": t || "" });
-  return fetch(path, opts)
-    .then(function(r){
-      if(r.status === 401){
-        if(typeof onUnauthorized === "function") onUnauthorized();
-        throw new Error("HTTP 401 未授权");
-      }
-      if(!r.ok){ throw new Error("HTTP " + r.status + " " + (r.statusText || "")); }
-      return r.json();
-    })
-    .catch(function(err){
-      // P0：统一错误兜底，消除静默失败；仍 rethrow 保留调用方 .catch 能力
-      var msg = (err && err.message) ? err.message : String(err);
-      toast("请求失败：" + msg);
-      throw err;
-    });
+  var ctrl = (typeof AbortController !== "undefined") ? new AbortController() : null;
+  if(ctrl) opts.signal = ctrl.signal;
+  var timer = ctrl ? setTimeout(function(){ ctrl.abort(); }, API_TIMEOUT_MS) : null;
+  return fetch(path, opts).then(function(r){
+    if(timer) clearTimeout(timer);
+    return r;
+  }, function(err){
+    if(timer) clearTimeout(timer);
+    if(ctrl && err && err.name === "AbortError"){
+      throw new Error("请求超时（>" + API_TIMEOUT_MS + "ms）");
+    }
+    throw err;
+  });
 }
 
-/* 登录：POST /api/auth/login → 成功写入会话；返回 Promise<{token,user,role}> */
+export function requestRaw(path, opts){
+  return _timeoutFetch(path, opts).then(function(r){
+    if(r.status === 401 && typeof onUnauthorized === "function") onUnauthorized();
+    return r;
+  });
+}
+
+/* 统一接口客户端：令牌头 + 401 + 超时 + 非 2xx 抛错 + 错误兜底 toast。
+   opts._silent=true 时不上 toast（调用方自行处理错误 UI，避免重复提示）。 */
+function api(path, opts){
+  opts = opts || {};
+  return _requestJson(path, opts, 0);
+}
+
+function _requestJson(path, opts, attempt){
+  return requestRaw(path, opts).then(function(r){
+    if(!r.ok){ throw new Error("HTTP " + r.status + " " + (r.statusText || "")); }
+    return r.json();
+  }).catch(function(err){
+    // 仅 GET 的临时错误（超时/网络抖动/5xx）重试一次，幂等安全；其余直接兜底
+    var retryable = (!opts.method || opts.method === "GET") && attempt < 1 && (
+      /超时/.test(err.message) ||
+      err.name === "TypeError" ||
+      /HTTP (50[0-9]|502|503|504)/.test(err.message)
+    );
+    if(retryable){
+      return new Promise(function(res){ setTimeout(res, 400); })
+        .then(function(){ return _requestJson(path, opts, attempt + 1); });
+    }
+    if(!opts._silent){
+      var msg = (err && err.message) ? err.message : String(err);
+      toast("请求失败：" + msg);
+    }
+    throw err;
+  });
+}
+
+/* 登录：POST /api/auth/login → 成功写入会话；返回 Promise<{status,body}> */
 export function login(username, password){
-  return fetch("/api/auth/login", {
+  return requestRaw("/api/auth/login", {
     method:"POST", headers:{"Content-Type":"application/json"},
     body: JSON.stringify({username:username, password:password})
   }).then(function(r){
@@ -122,9 +164,8 @@ export function login(username, password){
 
 /* 登出：POST /api/auth/logout（带当前令牌），之后清本地会话 */
 export function logout(){
-  var t = getToken();
-  return fetch("/api/auth/logout", {
-    method:"POST", headers:{"Content-Type":"application/json", "X-Token": t || ""},
+  return requestRaw("/api/auth/logout", {
+    method:"POST", headers:{"Content-Type":"application/json"},
     body: "{}"
   }).finally(function(){ clearSession(); });
 }
