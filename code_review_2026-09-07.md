@@ -18,7 +18,7 @@
 | 3 | 手机号被渲染进 public-read 的 MinIO 公开图 | `common/report_render.py:122` | **High·隐私** |
 | 4 | `ssl.CERT_NONE` 关闭证书校验，内网 MITM 可窃 cookie | `attendance.py` / `fetch_jidan.py` / `fetch_orange_storm.py` | **High·安全** |
 | 5 | `unsat/config.py` 重抄 `ding_common` 常量，单一来源被破坏 | `jobs/unsat/config.py:64-90` | **High·架构** |
-| 6 | `quark_da_auth.py:71` 硬编码 `/dev/null`，Windows 下 DA 兑换整条链路崩溃 | `quark_sdk/quark_da_auth.py:71` | **High·功能** |
+| 6 | `da_auth.py:71` 硬编码 `/dev/null`，Windows 下 DA 兑换整条链路崩溃 | `quark_sdk/da_auth.py:71` | **High·功能** |
 
 ---
 
@@ -62,7 +62,7 @@
 ### B. 功能性缺陷 / 正确性
 
 **H7 · Windows 下 DA 兑换崩溃**
-`quark_sdk/quark_da_auth.py:71` 写死 `/dev/null`，Windows 无此路径 → `curl` 报错 → `DA_SESSION` 提取失败 → DA 兑换整条链路在 Windows 不可用（项目明确跑 Windows）。
+`quark_sdk/da_auth.py:71` 写死 `/dev/null`，Windows 无此路径 → `curl` 报错 → `DA_SESSION` 提取失败 → DA 兑换整条链路在 Windows 不可用（项目明确跑 Windows）。
 - **建议**：改用 `os.devnull`。**一行修复，但影响面极大，优先级最高。**
 
 **H8 · 报表图被静默覆盖**
@@ -109,8 +109,8 @@
 ### aeolus_sdk / quark_sdk
 
 - **login.py**：`get_shared_cookies`/`refresh_shared_cookies`（L269-307）是**死代码**——`fetch_report_view` 实际走 `load_aeo_cookie→ensure_cookies`，从不用这两个带锁/内存缓存函数。注释承诺的「并发去重、401 自愈」未接入，**SSO 顶号保护名存实亡**，建议真正接通或删注释。**L174 裸 `except: pass`** 吞 SSO 票据交接异常，至少记 debug 日志。**缺类型提示**；`COOKIE_FILE`(L222) 与 `quark.py:164` `AEOLUS_COOKIE_FILE` 重复定义同一路径，应导出常量复用；顶层 `import venv_guard` 与 `quark.py` 的 `try/except` 兼容风格不一致。
-- **quark_da_auth.py**：L37/26 docstring 过期路径（仍写「项目根」）；L115/L126 函数内 `import urllib.request` 应提顶部；L138 用 `open(jar,"a").close()` 不如 `Path.touch()`；`QUARK_PARAMS` 长度解析与 `quark.py` 重复。
-- **quark.py**：魔法数字散落（L143 `DATASET_GUID`、L99 `reportId`、L458/L673 `"14:23:33"` 应提 `DEFAULT_META_TIME_SUFFIX`）；L328-348 与 `quark_da_auth` 构造近似相同的请求头 dict，可抽 `_aeo_request_headers()`；L3/L313 docstring 提及 `nodeflow`（本 SDK 零引用）属过期设计说明；`base` 参数语义失真（现只影响个别 cookie 路径，却贯穿签名，易误导调用方以为能改缓存位置），建议改名 `fallback_dir` 或删；缺类型提示与单测；`need_probe`（L666）恒 False 成死代码；`_curl_get`（L351-365）未检查 `returncode`，失败时静默拿到空串导致下游 `AttributeError`。
+- **da_auth.py**：L37/26 docstring 过期路径（仍写「项目根」）；L115/L126 函数内 `import urllib.request` 应提顶部；L138 用 `open(jar,"a").close()` 不如 `Path.touch()`；`QUARK_PARAMS` 长度解析与 `quark.py` 重复。
+- **quark.py**：魔法数字散落（L143 `DATASET_GUID`、L99 `reportId`、L458/L673 `"14:23:33"` 应提 `DEFAULT_META_TIME_SUFFIX`）；L328-348 与 `da_auth` 构造近似相同的请求头 dict，可抽 `_aeo_request_headers()`；L3/L313 docstring 提及 `nodeflow`（本 SDK 零引用）属过期设计说明；`base` 参数语义失真（现只影响个别 cookie 路径，却贯穿签名，易误导调用方以为能改缓存位置），建议改名 `fallback_dir` 或删；缺类型提示与单测；`need_probe`（L666）恒 False 成死代码；`_curl_get`（L351-365）未检查 `returncode`，失败时静默拿到空串导致下游 `AttributeError`。
 
 ### common
 

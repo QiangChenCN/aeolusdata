@@ -33,7 +33,7 @@
 - 未部署 PG 时：load/verify 节点连接失败；raw 节点（抓 JSONL）仍可独立跑完。
 
 ### 2. 系统 curl 缺失
-- `quark_sdk/quark_da_auth.py:65` 用 `subprocess` 调系统 `curl`（中性 TLS 指纹，urllib 替代不了）。
+- `quark_sdk/da_auth.py:65` 用 `subprocess` 调系统 `curl`（中性 TLS 指纹，urllib 替代不了）。
 - 部署镜像需 `curl` 在 PATH：`which curl` 验证；容器/minimal 可能缺。
 
 ### 3. run.sh 是 Windows 脚本（非致命，但别用）

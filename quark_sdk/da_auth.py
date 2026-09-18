@@ -18,11 +18,11 @@
     根本不需要 Playwright / 不需要手动从浏览器复制 cookie。
 
 用法（作为模块）：
-  from quark_sdk.quark_da_auth import acquire_da_token
+  from quark_sdk.da_auth import acquire_da_token
   cookie_str, jar_path = acquire_da_token(aeo_cookie, verbose=True)
 
 用法（独立测试）：
-  python quark_da_auth.py            # 自动 aeolus 登录 → 兑换 DA_TOKEN → 打印
+  python da_auth.py            # 自动 aeolus 登录 → 兑换 DA_TOKEN → 打印
                                     # （在 quark-sdk/ 目录下运行；脚本会自动把项目根加入 sys.path）
 """
 
@@ -32,7 +32,7 @@ import json
 import subprocess
 
 # quark-sdk/ 位于项目根目录下；jar 与运行时缓存同源（均在项目根，已由 .gitignore 忽略）。
-# 即使直接 `python quark_da_auth.py`（此时 sys.path[0] 是 quark-sdk/ 而非项目根），
+# 即使直接 `python da_auth.py`（此时 sys.path[0] 是 quark-sdk/ 而非项目根），
 # 也保证项目根在 sys.path，使 `import aeolus_sdk.login` 可用。
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _ROOT not in sys.path:

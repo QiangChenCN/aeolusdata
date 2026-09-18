@@ -25,6 +25,13 @@ import re
 import json
 from urllib.parse import quote
 
+__all__ = [
+    "ensure_cookies", "get_cookies", "check_login",
+    "load_cookies", "save_cookies",
+    "get_shared_cookies", "refresh_shared_cookies",
+    "COOKIE_FILE",
+]
+
 # ===== 登录凭据（不再硬编码进源码）=====
 # 按以下顺序读取，命中即返回：
 #   1) 环境变量 AEOLUS_ACCOUNT / AEOLUS_PASSWORD

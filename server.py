@@ -379,24 +379,24 @@ def _check_quark_cookie():
       valid    —— 缓存存在且探针放行（返回 JSON 而非 HTML 登录页）
       invalid  —— 缓存存在但探针被踢回 HTML 登录页（DA cookie 已废，需重兑）
       nocache  —— quark_da_cache.json 不存在（尚未跑过需 Quark 的任务，没兑换过）
-      unknown  —— 探针异常 / 导入 quark_sdk.quark_creds 失败（网络超时等）
+      unknown  —— 探针异常 / 导入 quark_sdk.creds 失败（网络超时等）
 
     字段：
       checked_at  本次校验时间
       reason      人类可读说明
       age_hours   缓存距现在的小时数（无缓存时为 None）
 
-    实现：复用 quark_sdk.quark_creds 的 load_da_cache（只读）与 probe_da_health（FbiSiteAction
+    实现：复用 quark_sdk.creds 的 load_da_cache（只读）与 probe_da_health（FbiSiteAction
     端点，看是否返回 HTML 登录页判断 DA 网关是否放行）。只读、绝不写盘、不触发重登。
     """
     checked_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     try:
         if ROOT not in sys.path:
             sys.path.insert(0, ROOT)
-        import quark_sdk.quark_creds as qk
+        import quark_sdk.creds as qk
     except Exception as e:
         return {"ok": True, "status": "unknown",
-                "reason": "导入 quark_sdk.quark_creds 失败: %s" % str(e)[:80],
+                "reason": "导入 quark_sdk.creds 失败: %s" % str(e)[:80],
                 "checked_at": checked_at, "age_hours": None}
     c = qk.load_da_cache(ROOT)
     if not c:

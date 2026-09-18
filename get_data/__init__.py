@@ -8,7 +8,7 @@
 - 查询参数（日期 / 站点 / page / period …）由调用方传入；模块内部不做选日期、选站点、自动决定时间窗。
 - cookie 现已改为「可选」：各模块统一 `from aeolus_sdk import login as L`，
   调用时若未传 cookie 则自动 `L.ensure_cookies()` 登录（风神 SSO）；传了就用调用方给的。
-  Quark 系模块（rider_equipment）走 quark_sdk.quark_creds 自动兑换 DA_TOKEN，不在此列。
+  Quark 系模块（rider_equipment）走 quark_sdk.creds 自动兑换 DA_TOKEN，不在此列。
 - 允许模块内 ensure_cookies() 自动登录；仍禁止「会话失效后自动重登循环（AuthError 重试）」，
   那部分归调用方 / dashboard/standard 的 Session 封装。
 - 禁止在模块内做：统计 / 筛选 / 格式化、落盘写文件、CLI 解析、分页以外的编排。
@@ -36,7 +36,7 @@
               暴露 query(team_id, start_date, end_date, cookie=None) -> rows + AuthError；
               Session 自动重登 / flatten 归 dashboard/standard/schedule_statistics.py。
 - rider_equipment: 骑手装备点亮明细取数（Quark/FBI 报表）
-              暴露 fetch_report_view(...)；凭证/DA_TOKEN 兑换委托 quark_sdk.quark_creds 自动完成。
+              暴露 fetch_report_view(...)；凭证/DA_TOKEN 兑换委托 quark_sdk.creds 自动完成。
 
 后续其它 HTTP 取数按同样约定迁进本包，实现「取数逻辑单一来源、调用方只做编排」。
 """

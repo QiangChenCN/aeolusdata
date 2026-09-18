@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""quark_sdk.quark_creds —— Quark（阿里内部报表平台）凭证与连接辅助层。
+"""quark_sdk.creds —— Quark（阿里内部报表平台）凭证与连接辅助层。
 
 本模块只负责「拿到一个可用的 Quark DA cookie」以及「报表页三件套 token 提取」，
 **不含任何业务取数/解析逻辑**（那些已迁到 get_data/rider_equipment.py）。
@@ -22,7 +22,7 @@ doQueryClipConfig 等轻量接口经实测均不校验 DA cookie（空 cookie �
 
 依赖：
   - aeolus_sdk.login（ensure_cookies，获取 AEO_COOKIE）
-  - quark_da_auth（acquire_da_token，DA_TOKEN 兑换 + 写 curl jar）
+  - da_auth（acquire_da_token，DA_TOKEN 兑换 + 写 curl jar）
   - 系统 curl（report.htm 跟随 302 需要中性 TLS 指纹，urllib 会 403）
 
 设计原则（与 aeolus_sdk.login 对齐）：
@@ -37,8 +37,8 @@ import time
 import urllib.request
 import urllib.parse
 
-# quark_da_auth.py 与本模块同处 quark_sdk/ 包内，用同包相对导入即可。
-# （quark_da_auth 自身仍依赖 aeolus_sdk.login 做 SSO，由 venv_guard 注入项目根。）
+# da_auth.py 与本模块同处 quark_sdk/ 包内，用同包相对导入即可。
+# （da_auth 自身仍依赖 aeolus_sdk.login 做 SSO，由 venv_guard 注入项目根。）
 try:
     import venv_guard  # noqa: F401
 except Exception:  # 允许在 SDK 被 install/embed 时缺 venv_guard
@@ -66,7 +66,7 @@ DA_HEALTH_URL = (
 #   https://quark.alibaba.com/common/ClipAction/doQueryClipConfig?region=cn
 
 # Quark 系凭据（quark_cookie.txt / quark_da_cookies.txt / quark_da_cache.json）
-# 统一收口到 quark_sdk/ 包内（与 quark_da_auth.py 同目录），不再依赖 base 参数 ——
+# 统一收口到 quark_sdk/ 包内（与 da_auth.py 同目录），不再依赖 base 参数 ——
 # 否则 task_equipment 传 base=jobs/equipment 会让缓存落到子目录而永不命中（每次强制重兑）。
 _QUARK_SDK_DIR = os.path.dirname(os.path.abspath(__file__))  # 本文件已在 quark_sdk/ 内
 
@@ -247,7 +247,7 @@ def ensure_da_cookie(base, aeo_cookie, verbose=True, force=False, max_age_sec=No
                 if verbose:
                     print("[da-cache] 锁内复查：缓存已由其他进程刷新，复用 ✅", flush=True)
                 return c["cookie"], (c["jar"] or jar_default), "cache"
-        from .quark_da_auth import acquire_da_token
+        from .da_auth import acquire_da_token
         cookie_str, jar = acquire_da_token(aeo_cookie, verbose=verbose)
         save_da_cache(base, cookie_str, jar)
         return cookie_str, (jar or jar_default), "fresh"

@@ -13,7 +13,7 @@ var _expandedGroups = store.ui.expandedGroups;
 
 import { openRunModal, openArtifacts } from "./runs.js";
 import { runTasks } from "./run.js";
-import { dateRangeGroupFlags, createDateTrigger, setDateValue, getDateValue, _yesterdayStr, _defaultsToYesterday, renderDateRangeGroup, _dpkState } from "./datepicker.js";
+import { dateRangeGroupFlags, createDateTrigger, setDateValue, getDateValue, _yesterdayStr, _defaultsToYesterday, renderDateRangeGroup, _dpkState } from "./date-picker.js";
 /* _dpkState 原样再导出，main.js 的既有导入路径不变 */
 export { _dpkState };
 import { createGroupPicker, createMultiTeamPicker, _gpReap, closeAllGroupPickers } from "./pickers.js";

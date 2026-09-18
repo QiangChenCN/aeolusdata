@@ -10,5 +10,6 @@ aeolus_sdk 现仅承担「风神 SSO 登录」这一地基职责，供 quark_sdk
 风神是单点登录：浏览器在线会把脚本会话顶掉，因此「用的时候现登现用」最稳。
 """
 from . import login
+from . import xlock
 
-__all__ = ["login"]
+__all__ = ["login", "xlock"]

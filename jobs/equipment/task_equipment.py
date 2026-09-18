@@ -34,7 +34,7 @@ CLI（节点区间 + 业务参数）：
                   TEAM_TO_STATION / STATION_MANAGERS）
   - minio_common（upload_to_minio）
   - find_group（按群名解析 cid / 测试群）
-  - quark_da_auth（DA_TOKEN 兑换；由 quark_sdk.quark_creds 在 get_data.rider_equipment.fetch_report_view 内调用）
+  - da_auth（DA_TOKEN 兑换；由 quark_sdk.creds 在 get_data.rider_equipment.fetch_report_view 内调用）
   - rider_equipment_report（load_and_filter / build_display / render_image /
                             DISPLAY_COLS / format_date）
 

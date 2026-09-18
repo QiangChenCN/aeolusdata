@@ -186,12 +186,12 @@
 
 | 接口 | 方法 | 脚本 | 说明 |
 |---|---|---|---|
-| `GET https://app2-edu.ele.me/kunkka-svr/fs/fbi/getReport?reportId=860325` | GET（带 AEOLUS_MOZI_TOKEN） | `quark_sdk/quark_da_auth.py` / `quark_sdk/quark_creds.py` | 返回带 `QUARK_PARAMS` 的 iframe URL（Aeolus 下发给 Quark 的签名票据） |
-| `GET https://quark.alibaba.com/fbi/fbi.json?action=site/FbiSiteAction&event_submit_doGetSite=true` | GET（带 DA cookie） | `quark_sdk/quark_creds.py` | ✅ **DA cookie 健康探针**（2026-09-03 选定）。有效 → JSON（`code:510 "site is null"`，510 只是本场景无 site 的业务码）；失效 → HTML 登录页。只读、无参数、响应 188 B、约 0.3s |
+| `GET https://app2-edu.ele.me/kunkka-svr/fs/fbi/getReport?reportId=860325` | GET（带 AEOLUS_MOZI_TOKEN） | `quark_sdk/da_auth.py` / `quark_sdk/creds.py` | 返回带 `QUARK_PARAMS` 的 iframe URL（Aeolus 下发给 Quark 的签名票据） |
+| `GET https://quark.alibaba.com/fbi/fbi.json?action=site/FbiSiteAction&event_submit_doGetSite=true` | GET（带 DA cookie） | `quark_sdk/creds.py` | ✅ **DA cookie 健康探针**（2026-09-03 选定）。有效 → JSON（`code:510 "site is null"`，510 只是本场景无 site 的业务码）；失效 → HTML 登录页。只读、无参数、响应 188 B、约 0.3s |
 | `POST https://quark.alibaba.com/fbi/.json?action=report/WidgetAction&event_submit_doGetWidgetData=true&componentName=fbi-common-table&_widgetId=mmds9k0ty_f1vr3j&_ts_=mszj2wz8` | POST（form: `params=<json>`） | `get_data/rider_equipment.py` | ✅ 取数主接口，返回 `data.value.columns`（官方中文列名）+ `data.value.values`（二维表），约 184 行 |
 | `GET https://quark.alibaba.com/common/ClipAction/doQueryClipConfig?region=cn` | GET（带不带 cookie 都一样） | — | ❌ 反例，**勿再当探针**：`/common/**` 不鉴权，空 cookie 也 `code:0`。它是 FBI 报表页拉编辑器配置的业务接口 |
 
-**DA_TOKEN 兑换链路**（全 HTTP，见 `quark_sdk.quark_da_auth.acquire_da_token`）：
+**DA_TOKEN 兑换链路**（全 HTTP，见 `quark_sdk.da_auth.acquire_da_token`）：
 Aeolus 登录 → `getReport` 拿票据 → `curl` 访问 `report.htm?QUARK_PARAMS=…`（→302 daLogin）→ `daLogin.htm?DA_SESSION=…`（带 AEOLUS token，跟随 302 回 quark 种下 `DA_TOKEN_lpd_meepo_ws`）→ 带 DA cookie 打 WidgetAction 取数。
 
 **DA cookie 缓存（2026-09-03 加）**：`DA_TOKEN` 是有有效期的普通 cookie，没必要每次跑数都重兑一遍（兑换一次要 3 次网络往返）。`quark_sdk/quark.py` 增加了缓存层 `ensure_da_cookie()`：缓存文件 `quark_sdk/quark_da_cache.json`（原子写，已入 `.gitignore`），命中缓存 → `probe_da_health()` 探活 → 通过即复用，失效才重兑。Quark 系凭据（`quark_cookie.txt` / `quark_da_cookies.txt` / `quark_da_cache.json`）统一收口在 `quark_sdk/` 包内，路径不再依赖调用方传入的 `base`。

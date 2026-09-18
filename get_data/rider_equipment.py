@@ -5,7 +5,7 @@
 数据接口：Quark/Aeolus FBI 平台报表（reportId=860325，骑手装备点亮提醒）。
 本模块只做一件事：按调用方传入的日期窗口，拉取「骑手装备点亮明细」二维表并返回。
   · 日期 / 站点 等参数全部由调用方传入（默认 T-1），本模块不内置任何站点/日期选择逻辑。
-  · 凭证（风神 SSO → DA_TOKEN 兑换 → 缓存）委托 quark_sdk.quark_creds，本模块不复现。
+  · 凭证（风神 SSO → DA_TOKEN 兑换 → 缓存）委托 quark_sdk.creds，本模块不复现。
   · 筛选 / 渲染 / 落盘 / 发送等加工逻辑由上层任务脚本（jobs/equipment）负责，不在此处。
 
 对外核心函数：
@@ -53,12 +53,12 @@ try:
 except Exception:
     pass
 
-# 凭证 / 连接辅助统一委托 quark_sdk.quark_creds（不在此处复现 DA 兑换 / 探针 / 缓存）。
-from quark_sdk import quark_creds as C
+# 凭证 / 连接辅助统一委托 quark_sdk.creds（不在此处复现 DA 兑换 / 探针 / 缓存）。
+from quark_sdk import creds as C
 
 
 # ============================================================
-# 端点与常量（取数专属；凭证相关端点见 quark_creds）
+# 端点与常量（取数专属；凭证相关端点见 creds）
 # ============================================================
 UA = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -243,7 +243,7 @@ def schema_hint(headers, rows, label_map=None):
 
 
 # ============================================================
-# 一站式接口：取数（委托 quark_creds 做凭证，本模块只编排取数）
+# 一站式接口：取数（委托 creds 做凭证，本模块只编排取数）
 # ============================================================
 def fetch_report_view(base=".",
                       start_date=None, end_date=None, as_of=None,
@@ -463,7 +463,7 @@ if __name__ == "__main__":
     #   python -m get_data.rider_equipment --clear   # 清空 DA 缓存（下次强制重兑）
     #   python -m get_data.rider_equipment --full     # 跑完整取数自检（含真实有效性判定）
     _HERE = os.path.dirname(os.path.abspath(__file__))   # get_data/rider_equipment.py
-    # Quark 系凭据固定落在 quark_sdk/（见 quark_creds.DEFAULT_COOKIE_PATHS），proj_root 仅用于定位包。
+    # Quark 系凭据固定落在 quark_sdk/（见 creds.DEFAULT_COOKIE_PATHS），proj_root 仅用于定位包。
     proj_root = os.path.dirname(os.path.dirname(_HERE))
     args = sys.argv[1:]
 
