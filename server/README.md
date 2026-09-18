@@ -8,7 +8,7 @@
 
 ### 方式 A：双击启动（推荐）
 
-双击项目根目录的 **`启动工作台.bat`**
+双击项目根目录的 **`start_workbench.bat`**
 
 会自动用项目 `.venv` 的 Python 启动服务并打开浏览器。
 
@@ -249,7 +249,7 @@ server/
 │   └── echarts.min.js  ← Apache ECharts 5.5.1（约 1MB），供「数据看板」图表使用
 ├── runs/            ← 每次运行的完整日志 + 历史记录
 └── README.md        ← 本文件
-启动工作台.bat        ← 双击启动
+start_workbench.bat        ← 双击启动
 
 项目根目录/
 ├── common/          ← 公共模块包（ding_common / nodeflow / minio_common / report_render / theme_colors / find_group）

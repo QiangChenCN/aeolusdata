@@ -98,3 +98,12 @@ server/data/data_perms_teams_last.json
 #       pull 因本地改动冲突（历史数据 09-09~09-17 已一并从版本控制移除）。
 dashboard/data/
 dashboard/standard/cache/
+
+# 调试/嗅探产物（逆向导出链路捕获，非源码；本地可保留，不进版本控制）
+sniff_delivery_*.json
+_sniff/
+
+# 运行时本地状态（dataperm.py 生成的数据权限状态，每人/每月不同，不提交）
+.data_perms.json
+# 看板运行期落盘数据（实时运单明细等，本地生成，不提交）
+dashboard/standard/实时运单明细.json
