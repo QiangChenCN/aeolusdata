@@ -1,4 +1,4 @@
-// datepicker.js —— 自绘日期选择器（替换 <input type="date"> 的 native widget）+「单日/多日」分组。
+// date-picker.js —— 自绘日期选择器（替换 <input type="date"> 的 native widget）+「单日/多日」分组。
 // 从 task.js 拆出（原 1173-1690 行）：自带 _dpkState 状态、对外契约与 native date 一致，
 // 与任务参数表单机制解耦，独立成模块便于维护。
 // task.js 通过本模块导入 dateRangeGroupFlags / createDateTrigger / setDateValue / getDateValue /
