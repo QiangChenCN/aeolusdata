@@ -2291,6 +2291,63 @@ def _get_teams(self, qs):
     self._json(res)
 
 
+# ---------------- 实时数据：用户所选站点（按账号持久化，多端同步） ----------------
+# 与数据权限闸门（_enforce_team_scope / dataperm.allowed_team_ids）协同：
+# 读取/保存都只保留当前用户有权限的 team id，越权站点不落库（纵深防御）。
+REALTIME_SEL_FILE = os.path.join(ROOT, ".realtime_selection.json")
+
+def _load_realtime_sel():
+    try:
+        with open(REALTIME_SEL_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except (FileNotFoundError, ValueError):
+        return {}
+
+def _save_realtime_sel(obj):
+    tmp = REALTIME_SEL_FILE + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(obj, f, ensure_ascii=False, indent=2)
+        f.flush(); os.fsync(f.fileno())
+    os.replace(tmp, REALTIME_SEL_FILE)
+    try:
+        os.chmod(REALTIME_SEL_FILE, 0o600)
+    except OSError:
+        pass
+
+def _get_realtime_selection(self, qs):
+    s = self.session
+    if not s:
+        self._json({"ok": False, "error": "未登录"}, 401); return
+    username, role = s["user"], s["role"]
+    sel = _load_realtime_sel().get(username, [])
+    ids = dataperm.allowed_team_ids(username, role)
+    if ids is not None:
+        sel = [t for t in sel if str(t) in ids]
+    self._json({"ok": True, "teams": sel})
+
+def _post_realtime_selection(self, qs):
+    s = self.session
+    if not s:
+        self._json({"ok": False, "error": "未登录"}, 401); return
+    username, role = s["user"], s["role"]
+    # do_POST 已将解析后的请求体 dict 作为第二参传入（qs），不可再读 body 流（已消费）
+    data = qs if isinstance(qs, dict) else {}
+    incoming = data.get("teams") or []
+    ids = dataperm.allowed_team_ids(username, role)
+    clean, seen = [], set()
+    for t in incoming:
+        t = str(t).strip()
+        if not t or t in seen:
+            continue
+        if ids is not None and t not in ids:
+            continue   # 越权站点不落库（纵深防御）
+        seen.add(t); clean.append(t)
+    obj = _load_realtime_sel()
+    obj[username] = clean
+    _save_realtime_sel(obj)
+    self._json({"ok": True, "teams": clean})
+
+
 def _get_history(self, qs):
     self._json({"ok": True, "history": MGR.history[:30]})
 
@@ -2767,6 +2824,7 @@ GET_ROUTES = {
     "/api/overview/site-orders": _get_ov_site_orders,
     "/api/overview/standard": _get_ov_standard,
     "/api/overview/assessment": _get_ov_assessment,
+    "/api/realtime/selection":  _get_realtime_selection,
 }
 
 POST_ROUTES = {
@@ -2785,6 +2843,7 @@ POST_ROUTES = {
     "/api/todo/import": _post_todo_import,
     "/api/groups/used": _post_groups_used,
     "/api/groups/forget": _post_groups_forget,
+    "/api/realtime/selection": _post_realtime_selection,
 }
 
 # 管理类路由（账号 / 角色 / 策略；鉴权由 POST_ROUTE_PERMS/GET_ROUTE_PERMS 的权限点控制）

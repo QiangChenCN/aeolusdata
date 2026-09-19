@@ -13,6 +13,7 @@ import { renderStandardView } from "./standard.js";
 import { renderHomeView } from "./home.js";
 import { renderTodoView, todoOpenCount } from "./todo.js";
 import { renderAdminView } from "./admin.js";
+import { renderRealtimeView } from "./realtime.js";
 
 /* ================= 渲染层（互不调用，统一由 refreshAll 调度） ================= */
 export function renderHeader(){
@@ -119,7 +120,8 @@ export function navSections(){
         它不是任务容器，不带 count 计数；颜色走 TK.cyan。点父项会展开并落到第一个子页。 */
   var dashSubs = [
     { kind:"standard", id:"", name:"标准达成", icon:"target", color:TK.cyan },
-    { kind:"attendPeriod", id:"", name:"时段出勤", icon:"calendar-clock", color:TK.cyan }
+    { kind:"attendPeriod", id:"", name:"时段出勤", icon:"calendar-clock", color:TK.cyan },
+    { kind:"realtime", id:"", name:"实时数据", icon:"activity", color:TK.cyan }
   ];
   items.push({ kind:"dash", id:"dash", name:"数据看板", icon:"chart",
                color:TK.cyan, children:dashSubs });
@@ -264,6 +266,7 @@ export function renderMain(){
   else if(state.nav.kind==="tasks")   renderTaskView(host);
   else if(state.nav.kind==="standard") renderStandardView(host);
   else if(state.nav.kind==="attendPeriod") renderAttendPeriodView(host);
+  else if(state.nav.kind==="realtime") renderRealtimeView(host);
   else if(state.nav.kind==="history") renderHistoryView(host);
   else if(state.nav.kind==="admin")  renderAdminView(host);
   else renderTaskView(host);   // 兜底（hub / logs 等旧导航值统一回落到任务视图）
