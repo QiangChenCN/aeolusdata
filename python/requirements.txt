@@ -1,0 +1,9 @@
+# 项目 Python 依赖（统一运行于 python/.venv）
+# 重建环境： .venv/Scripts/python.exe -m pip install -r requirements.txt
+#
+# 2026-09-23 任务中心迁移后：9 个任务的取数 / 加工 / 出图 / 上传 / 发送 / 编排全部迁到 NestJS，
+# Python 侧只剩「风神 SSO 登录重登 + 大数据计算（聚合 / Excel 导出）+ 工作台单体 server.py」。
+# 因此原先只为已删除模块服务的两项依赖一并移除：
+#   · Pillow  —— 原 common/report_render.py（PNG 渲染）→ backend/src/modules/render/（@napi-rs/canvas）
+#   · minio   —— 原 common/minio_common.py（图床上传）→ backend/src/modules/media/minio.service.ts
+openpyxl==3.1.5

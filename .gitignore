@@ -102,3 +102,19 @@ backend/data/.data_perms.json
 .realtime_targets.json
 # 看板运行期落盘数据（实时运单明细等，本地生成，不提交）
 dashboard/standard/实时运单明细.json
+
+# ===== 迁移收尾补充：本地状态 / 运行产物（勿提交）=====
+# 根级运行日志（前端/后端/Python 的 .out/.err；*.log 只覆盖 .log 结尾，这里补 .out/.err）
+.log_*.out
+.log_*.err
+# 根依赖与根日志目录
+node_modules/
+/logs/
+# backend 本地状态（站点/团队/群记忆，与已忽略的 last_teams.txt/group_recent.json 同类）
+backend/data/*_last.json
+backend/data/recent_groups.json
+backend/*.out
+# python 运行日志与生成文档
+python/logs/
+python/**/*.err
+python/jobs/**/out/
