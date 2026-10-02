@@ -1,0 +1,63 @@
+/* base.css —— 全局 reset + 画布 + 滚动条 + 通用工具类
+   仅保留极少量全局规则；组件样式一律 scoped，避免与 Element Plus 冲突。 */
+* { box-sizing: border-box; }
+
+html, body, #app {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family: var(--font-sans);
+  font-size: var(--fs-body);
+  line-height: var(--lh-base);
+  color: var(--text);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* 滚动条：沿用令牌色，覆盖浏览器默认 */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: var(--r-xs);
+}
+::-webkit-scrollbar-thumb:hover { background: var(--c-text-faint); }
+::-webkit-scrollbar-track { background: transparent; }
+
+a { color: var(--info); text-decoration: none; }
+
+/* 通用工具类（仅语义化、无业务） */
+.u-muted { color: var(--muted); }
+.u-strong { color: var(--text); font-weight: var(--fw-semibold); }
+.u-row { display: flex; align-items: center; gap: var(--sp-8); }
+.u-col { display: flex; flex-direction: column; }
+.u-spacer { flex: 1 1 auto; }
+
+/* 状态圆点（胶囊 / 列表共用） */
+.ui-dot {
+  width: var(--sz-8); height: var(--sz-8); border-radius: var(--r-circle);
+  display: inline-block; flex: none;
+}
+.ui-dot--ok   { background: var(--ok); }
+.ui-dot--err  { background: var(--err); }
+.ui-dot--warn { background: var(--warn); }
+.ui-dot--info { background: var(--info); }
+.ui-dot--muted{ background: var(--muted-2); }
+
+/* 暗色日志终端（在 el-dialog 内使用，沿用 tokens 的终端色） */
+.term {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  line-height: var(--lh-term);
+  background: var(--term-bg);
+  color: var(--term-fg);
+  border-radius: var(--r-md);
+}
+.term .l-sys { color: var(--term-sys); }
+.term .l-cmd { color: var(--term-cmd); }
+.term .l-ok  { color: var(--term-ok); }
+.term .l-bad { color: var(--term-bad); }
+.term .l-warn{ color: var(--term-warn); }
+.term .l-dim { color: var(--term-dim); }

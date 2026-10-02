@@ -1,5 +1,0 @@
-# 项目 Python 依赖（统一运行于根目录 .venv）
-# 重建环境： .venv/Scripts/python.exe -m pip install -r requirements.txt
-Pillow==12.3.0
-minio==7.2.20
-openpyxl==3.1.5

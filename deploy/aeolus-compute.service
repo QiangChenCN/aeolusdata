@@ -1,0 +1,22 @@
+[Unit]
+Description=Aeolus Compute Service (Python / FastAPI)
+After=network.target aeolus-backend.service
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/aeolusdata/python/compute_service
+ExecStart=/opt/aeolusdata/.venv/bin/python -m uvicorn main:app --host 127.0.0.1 --port 8900
+EnvironmentFile=/opt/aeolusdata/.env
+# 取数已迁到 NestJS（ADR 修订 1）：分页请求 / 反爬节奏 / 限流退避 / 会话重登
+# 都在 aeolus-backend 侧完成，本服务只负责落盘与大数据聚合计算。
+# 凭证走 NEST_AUTH_TOKEN（来自 .env），必须与后端 AUTH_TOKEN 一致，否则会被后端
+# 访问闸门拒绝（401）并静默降级为 Python 本地取数 —— 表现为刷新变慢但不报错。
+# 注：原 NEST_FETCH_URL（阶段 0 取数回调）已废弃 —— 全量刷新已整体原生化，阶段 0 的取数
+# 与编排都在 aeolus-backend 内完成，本服务只通过 /api/compute/* 被调用；
+# 回调基址默认 loopback（两服务同机），如需覆盖用 NEST_BASE。
+Restart=always
+RestartSec=5
+User=root
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,19 @@
+[Unit]
+Description=Aeolus Workbench Backend (NestJS)
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/aeolusdata/backend
+# 构建产物由 setup.sh / update.sh 生成：cd backend && npm ci && npm run build
+ExecStart=/usr/bin/node dist/main
+Environment=NODE_ENV=production
+# 端口 / AUTH_TOKEN / COMPUTE_PROVIDER / PYTHON_COMPUTE_URL 等见 backend/.env
+# （Nest 的 ConfigModule 会自己读 backend/.env；这里再挂一份仅作兜底）
+EnvironmentFile=/opt/aeolusdata/.env
+Restart=always
+RestartSec=5
+User=root
+
+[Install]
+WantedBy=multi-user.target

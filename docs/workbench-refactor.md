@@ -22,20 +22,20 @@
 ```
 表现层    WorkBuddy 桌面壳 + index.html(单文件 SPA) + tokens.css(设计令牌)
 接入层    server.py(原生 http，~1700 行：静态+手动路由+SSE+子进程跑任务+todo CRUD)
-编排层    jobs/* (12 个任务脚本，nodeflow.run(NODES) 驱动 fetch→render→upload→send)
-能力层    common/ : ding_common(钉钉发送) / minio_common(图床) / report_render(Pillow)
+编排层    python/jobs/* (12 个任务脚本，nodeflow.run(NODES) 驱动 fetch→render→upload→send)
+能力层    python/common/ : ding_common(钉钉发送) / minio_common(图床) / report_render(Pillow)
                     find_group(搜群) / theme_colors(配色) / nodeflow(编排)
-取数层    根 get_data/ (底层 HTTP) · dashboard/get_data/ (看板友好签名)
-           dashboard/standard/get_data.py (re-export shim)
+取数层    根 python/get_data/ (底层 HTTP) · python/dashboard/get_data/ (看板友好签名)
+           python/dashboard/standard/get_data.py (re-export shim)
 鉴权层    aeolus_sdk.login (风神 SSO，全项目唯一登录实现) · quark_sdk (Quark DA 兑换)
 存储层    PostgreSQL(ods_*) · SQLite(todo.db) · MinIO(图床) · 本地 out/*.json
 ```
 
 ### 1.2 关键调用关系
 
-- 任务脚本（`jobs/attendance/attendance.py`、`jobs/board/task_board.py` 等）是业务入口：
+- 任务脚本（`python/jobs/attendance/attendance.py`、`python/jobs/board/task_board.py` 等）是业务入口：
   每个脚本 `import nodeflow` + `from get_data import xxx` + `from common import ...`，自己实现 `NODES` 与节点函数。
-- 取数：`get_data/*` 只做「打接口取原始数」，统计 / 筛选 / 渲染归各 job（约定见 `get_data/__init__.py`）。
+- 取数：`python/get_data/*` 只做「打接口取原始数」，统计 / 筛选 / 渲染归各 job（约定见 `python/get_data/__init__.py`）。
 - 发送闭环：`job.send` → `build_markdown()` → `ding_common.dws()` → **本机 `dws.js`（WorkBuddy 的 node CLI）** → 钉钉。
 - 鉴权：`aeolus_sdk.login.ensure_cookies()` 是全项目唯一登录实现，进程内共享锁防顶号。
 
@@ -48,7 +48,7 @@
 
 ### 2.1 运行环境强绑桌面壳（拼接感根源，也是 Web 化最大障碍）
 
-- `common/ding_common.py`：`_resolve_node()` 硬编码 `C:/Users/ChenQiang/.workbuddy/binaries/node/.../node.exe` 与 `dws.js` 路径；`FONT_PATH` 硬编码 `C:/Windows/Fonts/simhei.ttf`。
+- `python/common/ding_common.py`：`_resolve_node()` 硬编码 `C:/Users/ChenQiang/.workbuddy/binaries/node/.../node.exe` 与 `dws.js` 路径；`FONT_PATH` 硬编码 `C:/Windows/Fonts/simhei.ttf`。
   发送钉钉走 `dws` CLI——`dws` 本身是钉钉官方开源工具（详见 4.2），路径写死在 WorkBuddy 包目录只是巧合；
   真正的环境耦合是「Windows 路径硬编码 + 依赖一台机器上已建立的 dws 登录会话」，换机/换服务器需重新配置路径与登录态。
 - 每个 job 顶部都重复 `sys.path.insert(0, ROOT)` + `import venv_guard` —— 环境引导散落各处。
@@ -59,11 +59,11 @@
 
 ### 2.2 取数层三层 + 双轨不一致（职责不清）
 
-- 根 `get_data/`：底层 HTTP，约定为「单一来源」。
-- `dashboard/get_data/`：看板友好签名封装（独立于根层）。
-- `dashboard/standard/get_data.py`：**又是一层 re-export shim**，文档自述「仅做转发，保证旧调用方不变」。
+- 根 `python/get_data/`：底层 HTTP，约定为「单一来源」。
+- `python/dashboard/get_data/`：看板友好签名封装（独立于根层）。
+- `python/dashboard/standard/get_data.py`：**又是一层 re-export shim**，文档自述「仅做转发，保证旧调用方不变」。
 
-同时 **jobs 走根层、看板走 dashboard 层**，两条取数路径并存；`dashboard/standard/` 还有大量 `.log`，
+同时 **jobs 走根层、看板走 dashboard 层**，两条取数路径并存；`python/dashboard/standard/` 还有大量 `.log`，
 而「数据看板」UI 视图长期是占位悬空脚手架。取数逻辑分散 + 看板半悬空 = 重复与漂移高风险。
 
 ### 2.3 每个任务重复 `fetch→render→upload→send` 骨架（拼接感）
@@ -84,7 +84,7 @@
 
 - `ding_common.py`：站长 `MANAGER_OPENID`、站点→站长 `STATION_MANAGERS`、默认群 `GROUP_ID` 都是代码里的字典。
 - `attendance.py`：时段码 `TIME_SLOTS` 写在任务脚本里。
-- （反例是好的：`common/groups.json` 已把隐藏群号外置为纯数据。）
+- （反例是好的：`python/common/groups.json` 已把隐藏群号外置为纯数据。）
 
 ### 2.6 前端 / 后端单文件问题（架构报告已详述，从略）
 
@@ -97,7 +97,7 @@ todo 双数据源——见 `docs/架构评估报告_2026-09-09.md`。
 
 ### 3.1 总原则
 
-**复用业务内核，重构外壳与分层**：`aeolus_sdk`、`quark_sdk`、`get_data/*`、各 job 的「加工逻辑」全部保留；
+**复用业务内核，重构外壳与分层**：`aeolus_sdk`、`quark_sdk`、`python/get_data/*`、各 job 的「加工逻辑」全部保留；
 只把「运行环境耦合、重复骨架、散落配置、桌面发送」抽出来重组成清晰分层。不推倒重写。
 
 ### 3.2 目标分层与模块划分
@@ -116,16 +116,16 @@ core/                        # 新增：运行时与能力抽象（取代散落 
   renderer/                  # Renderer 抽象（Pillow 实现保留）
   storage/                   # Storage 抽象（MinIO 实现保留）
   auth.py                    # 登录服务封装（复用 aeolus_sdk，密钥移 env）
-tasks/                       # 原 jobs/* 改造：每个任务 = 一个 Task 类（注册进 registry）
+tasks/                       # 原 python/jobs/* 改造：每个任务 = 一个 Task 类（注册进 registry）
   attendance.py  board.py  delivery.py  equipment.py ...
-data/                        # 取数层收敛为单一来源（合并根 get_data + dashboard/get_data，删 shim）
+data/                        # 取数层收敛为单一来源（合并根 get_data + python/dashboard/get_data，删 shim）
 config/                      # 业务配置外置：sites.json / managers.json / groups.json / notify.json
-common/                      # 保留：nodeflow / theme_colors / 工具
+python/common/                      # 保留：nodeflow / theme_colors / 工具
 ```
 
 **关键改变**
-1. **取数层收敛为单一 `data/`**：删 `dashboard/standard/get_data.py` 这层 shim，看板与 jobs 共用 `data/`；
-   `dashboard/standard/*` 的加工逻辑迁为 `tasks/` 下的「看板类任务」或独立聚合服务。
+1. **取数层收敛为单一 `data/`**：删 `python/dashboard/standard/get_data.py` 这层 shim，看板与 jobs 共用 `data/`；
+   `python/dashboard/standard/*` 的加工逻辑迁为 `tasks/` 下的「看板类任务」或独立聚合服务。
 2. **任务即插件（根治架构报告 P6）**：每个任务声明式注册——`NODES`、参数 schema、所属分组、是否可定时。
    前端导航 / 表单 / 步进条全部由 registry 自动生成，不再硬编码 `kind`。
 3. **五段骨架进 `TaskRuntime`**：`Fetch→Process→Render→Upload→Notify` 做成可组合的通用节点，
@@ -213,7 +213,7 @@ TaskRuntime.run(task, params)
 
 1. **后端先动**：`server.py` → FastAPI，按 router 拆分，SSE 平移（不动业务逻辑）。
 2. **立 `Notifier` 抽象**：先把桌面 dws 包成 legacy 适配器，预留 robot 实现（为推送打底）。
-3. **收口取数层**：合并 `data/`，删 `dashboard/standard/get_data.py` shim，看板复用。
+3. **收口取数层**：合并 `data/`，删 `python/dashboard/standard/get_data.py` shim，看板复用。
 4. **任务插件化**：建 `TaskRegistry` + `TaskRuntime` 五段骨架，挑 `attendance` 做第一个改造样本。
 5. **配置外置**：`config/*.json` + env 接管站长 / 站点 / 群 / 账密。
 6. **前端骨架**：Vite + App Shell 搭壳，按模块逐一切换（tasks → history → todo → dash）。

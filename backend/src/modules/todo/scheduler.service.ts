@@ -1,0 +1,264 @@
+import { Injectable, OnModuleInit, Logger } from '@nestjs/common';
+import { TaskRunnerService } from '../tasks/task-runner.service';
+import { TaskRegistryService } from '../tasks/task-registry.service';
+import { StreamingService } from '../streaming/streaming.service';
+import {
+  TodoStoreService,
+  RUN_RUNNING, RUN_RETRYING, RUN_SUCCESS, RUN_FAILED, RUN_SKIPPED, RUN_MISSED,
+  MAX_ATTEMPTS, CATCHUP_GRACE_SEC,
+} from './todo-store.service';
+
+/**
+ * 工作内容定时调度器（移植自 workbench/todo_sched.py 的 TodoScheduler）。
+ *
+ * 每 TICK_SEC 秒扫描一次：到点把「关联了任务 + 开了自动执行」的事项丢进
+ * TaskRunnerService 的串行队列跑，含三层去重、失败重试（最多 3 次 / 退避 60s/300s）、
+ * 补跑宽限（15min）、重启恢复。
+ *
+ * 不依赖 apscheduler：同一事项同一时刻只触发一次的幂等语义落在 todo_run.fire_key
+ * 的 UNIQUE 约束上（库重启后仍在），而非内存 job store。
+ */
+@Injectable()
+export class TodoSchedulerService implements OnModuleInit {
+  private readonly logger = new Logger(TodoSchedulerService.name);
+  static readonly TICK_SEC = 5;
+  static readonly PRUNE_EVERY = 3600;
+
+  private timer: ReturnType<typeof setInterval> | null = null;
+  private running = false;
+  private lastPrune = 0;
+  private log: string[] = [];
+
+  constructor(
+    private readonly runner: TaskRunnerService,
+    private readonly registry: TaskRegistryService,
+    private readonly store: TodoStoreService,
+    private readonly streaming: StreamingService,
+  ) {}
+
+  onModuleInit(): void {
+    this.store.initDb();
+    this.recoverOrphans();
+    this.timer = setInterval(() => this.tick(), TodoSchedulerService.TICK_SEC * 1000);
+  }
+
+  isAlive(): boolean {
+    return this.running || this.timer !== null;
+  }
+
+  onModuleDestroy(): void {
+    if (this.timer) clearInterval(this.timer);
+    this.timer = null;
+  }
+
+  // ------------------------------------------------------------ 主循环
+  private tick(): void {
+    try {
+      this.tickOnce();
+    } catch (e) {
+      this.note(`调度异常：${(e as Error).message}`);
+    }
+  }
+
+  private tickOnce(): void {
+    const now = new Date();
+    this.fireDue(now);
+    this.dispatchRetries();
+    this.pollRunning();
+    if (Date.now() / 1000 - this.lastPrune > TodoSchedulerService.PRUNE_EVERY) {
+      try { this.store.pruneRuns(); } catch { /* ignore */ }
+      this.lastPrune = Date.now() / 1000;
+    }
+  }
+
+  // ------------------------------------------------------------ 事件广播
+  private emit(event: string, itemId: string | null = null, message = '', extra?: Record<string, unknown>): void {
+    const payload: Record<string, unknown> = { type: 'todo', event, item_id: itemId, message };
+    if (extra) Object.assign(payload, extra);
+    try { this.streaming.emit(payload as never); } catch { /* ignore */ }
+  }
+
+  private note(msg: string): void {
+    const line = `[${new Date().toTimeString().slice(0, 8)}] ${msg}`;
+    this.log.push(line);
+    this.log = this.log.slice(-200);
+    this.logger.log(msg);
+  }
+
+  // ------------------------------------------------------------ 到点触发
+  private fireDue(now: Date): void {
+    const nowStr = this.store.fmtLocal(now) || '';
+    for (const item of this.store.dueItems(nowStr)) this.maybeFire(item, now);
+  }
+
+  private maybeFire(item: Record<string, unknown>, now: Date): void {
+    const iid = String(item['id']);
+    const due = String(item['remind_at'] || '');
+    const taskId = String(item['task_id'] || '');
+
+    const st = this.registry.linkState(taskId);
+    if (st !== 'ok') {
+      this.store.markSkipped(iid, due, `关联任务${st === 'missing' ? '已不存在' : '已禁用'}，已跳过本次`);
+      this.emit('skipped', iid, `关联任务${st === 'missing' ? '已不存在' : '已禁用'}，本次未执行`);
+      return;
+    }
+    if (this.store.findRun(iid, due)) return; // 本轮已处理
+    if (this.store.openRunOf(iid)) return; // 上一次还没跑完
+
+    const dueDt = this.store.parseDt(due);
+    if (!dueDt) return;
+    const late = (now.getTime() - dueDt.getTime()) / 1000;
+    if (late > CATCHUP_GRACE_SEC) {
+      this.store.markMissed(iid, due, `服务未运行，已跳过本次（超出 ${CATCHUP_GRACE_SEC / 60} 分钟补跑宽限）`);
+      this.settle(iid, false);
+      this.emit('missed', iid, '到点未执行：服务当时未运行，已跳过');
+      return;
+    }
+    this.dispatch(item, due, 1);
+  }
+
+  private dispatch(item: Record<string, unknown>, due: string, attempt = 1): string | null {
+    let args: Record<string, unknown> = {};
+    try { args = JSON.parse(String(item['task_args'] || '{}')); } catch { args = {}; }
+    const taskId = String(item['task_id'] || '');
+    const runIds = this.runner.enqueue([{ task_id: taskId, args }]);
+    if (!runIds.length) {
+      this.store.markSkipped(String(item['id']), due, '任务入队失败（任务可能已被移除）');
+      return null;
+    }
+    try {
+      this.store.claimRun(String(item['id']), due, runIds[0], attempt);
+    } catch {
+      return null; // 被并发抢先，安静放弃
+    }
+    this.note(`触发「${item['title']}」→ 任务 ${taskId}（第 ${attempt} 次）`);
+    this.emit('fired', String(item['id']), `已触发：${item['title']}`, { run_id: runIds[0] });
+    return runIds[0];
+  }
+
+  // ------------------------------------------------------------ 重试
+  private dispatchRetries(): void {
+    for (const r of this.store.retryDue()) {
+      const item = this.store.getItem(String(r['item_id']));
+      if (!item || !item['task_id']) {
+        this.store.finishRun(String(r['item_id']), String(r['due_at']), RUN_FAILED, '事项或关联任务已不存在');
+        continue;
+      }
+      const st = this.registry.linkState(String(item['task_id']));
+      if (st !== 'ok') {
+        this.store.finishRun(String(r['item_id']), String(r['due_at']), RUN_SKIPPED,
+          `重试时关联任务${st === 'missing' ? '已不存在' : '已禁用'}`);
+        this.settle(String(r['item_id']), false);
+        continue;
+      }
+      let args: Record<string, unknown> = {};
+      try { args = JSON.parse(String(item['task_args'] || '{}')); } catch { args = {}; }
+      const runIds = this.runner.enqueue([{ task_id: String(item['task_id']), args }]);
+      if (!runIds.length) continue; // 入队失败，下个 tick 再试
+      this.store.markDispatched(String(r['item_id']), String(r['due_at']), runIds[0], Number(r['attempt']));
+      this.note(`重试「${item['title']}」第 ${r['attempt']} 次`);
+      this.emit('retried', String(r['item_id']), `第 ${r['attempt']} 次重试：${item['title']}`,
+        { run_id: runIds[0] });
+    }
+  }
+
+  // ------------------------------------------------------------ 结果回收
+  private pollRunning(): void {
+    for (const r of this.store.openRuns()) {
+      if (r['status'] === RUN_RETRYING) continue; // 由 dispatchRetries 管
+      const st = this.runner.runStatus(String(r['run_id']));
+      if (!st) continue; // 还没派到 / 已丢失
+      const status = st.status;
+      if (status === 'queued' || status === 'running') continue;
+
+      const iid = String(r['item_id']);
+      const due = String(r['due_at']);
+      if (status === 'success') {
+        this.store.finishRun(iid, due, RUN_SUCCESS, '执行成功');
+        this.store.settleSuccess(iid);
+        this.note(`「${this.itemTitle(iid)}」执行成功`);
+        this.emit('succeeded', iid, '执行成功');
+        continue;
+      }
+      if (status === 'stopped') {
+        this.store.finishRun(iid, due, RUN_FAILED, '已被手动终止，不再自动重试');
+        this.settle(iid, false);
+        this.emit('failed', iid, '执行被手动终止');
+        continue;
+      }
+      // 失败 / 超时
+      const attempt = Number(r['attempt']);
+      if (attempt < MAX_ATTEMPTS) {
+        this.store.scheduleRetry(iid, due, attempt + 1,
+          `第 ${attempt} 次失败（退出码 ${st.exitCode}），${this.store.retryDelayFor(attempt)} 秒后重试`);
+        this.emit('retrying', iid, `执行失败，${this.store.retryDelayFor(attempt)} 秒后第 ${attempt + 1} 次重试`);
+      } else {
+        this.store.finishRun(iid, due, RUN_FAILED,
+          `已重试 ${MAX_ATTEMPTS - 1} 次仍失败（退出码 ${st.exitCode}）`);
+        this.settle(iid, false);
+        this.emit('failed', iid, `重试 ${MAX_ATTEMPTS - 1} 次仍失败，已跳过本次`);
+      }
+    }
+  }
+
+  private settle(iid: string, success: boolean): void {
+    try {
+      if (success) this.store.settleSuccess(iid);
+      else this.store.advanceAfterRun(iid);
+    } catch (e) {
+      this.note(`推进事项失败：${(e as Error).message}`);
+    }
+  }
+
+  private itemTitle(iid: string): string {
+    const it = this.store.getItem(iid);
+    return (it && String(it['title'])) || iid;
+  }
+
+  // ------------------------------------------------------------ 启动恢复
+  private recoverOrphans(): void {
+    const now = new Date();
+    for (const r of this.store.openRuns()) {
+      const item = this.store.getItem(String(r['item_id']));
+      const title = this.itemTitle(String(r['item_id']));
+      const taskId = item && String(item['task_id'] || '');
+      if (item && taskId && this.registry.linkState(taskId) === 'ok') {
+        const dueDt = this.store.parseDt(String(r['due_at']));
+        const late = dueDt ? (now.getTime() - dueDt.getTime()) / 1000 : 1e9;
+        const attempt = Number(r['attempt']);
+        if (attempt < MAX_ATTEMPTS && late <= CATCHUP_GRACE_SEC) {
+          this.store.scheduleRetry(String(r['item_id']), String(r['due_at']), attempt + 1,
+            `服务重启，补跑第 ${attempt + 1} 次`);
+          this.note(`重启恢复：补跑「${title}」第 ${attempt + 1} 次`);
+          continue;
+        }
+      }
+      this.store.finishRun(String(r['item_id']), String(r['due_at']), RUN_FAILED, '服务重启，上次执行中断');
+      this.settle(String(r['item_id']), false);
+      this.note(`重启恢复：中断的执行已收尾 —— ${title}`);
+    }
+    this.emit('recovered', null, '调度器已启动，待执行项已恢复');
+  }
+
+  // ------------------------------------------------------------ 手动触发
+  triggerNow(itemId: string): [boolean, string] {
+    const item = this.store.getItem(itemId);
+    if (!item) return [false, '事项不存在'];
+    if (!item['task_id']) return [false, '这个事项没有关联任务'];
+    const st = this.registry.linkState(String(item['task_id']));
+    if (st !== 'ok') return [false, `关联任务${st === 'missing' ? '已不存在' : '已禁用'}，无法执行`];
+    if (this.store.openRunOf(itemId)) return [false, '上一次执行还没结束，稍等再试'];
+
+    const due = 'manual:' + (this.store.fmtLocal(new Date()) || '');
+    if (this.store.findRun(itemId, due)) return [false, '刚刚已经触发过了，一分钟后再试'];
+
+    const runId = this.dispatch(item, due, 1);
+    if (!runId) return [false, '入队失败，请重试'];
+    return [true, '已触发执行'];
+  }
+
+  /** 诊断用：最近调度日志。 */
+  recentLog(): string[] {
+    return this.log.slice(-50);
+  }
+}

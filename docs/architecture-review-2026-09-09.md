@@ -22,7 +22,7 @@
 | 一级视图 | home / tasks(任务中心) / dash(数据看板) / todo(工作内容) / history(运行记录) ；hub 是容器非视图 | `renderMain` 分发链 1555–1563 |
 | 后端体量 | 单类 1723 行，`do_GET`(1245)+`do_POST`(1521) 手动 `if/elif` 路由，约 20 个端点 | `wc -l server.py` |
 | 后端职责 | 静态服务 + SSE + 子进程跑任务 + cookie/Quark 探活 + 搜群 + 拉团队 + todo CRUD + 文件浏览，**至少 4~5 类职责混在一处** | 路由链 1245–1520 |
-| 数据看板 | `dashboard/` 目录**空**（仅 `.gitkeep`），`renderDashView` 是占位 | `ls dashboard/` / 1580 |
+| 数据看板 | `python/dashboard/` 目录**空**（仅 `.gitkeep`），`renderDashView` 是占位 | `ls python/dashboard/` / 1580 |
 | 待办数据源 | **双源并存**：服务端 SQLite(`todo.db`) + 前端 `localStorage` 克隆，首次进入做一次性迁移 | 3434–3496、3452–3489 |
 
 ---
@@ -36,10 +36,10 @@
 
 ### 2. 结构清晰度 —— ⚠️ 中低
 - 分层**只靠注释**，没有物理边界；渲染层注释写着「互不调用，统一由 refreshAll 调度」，但 `taskCard`(1589 起)→配置弹窗(3193)→多选站点(1911) 等约占 1800 行，全堆在同一层注释区间内，边界模糊。
-- `dashboard/` 空目录 + 占位视图 = **悬空脚手架**，给人「即将有内容」的误导，属于结构噪音。
+- `python/dashboard/` 空目录 + 占位视图 = **悬空脚手架**，给人「即将有内容」的误导，属于结构噪音。
 
 ### 3. 模块耦合度 —— ⚠️ 中
-- **导入期副作用导致被迫重复实现**：`jobs/attendance/attendance.py` 第 49–50 行在模块顶层 `os.makedirs(OUT_DIR)`；`server.py` 第 1339 行注释明说「在此自实现 teams 拉取，避免 import attendance（模块顶层会创建 out/ 目录，副作用）」。
+- **导入期副作用导致被迫重复实现**：`python/jobs/attendance/attendance.py` 第 49–50 行在模块顶层 `os.makedirs(OUT_DIR)`；`server.py` 第 1339 行注释明说「在此自实现 teams 拉取，避免 import attendance（模块顶层会创建 out/ 目录，副作用）」。
   → 同一个「拉团队列表」逻辑在 attendance 与 server 里**各写一份**，且将来修 bug 必漏一处。
 - **todo 双数据源**：SQLite 与 localStorage 克隆长期并存（迁移函数 `todoMigrateLocal` 被常驻在启动路径 3496）。迁移本应是一次性的，却变成了永久双路径。
 
@@ -64,8 +64,8 @@
 
 | # | 问题 | 证据 | 严重度 |
 |---|---|---|---|
-| P1 | `attendance` 导入期建 `out/` 目录，迫使 server 重实现 teams 拉取 | `jobs/attendance/attendance.py:49-50`；`server.py:1338-1339` | 中（重复+耦合） |
-| P2 | `dashboard/` 空目录 + 占位视图，悬空脚手架 | `ls dashboard/`；`index.html:1580 renderDashView` | 中（结构噪音） |
+| P1 | `attendance` 导入期建 `out/` 目录，迫使 server 重实现 teams 拉取 | `python/jobs/attendance/attendance.py:49-50`；`server.py:1338-1339` | 中（重复+耦合） |
+| P2 | `python/dashboard/` 空目录 + 占位视图，悬空脚手架 | `ls python/dashboard/`；`index.html:1580 renderDashView` | 中（结构噪音） |
 | P3 | todo 双数据源（SQLite + localStorage 克隆）长期并存 | `index.html:3434-3496` | 中（重复+漂移风险） |
 | P4 | 前端单文件 5660 行无物理模块边界 | `wc -l` | 中高（可维护性） |
 | P5 | 后端单类 1700+ 行混多类职责 + 手动路由链 | `server.py` 1245–1520 | 中（可维护性） |
@@ -79,7 +79,7 @@
 
 ### 优先级 1（低风险、高收益，建议立即做）
 - **P1 消重**：把 `attendance` 的 `OUT_DIR` 创建从「导入期」移到「真正写产物时」（函数内惰性创建），消除导入副作用；之后 server 直接 `import attendance.fetch_teams`，删掉内联重实现。一行副作用的挪动，换来一份逻辑唯一。
-- **P2 收拾悬空脚手架**：`数据看板` 要么接一个最小真实视图（哪怕只读 `ods_delivery_tracking` 一张卡），要么**直接删掉空 `dashboard/` 与占位视图 + 一级入口**，停止误导。不要长期挂着空壳。
+- **P2 收拾悬空脚手架**：`数据看板` 要么接一个最小真实视图（哪怕只读 `ods_delivery_tracking` 一张卡），要么**直接删掉空 `python/dashboard/` 与占位视图 + 一级入口**，停止误导。不要长期挂着空壳。
 
 ### 优先级 2（中等，解决扩展性核心）
 - **P6 引入轻量「模块注册表」**：在 `index.html` 内用一张表 `{ kind, navMeta, init, render }` 替代 `renderMain` 的 if/else 与 `navSections` 的硬编码。新增模块只需注册一条，导航自动生成、分发自动覆盖。`state.nav.kind` 仍可用，但来源唯一。

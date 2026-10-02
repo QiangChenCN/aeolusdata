@@ -9,7 +9,9 @@
 
 ## 0. 统一登录（所有业务接口的前置）
 
-所有业务接口都需要在请求头带 `Cookie: <AEOLUS_MOZI_TOKEN…>`，由 `aeolus_sdk/login.py` 提供。
+所有业务接口都需要在请求头带 `Cookie: <AEOLUS_MOZI_TOKEN…>`，由 Nest 的 `AeolusLoginService`
+（原 Python `aeolus_sdk/login.py`，已于 2026-09-23 迁入）登录后落盘到 `backend/aeolus_sdk/cookie.txt` 提供。
+强制重登入口：`POST /api/fetch/aeolus-relogin`（机器令牌）。
 
 | 步骤 | 接口 | 方法 | 说明 |
 |---|---|---|---|
@@ -19,7 +21,7 @@
 | 拿 Token | `GET https://aeolus.ele.me?_tplCode=…` | GET | 写入 `AEOLUS_MOZI_TOKEN` |
 | 登录态校验 | `GET https://httpizza.ele.me/lpd.meepo.session/aeolus/validToken` | GET | 生效 → HTTP 200；失效/被顶号 → HTTP 401（看状态码即可，无副作用） |
 
-**对外函数**：`ensure_cookies()`（优先复用本地 `aeolus_sdk/cookie.txt`，失效才登录并落盘）、`get_cookies()`（强制登录）、`check_login()`（validToken 探测）、`get_shared_cookies()` / `refresh_shared_cookies()`（进程内带锁共享，抗 SSO 顶号）。
+**对外函数**：`ensure_cookies()`（优先复用本地 `backend/aeolus_sdk/cookie.txt`，失效才登录并落盘）、`get_cookies()`（强制登录）、`check_login()`（validToken 探测）、`get_shared_cookies()` / `refresh_shared_cookies()`（进程内带锁共享，抗 SSO 顶号）。
 
 **⚠️ 关键坑**：风神是单点登录，浏览器活跃会把脚本会话顶掉，刚拿到的 token 可能几秒失效。最稳用法：现登现用，或浏览器空闲时再跑。
 
@@ -49,14 +51,14 @@
   （1=UB 站点、2=店配，如瑞幸店配）、`tenant_id`、`org_id`、`online_time`/`offline_time` 等 28 个字段
 - **实测**：当前账号可见 **9 个站点** —— 4 个 UB 站（黄江镇/长安万科/大岭山大学城/大岭山镇大片美）
   + 5 个瑞幸店配。其中「大岭山镇大片美站」是原写死清单里**没有**的
-- **用法**：`jobs/attendance/attendance.py` 的 `fetch_teams()`，取代写死的 `TEAMS`；
+- **用法**：`python/jobs/attendance/attendance.py` 的 `fetch_teams()`，取代写死的 `TEAMS`；
   瑞幸店配在考勤场景排班恒为 0（店配不走站点排班），但按既有约定仍保留在列表里
 - **调用时机（2026-09-08 定论，重要）**：**只在界面展开「选择站点」多选下拉时拉一次**
   （前端 `ensureTeams()` → 后端 `/api/teams`，5 分钟 TTL 缓存，拉过就不再打第二次）。
   **跑任务时完全不调这个接口**——站点清单走 `--teams`（`id=名称`）或
   `last_teams.txt`（上次选择），避免每次出数多一个网络往返
   （实测：单次 fetch 从 11 次请求降到 10 次，`getTeamsAll` 为 0 次）
-- **诊断脚本**：`tools/probe_teams.py`（打印接口返回的站点清单，接口变了可复验）
+- **诊断脚本**：`python/tools/probe_teams.py`（打印接口返回的站点清单，接口变了可复验）
 
 ### 1.2 排班未上线骑手考勤（实时在线）
 - **脚本**：`attendance.py`（单一入口，4 节点流水线；2026-09-02 起取代原 `attendance_all_teams.py` + `send_attendance.py`）
@@ -67,7 +69,7 @@
 - **请求体**：`{"params":{"request":{"teamId":<站点ID>, "timeCode":"<时段码>", "shiftedOffline":0}}}`
   - **站点 ID 不再写死**，优先级：`--teams`（界面勾选 / 命令行）> 上次选择 > 内置 3 站兜底清单。
     - 界面勾选：`--teams` 传的是 `id=名称,id=名称`，名称随值一起带下来；
-    - 不带 `--teams`：沿用 `jobs/attendance/out/last_teams.txt`（上次实际用过的站点），
+    - 不带 `--teams`：沿用 `python/jobs/attendance/out/last_teams.txt`（上次实际用过的站点），
       文件不存在才回落兜底清单（917521130/917521136/917521139），日志会打 ⚠ 提示。
   - 时段码：100 凌晨 / 111 早餐1 / 112 早餐2 / 120 午高峰 / 130 下午茶1 / 131 下午茶2 / 140 晚高峰 / 150 夜宵1 / 151 夜宵2
 - **返回**：`result.data`（骑手数组，每人含 `timeCode[]`、`workStatus`{1上班/2小休/3下线/5部分在线}、`deliveryOrder`、`timeValidOnlineTime`、`fullDayValidOnlineTime`…）
@@ -84,10 +86,10 @@
   - `timeList[]` 每时段字段：`timeCode` / `timeName`（休息·凌晨1·早餐1·早餐2·午高峰·下午茶1·下午茶2·晚高峰·夜宵1·夜宵2·全天）/ `startTime` / `endTime` / `actualNum`（实际排班人数）/ `predictNum`（预测人数）/ `predictOrder`（预测单量=排班目标单量基线）/ `actualOrder`（实际单量，常为空）/ `shiftTrackingCnt`
 - **字段语义（对「标准达成」）**：
   - 排班达成 = `actualNum / predictNum`（本接口已可算）
-  - 单量达成 = 实际完成单量 / `predictOrder`（实际完成单量需从运单明细 `get_data/delivery.py` 按站点×时段聚合补齐，`actualOrder` 本接口通常空）
-- **封装**：取数低层 `query` / `build_body` / `AuthError` 已迁到 `get_data/schedule_statistics.py`（单一来源，与 violation/board/rush 等同款）；`dashboard/standard/schedule_statistics.py` 只保留 `Session`（自动重登）/ `fetch`（高层）/ `flatten`（展平）；`__all__` 导出 `AuthError`/`build_body`/`query`/`Session`/`fetch`/`flatten`（前三者转自 get_data）
+  - 单量达成 = 实际完成单量 / `predictOrder`（实际完成单量需从运单明细 `python/get_data/delivery.py` 按站点×时段聚合补齐，`actualOrder` 本接口通常空）
+- **封装**：取数低层 `query` / `build_body` / `AuthError` 已迁到 `python/get_data/schedule_statistics.py`（单一来源，与 violation/board/rush 等同款）；`python/dashboard/standard/schedule_statistics.py` 只保留 `Session`（自动重登）/ `fetch`（高层）/ `flatten`（展平）；`__all__` 导出 `AuthError`/`build_body`/`query`/`Session`/`fetch`/`flatten`（前三者转自 get_data）
 - **用法**：`from dashboard.standard.schedule_statistics import fetch, flatten`；`fetch(team_id, start, end)` 得按天 rows，`flatten(rows)` 展平为「站×日期×时段」一行一条
-- **样本**：`dashboard/standard/schedule_statistics_sample_917521136.csv`（长安万科站本周，78 行）
+- **样本**：`python/dashboard/standard/schedule_statistics_sample_917521136.csv`（长安万科站本周，78 行）
 
 ### 1.2c 骑手排班明细 —— `listSchedule`（2026-09-09 验证，非标准达成）
 - **来源**：`r.ele.me/pikipek/schedule.html`（排班页）接口，用户提供 curl 验证（= 按骑手粒度的排班计划明细）
@@ -101,8 +103,8 @@
     - `status`：`4`=未排/休息（`typeDetailList` 为空）；`2`=已排（含时段明细）
     - `typeDetailList[]`：当天各时段班次，含 `shiftTypeName`（午高峰/下午茶1/下午茶2/晚高峰）、`startTime`/`endTime`、以及要求值 vs 实际值——`requiredDuration`/`actualDuration`（时长）、`requiredFinishedOrder`/`finishedOrderCount`（单量）、`effectiveType`
 - **与 1.2b 的区别**：本接口是**按骑手明细**（谁、哪天、排了哪些班次、要求/实际时长单量）；1.2b 是**按站×日期×时段聚合统计**（实际排班人数/预测人数/预测单量）。二者同源互补，粒度不同。
-- **用途**：**不是「标准达成」数据源**（用户 2026-09-09 确认标准达成用 1.2b 的 `listScheduleStatistics`）。本接口作为「骑手级排班明细」备案，**后续可能用于骑手维度排班核对 / 到人明细**，暂未封装为模块（需要时按 `dashboard/standard/schedule_statistics.py` 同风格在 `dashboard/standard/` 下补 `schedule.py` 即可）。
-- **样本**：`dashboard/standard/schedule_sample_917521139.csv`（大岭山大学城站本周 63 骑手 × 班次时段，含要求/实际时长单量，442 行）
+- **用途**：**不是「标准达成」数据源**（用户 2026-09-09 确认标准达成用 1.2b 的 `listScheduleStatistics`）。本接口作为「骑手级排班明细」备案，**后续可能用于骑手维度排班核对 / 到人明细**，暂未封装为模块（需要时按 `python/dashboard/standard/schedule_statistics.py` 同风格在 `python/dashboard/standard/` 下补 `schedule.py` 即可）。
+- **样本**：`python/dashboard/standard/schedule_sample_917521139.csv`（大岭山大学城站本周 63 骑手 × 班次时段，含要求/实际时长单量，442 行）
 
 ### 1.3 运单数据（aeolus 后台「运单数据」页）
 - **脚本**：`download_delivery.py`（新落地，2026-08-24）
@@ -119,12 +121,12 @@
 - **字段中文化**：`delivery_columns.py`（99 字段映射单一来源）
 - **产物**：
   - CSV：`download_delivery.py` → `aeolus_delivery_<date>_<date>.csv`（UTF-8-BOM，Excel 直接可开）
-  - 入库：`fetch_delivery_raw.py`（落 `delivery_raw/<date>.jsonl` 原始层，断点续传/超量自动时段切片）→ `load_delivery_db.py` → PostgreSQL `ods_delivery_tracking`（DDL 单一来源 `jobs/delivery/db_schema.py` 的 `gen_pg_ddl()`，运行期直接生成，无外部 .sql 导出件；旧的 MySQL `sql/ods_delivery_tracking.sql` 已删除）
+  - 入库：`fetch_delivery_raw.py`（落 `delivery_raw/<date>.jsonl` 原始层，断点续传/超量自动时段切片）→ `load_delivery_db.py` → PostgreSQL `ods_delivery_tracking`（DDL 单一来源 `python/jobs/delivery/db_schema.py` 的 `gen_pg_ddl()`，运行期直接生成，无外部 .sql 导出件；旧的 MySQL `sql/ods_delivery_tracking.sql` 已删除）
 
 ### 1.4 商站任务看板
 - **脚本**：`task_board.py`（合并了原 `fetch_tasks.py` + `send_task_board.py`）
 - **接口**：`POST /xtop/xtop.ryze.fs.agency.team.task.listByPage/1.0`
-- **请求体**：`{"params":{"queryVO":{"pageSize":100, "pageIndex":<n>}}}`
+- **请求体**：`{"params":{"queryVO":{"pageSize":100, "pageIndex":<n>, "status":"started"}}}`（status 枚举值为英文 `started`，服务端按它过滤「已开始」；传中文 `已开始` 会被误过滤成 0 条，勿用）
 - **返回**：`result.data.data`（任务数组，`status`="已开始"/…、`taskName`、`taskObject`、`taskExpireTime`、`executorName`、`priority`）
 - **筛选**：`status == "已开始"`，按 `taskExpireTime` 计算剩余时间
 - **发送**：`task_started.png` → 钉钉（生产 + 测试群）
@@ -188,7 +190,7 @@
 |---|---|---|---|
 | `GET https://app2-edu.ele.me/kunkka-svr/fs/fbi/getReport?reportId=860325` | GET（带 AEOLUS_MOZI_TOKEN） | `quark_sdk/da_auth.py` / `quark_sdk/creds.py` | 返回带 `QUARK_PARAMS` 的 iframe URL（Aeolus 下发给 Quark 的签名票据） |
 | `GET https://quark.alibaba.com/fbi/fbi.json?action=site/FbiSiteAction&event_submit_doGetSite=true` | GET（带 DA cookie） | `quark_sdk/creds.py` | ✅ **DA cookie 健康探针**（2026-09-03 选定）。有效 → JSON（`code:510 "site is null"`，510 只是本场景无 site 的业务码）；失效 → HTML 登录页。只读、无参数、响应 188 B、约 0.3s |
-| `POST https://quark.alibaba.com/fbi/.json?action=report/WidgetAction&event_submit_doGetWidgetData=true&componentName=fbi-common-table&_widgetId=mmds9k0ty_f1vr3j&_ts_=mszj2wz8` | POST（form: `params=<json>`） | `get_data/rider_equipment.py` | ✅ 取数主接口，返回 `data.value.columns`（官方中文列名）+ `data.value.values`（二维表），约 184 行 |
+| `POST https://quark.alibaba.com/fbi/.json?action=report/WidgetAction&event_submit_doGetWidgetData=true&componentName=fbi-common-table&_widgetId=mmds9k0ty_f1vr3j&_ts_=mszj2wz8` | POST（form: `params=<json>`） | `python/get_data/rider_equipment.py` | ✅ 取数主接口，返回 `data.value.columns`（官方中文列名）+ `data.value.values`（二维表），约 184 行 |
 | `GET https://quark.alibaba.com/common/ClipAction/doQueryClipConfig?region=cn` | GET（带不带 cookie 都一样） | — | ❌ 反例，**勿再当探针**：`/common/**` 不鉴权，空 cookie 也 `code:0`。它是 FBI 报表页拉编辑器配置的业务接口 |
 
 **DA_TOKEN 兑换链路**（全 HTTP，见 `quark_sdk.da_auth.acquire_da_token`）：
@@ -202,7 +204,7 @@ Aeolus 登录 → `getReport` 拿票据 → `curl` 访问 `report.htm?QUARK_PARA
 
 | 候选端点 | 路径 | 真 cookie | 伪造/空 cookie | 鉴别力 |
 |---|---|---|---|---|
-| `common/ClipAction/doQueryClipConfig`（旧用） | `/common/**` | `code:0` | `code:0`（**完全一样**） | ❌ 恒真 |
+| `python/common/ClipAction/doQueryClipConfig`（旧用） | `/common/**` | `code:0` | `code:0`（**完全一样**） | ❌ 恒真 |
 | `report.htm` 不带 `QUARK_PARAMS` | — | `code:400 token为空` | 同左 | ❌ 缺的是 URL 票据 |
 | `IndexAction&doUserProfile`（名字最像"取当前用户"） | `/fbi/**` | JSON | HTML 登录页 | ✅ 但实际是前端告警上报接口，语义不符 |
 | **`site/FbiSiteAction&doGetSite`**（**最终选用**） | `/fbi/**` | JSON `code:510` | HTML 登录页 | ✅ 只读、无参数、188 B |
@@ -246,9 +248,9 @@ GET https://httpizza.ele.me/alsc-lpd-omp-inspection-prod/qc/fs/judgement/queryQc
 - **单条记录 91 个字段**（扁平化后），常用：`qcId` / `teamName` / `knightName` / `knightMobile` /
   `qcTypeName`（刷脸抽检 / 装备抽检）/ `status`+`statusDesc`（通过 | 不通过）/ `reasons[]`（reasonName）/
   `punishment` / `punishDecimalAmount` / `appealStatusDesc` / `trackingId` / 各时间字段（毫秒）。
-- **脚本** `jobs/orange_storm/fetch_orange_storm.py`（2026-09-07 已迁至 `jobs/` 并节点化，任务 id `orange_storm`）：
+- **脚本** `python/jobs/orange_storm/fetch_orange_storm.py`（2026-09-07 已迁至 `python/jobs/` 并节点化，任务 id `orange_storm`）：
   `--month YYYY-MM`（默认上个月）或 `--start-date/--end-date`，自动分页拉满，
-  产物落 `jobs/orange_storm/out/` 下 JSON + 全字段 CSV + 15 列精简 CSV。节点：`login → fetch → write`。
+  产物落 `python/jobs/orange_storm/out/` 下 JSON + 全字段 CSV + 15 列精简 CSV。节点：`login → fetch → write`。
 - 时间字段（hitTime/photoTime/completeTime/checkTime/punishTime/appealTime…）自动转东八区可读值，
   原值保留 `<字段>_ms`；嵌套 `reasons` / `punishInfoList` / `extraInfo` 转 JSON 字符串。
   精简版取 `reasons` 时必须用**原始行**（扁平行里已是字符串）。
@@ -264,7 +266,7 @@ GET https://httpizza.ele.me/alsc-lpd-omp-inspection-prod/qc/fs/judgement/queryQc
 <script> --begin <节点id> --end <节点id>     :: 只跑这段连续区间；不传 = 全跑
 ```
 
-- 节点清单的**单一事实来源是脚本源码里的 `NODES`**，`workbench/tasks.json` 由
+- 节点清单的**单一事实来源是脚本源码里的 `NODES`**，`python/workbench/tasks.json` 由
   `sync_nodes.py`（AST 只读提取，`--write` 写入，幂等）同步过去，界面步进条据此渲染。
 - `end` 早于 `begin`、或 id 不在节点表里 → 打印 `✗ …` 并 `exit 1`。
 - 区间内**筛出 0 条属正常中止**：抛 `nodeflow.Stop`，exit 0，不发消息不打扰。
@@ -273,12 +275,12 @@ GET https://httpizza.ele.me/alsc-lpd-omp-inspection-prod/qc/fs/judgement/queryQc
   传旧写法且取值是 `YYYY-MM-DD` 时由 `nodeflow.reject_legacy_date_args()` 友好拦截。
 - 一个脚本多种模式时各有一套节点：`load_delivery_db.py`（`NODES_INIT`/`NODES_LOAD`/`NODES_VERIFY`）、
   `unsat_automation/main.py`（`NODES_RUN`/`NODES_REMIND`）。
-- **节点化对任务是强制约束**：`tasks.json` 里没有 `nodes` 的任务会被 `sync_nodes.py`
+- **节点化对任务是强制约束**：`python/workbench/tasks.json` 里没有 `nodes` 的任务会被 `sync_nodes.py`
   列进「未节点化」并以 exit 1 结束，新增任务不会悄悄漏掉。
 - **SDK 自带的诊断入口不参与**：`python -m aeolus_sdk.login`（登录诊断）不是任务，
-  不在 `tasks.json` 里，也不接 nodeflow —— SDK 是被人 import 的库，保持零外部依赖。
+  不在 `python/workbench/tasks.json` 里，也不接 nodeflow —— SDK 是被人 import 的库，保持零外部依赖。
 
-各脚本节点一览见 `workbench/README.md` 第三节任务清单。
+各脚本节点一览见 `python/workbench/README.md` 第三节任务清单。
 
 ---
 
@@ -306,7 +308,7 @@ GET https://httpizza.ele.me/alsc-lpd-omp-inspection-prod/qc/fs/judgement/queryQc
    - Playwright（`.venv` 已装）打开目标页面 → `performance.getEntriesByType('resource')`
      过滤 `.js` → 下载所有 JS → 正则 `xtop\.[A-Za-z0-9_]+(?:\.[A-Za-z0-9_]+)+/\d+\.\d+` 扫全部接口名。
    - 本次一次扫出 11 个接口名，其中 `xtop.lpd.intelligentConfig.getTeamsAll/1.0` 就是「站点列表」。
-   - 页面需要登录态时：用 `context.add_cookies()` 注入 `aeolus_sdk/cookie.txt` 解析出的
+   - 页面需要登录态时：用 `context.add_cookies()` 注入 `backend/aeolus_sdk/cookie.txt` 解析出的
      cookie（domain 填 `.ele.me`），本次靠它直接打开了排班页（title 正常）。
 3. **最后才试调用**：空 body `{}` 先打一发，再逐个试 `{"params":{}}` 等形态。
    401（未登录）vs 404（接口不存在）是两类信号，别混为一谈。

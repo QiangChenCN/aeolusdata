@@ -1,0 +1,52 @@
+/* element-overrides.css —— 把 Element Plus 主题收敛到本项目设计令牌
+   不修改 Element Plus 源码，只在全局层覆盖其 CSS 变量。*/
+:root {
+  /* 主色 = 品牌橙 #FF5000（含 hover/dark 与各级浅底） */
+  --el-color-primary: #FF5000;
+  --el-color-primary-light-3: #FF854D;
+  --el-color-primary-light-5: #FFA880;
+  --el-color-primary-light-7: #FFCBB3;
+  --el-color-primary-light-8: #FFDCCC;
+  --el-color-primary-light-9: #FFEFE6;
+  --el-color-primary-dark-2: #D94400;
+
+  /* 语义色对齐 tokens */
+  --el-color-success: #0F9D58;
+  --el-color-warning: #F5A623;
+  --el-color-danger:  #E02020;
+  --el-color-error:   #E02020;
+  --el-color-info:    #1A73E8;
+
+  /* 中性面 / 文字 / 描边 对齐 tokens，减少视觉割裂 */
+  --el-bg-color: var(--white);
+  --el-bg-color-page: var(--bg);
+  --el-bg-color-overlay: var(--white);
+  --el-text-color-primary: var(--text);
+  --el-text-color-regular: var(--text-body);
+  --el-text-color-secondary: var(--muted);
+  --el-text-color-placeholder: var(--muted-2);
+  --el-border-color: var(--border);
+  --el-border-color-light: var(--border-soft);
+  --el-border-color-lighter: var(--border-soft);
+  --el-border-color-hover: var(--brand);
+  --el-fill-color-light: var(--surface-sunken);
+  --el-fill-color-blank: var(--white);
+  --el-fill-color: var(--surface-sunken);
+
+  /* 圆角 / 字号 / 控件高度 对齐令牌 */
+  --el-border-radius-base: var(--r-xl);
+  --el-border-radius-small: var(--r-md);
+  --el-font-size-base: var(--fs-control);
+  --el-component-size: var(--ctrl-h);
+
+  /* 阴影 */
+  --el-box-shadow-light: var(--shadow-2);
+
+  /* 弹窗层级：本项目浮层（登录/确认）需高于业务弹窗；
+     让 Element Plus 的 overlay 高于业务 el-dialog 之外的自有浮层即可，这里沿用其默认高位。 */
+}
+
+/* 让 el-dialog / el-drawer 的圆角与令牌一致 */
+.el-dialog, .el-drawer {
+  border-radius: var(--r-modal);
+}

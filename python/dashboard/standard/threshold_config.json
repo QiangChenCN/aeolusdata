@@ -1,0 +1,15 @@
+{
+  "schema_version": 2,
+  "months": {
+    "2026-09": {
+      "threshold_pct": 95,
+      "cap_pct": 110,
+      "updated_at": "2026-09-25T19:11:53+08:00"
+    },
+    "2026-10": {
+      "threshold_pct": 95,
+      "cap_pct": 110,
+      "updated_at": "2026-10-01T19:29:03+08:00"
+    }
+  }
+}

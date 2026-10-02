@@ -127,7 +127,7 @@
   <!-- 2 审计 -->
   <section>
     <h2><span class="num">2</span>现状审计 · 基于真实代码</h2>
-    <p class="lead">审计对象：<code>web/tokens.css</code>、<code>index.html</code>（CSS + JS 视图）、<code>workbench/DESIGN.md</code>。证据以「文件:行」标注。</p>
+    <p class="lead">审计对象：<code>web/tokens.css</code>、<code>index.html</code>（CSS + JS 视图）、<code>python/workbench/DESIGN.md</code>。证据以「文件:行」标注。</p>
     <table>
       <thead><tr><th>维度</th><th>现状</th><th>证据</th><th>评级</th></tr></thead>
       <tbody>
@@ -216,7 +216,7 @@
 <span class="a">--sp-28</span>:28px; <span class="a">--sp-32</span>:32px; <span class="a">--sp-40</span>:40px;
 <span class="a">--sp-48</span>:48px; <span class="a">--sp-64</span>:64px;
 <span class="c">/* 现有离格值（仅历史/装饰，勿在新代码使用）：18 / 22 / 34 / 88 */</span></pre>
-      <div class="kv"><div class="k">校验</div><div class="v"><code>workbench/check_tokens.py</code> 已统计裸 px；增补后可加一条「新代码间距须为 8 倍数」规则。</div></div>
+      <div class="kv"><div class="k">校验</div><div class="v"><code>python/workbench/check_tokens.py</code> 已统计裸 px；增补后可加一条「新代码间距须为 8 倍数」规则。</div></div>
     </div>
 
     <div class="item">
@@ -364,7 +364,7 @@
   </section>
 
   <p style="margin-top:36px;color:var(--muted-2);font-size:12px;text-align:center">
-    本方案为「可直接落地的优化实现方案」交付物 · 配套文件 web/tokens.css · index.html · workbench/DESIGN.md · 2026-09-12
+    本方案为「可直接落地的优化实现方案」交付物 · 配套文件 web/tokens.css · index.html · python/workbench/DESIGN.md · 2026-09-12
   </p>
 
 </div>

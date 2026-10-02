@@ -1,0 +1,5 @@
+{
+  "dependencies": {
+    "dingtalk-stream": "^2.1.6-beta.1"
+  }
+}
