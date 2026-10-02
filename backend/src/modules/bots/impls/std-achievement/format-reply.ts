@@ -1,0 +1,110 @@
+import { STANDARDS, Standard } from './standards';
+import { RiderQueryResult } from './rider-query.service';
+
+export interface StandardResult {
+  current: number;
+  next: number | null;
+  gap_orders: number;
+  gap_hours: number;
+  is_max: boolean;
+}
+
+/**
+ * 根据有效单量 + 有效在线时长，返回该骑手当前达成的运力等级 + 距下一级的差距。
+ * 等级 N 的单量阈值与时长阈值同时满足才算达成 N 级（取两者短板）。
+ */
+export function computeStandard(
+  orders: number | null | undefined,
+  hours: number | null | undefined,
+): StandardResult | null {
+  if (orders == null || hours == null) return null;
+  if (!STANDARDS.length) return null;
+  const o = Number(orders);
+  const h = Number(hours);
+  if (Number.isNaN(o) || Number.isNaN(h)) return null;
+  let current = 0;
+  for (const s of STANDARDS) {
+    if (o >= s.orders && h >= s.hours) current = s.level;
+  }
+  const top = STANDARDS[STANDARDS.length - 1];
+  if (current >= top.level) {
+    return { current, next: null, gap_orders: 0, gap_hours: 0, is_max: true };
+  }
+  const nxt: Standard = STANDARDS[current]; // current=0 → 标准1
+  return {
+    current,
+    next: nxt.level,
+    gap_orders: Math.max(0, nxt.orders - Math.floor(o)),
+    gap_hours: Math.round(Math.max(0, nxt.hours - h) * 100) / 100,
+    is_max: false,
+  };
+}
+
+function riderHeader(data: RiderQueryResult): string {
+  const name = data.rider_name || data.rider_id || '—';
+  const kid = data.knight_id || '—';
+  const site = data.team_name || '—';
+  return `👤 骑手姓名：${name}\n🆔 骑手ID：${kid}\n🏠 所属站点：${site}`;
+}
+
+/**
+ * 根据查询结果生成回复文本（markdown）。
+ * 钉钉互动卡片的 markdown 不渲染 --- 水平线和整行加粗，故用 unicode 手画分隔线 + emoji 块标题。
+ */
+export function formatReply(
+  riderId: string,
+  data: RiderQueryResult,
+  withHeader = true,
+): string {
+  const status = data.status;
+  if (status === 'ok') {
+    const d = data.order_detail || {};
+    const fmt = (v: unknown): unknown => (v == null ? '—' : v);
+    const total = fmt(d.total_success);
+    const reverse = fmt(d.reverse);
+    const reassign = fmt(d.reassign);
+    const valid = fmt(d.valid);
+    const excluded = d.excluded_accept || 0;
+    const online = fmt(data.online_duration_hours);
+    const dur = fmt(data.valid_duration_hours);
+
+    const excludedLine = excluded > 0 ? `• 非今日接单：${excluded} 单\n` : '';
+    const separator = '\n\n─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─\n\n';
+
+    const header = withHeader ? riderHeader(data) + separator : '';
+
+    const ordersBlock =
+      `📊 **总配送成功单量**：${total} 单\n` +
+      excludedLine +
+      `• 逆向单：${reverse} 单\n` +
+      `• 改派单：${reassign} 单\n` +
+      `• 最终有效单量：${valid} 单`;
+
+    const durationBlock =
+      `⏱ **全天时长**\n` +
+      `• 在线总时长：${online} 小时\n` +
+      `• 有效时长：${dur} 小时`;
+
+    const std = computeStandard(d.valid as number, data.valid_duration_hours as number);
+    let stdBlock: string;
+    if (std == null) {
+      stdBlock = '🎯 **运力等级**：—（数据不全）';
+    } else if (std.is_max) {
+      stdBlock = `🎯 **运力等级**：标准 ${std.current}\n  （已达最高）`;
+    } else {
+      stdBlock =
+        `🎯 **运力等级**：标准 ${std.current}\n` +
+        `• 距下一级还差：${std.gap_orders} 单 / ${std.gap_hours} 小时`;
+    }
+
+    return header + ordersBlock + separator + durationBlock + separator + stdBlock;
+  }
+  if (status === 'not_found') {
+    const extra = data.note ? `\n\n（系统提示：${data.note}）` : '';
+    return `🔍 未查到相关记录，请核对姓名或输入骑手ID重新查询。${extra}`;
+  }
+  if (status === 'empty') {
+    return '请 @我 并发送骑手姓名或 ID，例如：张三 / 608652258';
+  }
+  return `查询出错：${data.note || '未知错误'}`;
+}

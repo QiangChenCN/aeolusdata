@@ -2,14 +2,15 @@
 minio_config.json
 cookie.txt
 cookie.txt.lock
-aeolus_sdk/credentials.json
-quark_cookie.txt
-quark_da_cookies.txt
-quark_da_cache.json
+backend/aeolus_sdk/credentials.json
+# Quark 凭证缓存（NestJS 写入 backend/data/quark/：da_cache.json / da_cookies.txt / manual_cookie.txt）
+backend/data/quark/
 quark_pw_capture.json
 aeo_cookie.txt
 .env
-workbench/.api_token
+# 钉钉机器人连接配置（前端「系统设置→钉钉机器人」写入，含 Client Secret）
+bot_config.json
+bot_manifest.json
 
 # CDP 探针产物 / 浏览器调试缓存（可重建，不提交）
 cdp_profile_knight/
@@ -49,10 +50,10 @@ __pycache__/
 db_config.json
 delivery_raw/
 
-# 工作内容（提醒事项）SQLite 库 —— 本地数据，含 WAL  sidecar 文件
-workbench/data/todo.db
-workbench/data/todo.db-wal
-workbench/data/todo.db-shm
+# 工作内容（提醒事项）SQLite 库 —— 本地数据，含 WAL  sidecar 文件（现落 backend/data/）
+backend/data/todo.db
+backend/data/todo.db-wal
+backend/data/todo.db-shm
 
 # 在线表地址记忆（本地状态，每人/每月不同，不提交）
 last_sheet_url.txt
@@ -66,26 +67,17 @@ web/dist/
 # 与 node_modules 不同，属于源码的一部分。package.json 里全是 ^ 浮动范围，
 # 不锁版本会让换机安装到不同（甚至不兼容的）依赖。
 
-# 后端 API token —— 真实密钥（server.py 的 _API_TOKEN_PATH 落在项目根）
-.api_token
-
 # RBAC 用户库与审计日志（含口令哈希 / 操作记录，本地状态，不提交）
-.users.json
-.audit.jsonl
+backend/data/.users.json
+backend/data/.audit.jsonl
 # RBAC 角色配置（可配置 + 继承）与密码策略（本地状态，不提交）
-.roles.json
-.pwpolicy.json
-
-# LAN 开关本地状态
-.lan_enabled
+backend/data/.roles.json
+backend/data/.pwpolicy.json
 
 # 后端运行期数据 / 日志 / 截图（可重建，不提交）
-workbench/runs/
-workbench/logs/
-workbench/_final_shots/
-workbench/data/recent_groups.json
-# 数据权限：上次成功获取的站点明细（失败回退用，本地状态，不提交）
-workbench/data/data_perms_teams_last.json
+backend/runs/
+# 群选择器「最近使用」持久化（NestJS GroupsModule 写入 backend/data/）
+backend/data/group_recent.json
 
 # 本地工具缓存
 .vite/
@@ -104,6 +96,9 @@ sniff_delivery_*.json
 _sniff/
 
 # 运行时本地状态（dataperm.py 生成的数据权限状态，每人/每月不同，不提交）
-.data_perms.json
+backend/data/.data_perms.json
+# 看板实时配置（所选站点 / 考核目标，本地状态，不提交）
+.realtime_selection.json
+.realtime_targets.json
 # 看板运行期落盘数据（实时运单明细等，本地生成，不提交）
 dashboard/standard/实时运单明细.json
