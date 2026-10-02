@@ -46,8 +46,18 @@
           <el-table :data="stationRows" stripe border class="dv-table" height="100%">
             <el-table-column prop="team_name" label="站点" min-width="120" fixed sortable show-overflow-tooltip />
             <el-table-column prop="scale_target" label="天应排" min-width="90" align="center" sortable />
-            <el-table-column prop="threshold_count" label="门槛" min-width="90" align="center" sortable />
-            <el-table-column prop="cap_count" label="封顶" min-width="90" align="center" sortable />
+            <el-table-column label="门槛" min-width="90" align="center" sortable>
+              <template #default="{ row }">
+                <span v-if="row.threshold_count == null" class="dv-warn" :title="row.data_note || '未设置门槛'">未设置</span>
+                <span v-else>{{ row.threshold_count }}</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="封顶" min-width="90" align="center" sortable>
+              <template #default="{ row }">
+                <span v-if="row.cap_count == null" class="dv-warn" :title="row.data_note || '未设置封顶'">未设置</span>
+                <span v-else>{{ row.cap_count }}</span>
+              </template>
+            </el-table-column>
             <el-table-column prop="scheduled_num" label="排班" min-width="90" align="center" sortable />
             <el-table-column prop="rider_with_order" label="有单" min-width="90" align="center" sortable />
             <el-table-column prop="achieved_num" label="达标" min-width="90" align="center" sortable />
@@ -740,6 +750,8 @@ onMounted(async () => {
 .dv-table :deep(.descending .caret-wrapper) { display: inline-flex; }
 /* 表头防折行：列名与排序图标始终同一行；长列名由 nowrap + 自适应列宽兜底（列宽已按表头文本实测） */
 .dv-table :deep(.el-table__header .cell) { white-space: nowrap; }
+/* 未设置门槛/封顶时的报错提醒（红字） */
+.dv-warn { color: var(--danger, #f56c6c); font-weight: var(--fw-semibold); }
 /* 骑手姓名前的排班状态标签与姓名间距 */
 .dv-sched-tag { margin-left: 6px; vertical-align: middle; font-size: 10px; height: 18px; line-height: 16px; padding: 0 5px; }
 /* 指定列中值为 0 的单元格字色置浅灰 */

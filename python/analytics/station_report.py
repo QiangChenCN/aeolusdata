@@ -119,7 +119,23 @@ def build_one(team_id, start, end, month, source="cache"):
             "data_note": "该站点未启用考核，已在看板中隐藏",
         }
     _cfg = GS.get_config(team_id, month)
-    cached = CACHE.get_result("station_report", team_id, date, month, "cache")
+    # 门槛/封顶百分比：单站优先，回落全局月度 threshold_config。
+    # 这部分配置直接影响门槛/封顶人数，故纳入进程内结果缓存的 key（见下方 _cfg_ver），
+    # 使「配置一改即自动失效旧口径」，无需依赖 invalidateAll 的跨进程 HTTP 回调是否成功
+    # （历史上多次出现 invalidate 未触达、看板静默返回旧阈值 64 而非 76 的失真）。
+    # 注意：不再兜底 80/100 —— 未设置时由下方标记 config_missing，让前端明确报错提醒，
+    # 而不是静默用错误口径掩盖「忘了设配置」。
+    _tp = _cfg.get("threshold_pct")
+    _cp = _cfg.get("cap_pct")
+    if _tp is None or _cp is None:
+        _g = TC.get(month)
+        if _tp is None:
+            _tp = _g.get("threshold_pct")
+        if _cp is None:
+            _cp = _g.get("cap_pct")
+    _missing = [n for n, v in (("门槛", _tp), ("封顶", _cp)) if v is None]
+    _cfg_ver = "cache#tp%s_cp%s" % (_tp, _cp)
+    cached = CACHE.get_result("station_report", team_id, date, month, _cfg_ver)
     if cached is not None:
         return cached
     sched = CACHE.load_raw("sched", team_id, date)
@@ -186,22 +202,9 @@ def build_one(team_id, start, end, month, source="cache"):
     # —— 推配送单量（实时数据看板第一个指标）：运单明细按骑手接单时间归属当天、全量不剔除 ——
     pushed_order_volume = OR.count_pushed_orders(orders, start, end)
 
-    # —— 门槛人数 / 封顶人数：按本站点配置的百分比（天应排 × 门槛/封顶百分比）；
-    #    该站未设百分比则回落全局月度 threshold_config（与历史行为一致）——
     # 门槛人数 = ceil(天应排 × 门槛%/100)；封顶人数 = floor(天应排 × 封顶%/100)。
-    _tp = _cfg.get("threshold_pct")
-    _cp = _cfg.get("cap_pct")
-    if _tp is None or _cp is None:
-        _g = TC.get(month)
-        if _tp is None:
-            _tp = _g.get("threshold_pct")
-        if _cp is None:
-            _cp = _g.get("cap_pct")
-    # 双缺失兜底：沿用历史口径（门槛 80% / 封顶 100% 规模目标）
-    if _tp is None:
-        _tp = 80.0
-    if _cp is None:
-        _cp = 100.0
+    # _tp/_cp 已在上方（缓存读取前）按配置计算，并纳入缓存 key 的 _cfg_ver，
+    # 使「配置一改即自动失效旧口径」，不再依赖 invalidateAll 的跨进程 HTTP 回调是否成功。
     threshold_count = _ceil_pct(scale_target, _tp)
     cap_count = _floor_pct(scale_target, _cp)
 
@@ -209,8 +212,11 @@ def build_one(team_id, start, end, month, source="cache"):
         "team_id": team_id,
         "team_name": TEAM_NAMES.get(team_id, team_id),
         "need_refresh": False,
-        "data_status": "ok",
-        "data_note": None,
+        "data_status": ("config_missing" if _missing else "ok"),
+        "data_note": (
+            "未设置本月%s百分比，请在「标准达成 → 站点设置」中设置" % "/".join(_missing)
+            if _missing else None
+        ),
         "scale_target": scale_target,
         "pushed_order_volume": pushed_order_volume,
         "scheduled_num": scheduled_num,
@@ -218,8 +224,8 @@ def build_one(team_id, start, end, month, source="cache"):
         "rider_with_order": rider_with_order,
         "attended_num": _int(attended),
         "attend_rate": attend_rate,
-        "threshold_count": threshold_count,
-        "cap_count": cap_count,
+        "threshold_count": (None if _missing else threshold_count),
+        "cap_count": (None if _missing else cap_count),
         "achieved_num": achieved_num,
         "achieved_rate": achieved_rate,
         "unachieved_num": _int(unachieved_num),
@@ -228,7 +234,7 @@ def build_one(team_id, start, end, month, source="cache"):
         "std1": std[1], "std2": std[2], "std3": std[3], "std4": std[4], "std5": std[5],
         "peak_incentive": peak_incentive,
     }
-    CACHE.put_result("station_report", team_id, date, month, "cache", result)
+    CACHE.put_result("station_report", team_id, date, month, _cfg_ver, result)
     return result
 
 
