@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """站点维度报表 —— 「门槛值 / 封顶值」百分比配置（按月存储，与 grade_standards 同风格）。
 
-存盘 JSON：`analytics/threshold_config.json`
+存盘 JSON：`dashboard/standard/threshold_config.json`（与 grade_standards 同目录；由 Nest 后端落盘，计算侧按此路径读取）
 结构：
   {
     "schema_version": 2,
@@ -50,7 +50,10 @@ import threading
 BJ = datetime.timezone(datetime.timedelta(hours=8))
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
-_PATH = os.path.join(_HERE, "threshold_config.json")
+# 与 grade_standards.json 同目录，且对齐后端 ConfigService.stdDir：Nest 把用户设置的
+# 门槛/封顶落盘于此（<root>/python/dashboard/standard/threshold_config.json），计算侧必须按此路径读取，
+# 否则会读不到用户在 UI 设置的值而回退兜底 80/100。
+_PATH = os.path.join(PY_HOME, "dashboard", "standard", "threshold_config.json")
 _LOCK = threading.Lock()
 
 
