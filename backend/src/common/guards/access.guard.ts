@@ -40,6 +40,13 @@ export class AccessGuard implements CanActivate {
     const path = (req.url || '/').split('?')[0];
     const method = (req.method || 'GET').toUpperCase();
 
+    // 入口页（HTML + 机器令牌注入）对所有人公开：浏览器首屏 GET / 还没有会话/机器令牌，
+    // 若走机器闸门会被挡成 401（Nest 把 401 JSON 当成页面返回）。入口页本身不含敏感数据，
+    // 仅用于下发 HTML 并把 AUTH_TOKEN 注入给浏览器，供其后续调用 /api。
+    if (path === '/' || path === '/index.html') {
+      return true;
+    }
+
     // 认证端点豁免机器令牌闸门
     if (EXEMPT_MACHINE.has(path)) {
       if (path === '/api/auth/logout') {
