@@ -14,8 +14,17 @@
         <el-icon><Clock /></el-icon> 取数时间：{{ dataTime || '未知' }}
       </span>
       <span class="sp" />
-      <el-button type="primary" :loading="refreshing" @click="onRefresh">
-        <el-icon><Refresh /></el-icon> {{ refreshing ? '刷新中…' : '刷新数据' }}
+      <el-button
+        type="primary"
+        :loading="refreshing"
+        :disabled="refreshing || cooldown > 0"
+        :title="cooldown > 0 ? `刷新过于频繁，请等待 ${cooldown} 秒（与后端限时一致）` : ''"
+        @click="onRefresh"
+      >
+        <el-icon><Refresh /></el-icon>
+        <span v-if="refreshing">刷新中…</span>
+        <span v-else-if="cooldown > 0">请等待 {{ cooldown }}s</span>
+        <span v-else>刷新数据</span>
       </el-button>
       <el-button @click="openGradeSettings">
         <el-icon><Setting /></el-icon> 等级标准设置
@@ -216,7 +225,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, reactive, ref, watch } from 'vue';
+import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
 import { Search, Refresh, Setting, Clock } from '@element-plus/icons-vue';
 import { useAppStore } from '../stores/app.js';
 import { filterRiders } from '../utils/riderFilter.js';
@@ -248,6 +257,26 @@ const data = ref(null);
 const loading = ref(false);
 const refreshing = ref(false);
 let pollTimer = null;
+
+// 刷新按钮冷却倒计时：对齐后端 refresh-all 频控（refresh-runner.service.ts 的
+// RATE_LIMIT_SEC=60，全局 REFRESH_ALL_GLOBAL_GAP_SEC=15）。后端接受刷新的那一刻
+// 起算 60s；若被频控拒绝（429 + RATE_LIMITED），用服务端返回的 retry_after 对齐剩余秒数。
+const cooldown = ref(0);
+let cooldownTimer = null;
+const REFRESH_COOLDOWN_SEC = 60;
+function startCooldown(sec) {
+  const s = Math.max(1, Math.ceil(Number(sec) || REFRESH_COOLDOWN_SEC));
+  cooldown.value = s;
+  if (cooldownTimer) clearInterval(cooldownTimer);
+  cooldownTimer = setInterval(() => {
+    cooldown.value -= 1;
+    if (cooldown.value <= 0) {
+      clearInterval(cooldownTimer);
+      cooldownTimer = null;
+      cooldown.value = 0;
+    }
+  }, 1000);
+}
 
 const rows = computed(() => (data.value && data.value.rows) || []);
 const needRefresh = computed(() => rows.value.some((r) => r.need_refresh) || (data.value && data.value.need_refresh));
@@ -672,15 +701,30 @@ watch(date, async () => {
 });
 
 async function onRefresh() {
+  if (refreshing.value || cooldown.value > 0) return;
   refreshing.value = true;
   try {
     const body = { start: start(), end: end() };
     if (teamSel.value !== '__all__') body.teams = [teamSel.value];
     const res = await refreshStandard(body);
-    if (res && res.already_running) { app.toast('已有刷新任务在进行', 'info'); poll(); return; }
-    if (!res || !res.ok) { app.toast((res && res.error) || '刷新启动失败', 'error'); refreshing.value = false; return; }
+    if (res && res.already_running) {
+      app.toast('已有刷新任务在进行', 'info');
+      startCooldown(REFRESH_COOLDOWN_SEC);
+      poll();
+      return;
+    }
+    if (!res || !res.ok) {
+      app.toast((res && res.error) || '刷新启动失败', 'error');
+      refreshing.value = false;
+      return;
+    }
+    // 后端已接受刷新：从此时起进入 60s 冷却（与 RATE_LIMIT_SEC 对齐）
+    startCooldown(REFRESH_COOLDOWN_SEC);
     poll();
   } catch (e) {
+    // 后端频控：429 + RATE_LIMITED，body.retry_after 为实际剩余秒数（≤60 或全局 15s 窗口剩余）
+    const ra = e && e.data && e.data.retry_after;
+    startCooldown(ra && ra > 0 ? ra : REFRESH_COOLDOWN_SEC);
     app.toast(e.message || '刷新失败', 'error');
     refreshing.value = false;
   }
@@ -707,6 +751,10 @@ onMounted(async () => {
   try { const t = await fetchTeams(); teams.value = (t && t.teams) || []; } catch (e) { /* ignore */ }
   await load();
   await refreshParticipating();
+});
+
+onUnmounted(() => {
+  if (cooldownTimer) clearInterval(cooldownTimer);
 });
 </script>
 
