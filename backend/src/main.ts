@@ -3,6 +3,7 @@ import { ValidationPipe } from '@nestjs/common';
 import * as express from 'express';
 import { existsSync } from 'fs';
 import * as path from 'path';
+import compression from 'compression';
 import { AppModule } from './app.module';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { loadAppConfig } from './config/configuration';
@@ -25,6 +26,18 @@ async function bootstrap(): Promise<void> {
   // bodyParser: false —— 必须自己注册：框架默认那对解析器（100kb）会先于下面注册，
   // 大 body 仍然会被它先拒掉，`useBodyParser` 加在默认之后是无效的（顺序即生效顺序）。
   const app = await NestFactory.create(AppModule, { bodyParser: false });
+
+  // 响应压缩：前端 bundle / API JSON 经 gzip 传输，显著降低首屏与刷新的传输体积。
+  // 跳过 SSE（text/event-stream）实时日志流，避免缓冲破坏逐块推送。
+  app.use(
+    compression({
+      filter: (req, res) => {
+        const ct = String(res.getHeader('Content-Type') || '');
+        if (ct.includes('text/event-stream')) return false;
+        return compression.filter(req, res);
+      },
+    }),
+  );
   app.use(express.json({ limit: BODY_LIMIT }));
   app.use(express.urlencoded({ extended: true, limit: BODY_LIMIT }));
   const config = loadAppConfig();
@@ -46,7 +59,20 @@ async function bootstrap(): Promise<void> {
       ) {
         return next();
       }
-      return express.static(distDir, { fallthrough: true })(req, res, next);
+      return express.static(distDir, {
+        fallthrough: true,
+        // 带内容 hash 的资源（Vite 产物 assets/ 下）可永久缓存，刷新不再重复下载；
+        // 入口页 index.html 不缓存，保证发版即时生效。
+        setHeaders: (res, filePath) => {
+          const isHashed =
+            filePath.includes(path.sep + 'assets' + path.sep) ||
+            /-[A-Za-z0-9_]+\.(js|css|woff2?|ttf|png|jpe?g|svg|gif|ico)$/.test(filePath);
+          res.setHeader(
+            'Cache-Control',
+            isHashed ? 'public, max-age=31536000, immutable' : 'no-cache',
+          );
+        },
+      })(req, res, next);
     });
   }
 
