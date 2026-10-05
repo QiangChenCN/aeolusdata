@@ -30,6 +30,12 @@ export interface RiderQueryResult {
   order_err?: string | null;
   att_err?: string | null;
   note?: string;
+  /** 同名歧义时，列出所有同名骑手供用户选择（按骑手ID精确再查）。 */
+  candidates?: {
+    rider_name?: string | null;
+    knight_id?: string | null;
+    team_name?: string;
+  }[];
 }
 
 /**
@@ -182,6 +188,31 @@ export class RiderQueryService {
     riderId: string,
     cfg: StdAchievementConfig,
   ): Promise<RiderQueryResult> {
+    const rows = await this.fetchAllTeams(cookie, cfg);
+
+    // 收集所有命中（按骑手ID或姓名精确匹配）；同名会出现多条。
+    const matches: any[] = [];
+    for (const r of rows) {
+      if (!r || typeof r !== 'object') continue;
+      const kid = String(r.knightId ?? '');
+      const name = (r.knightName ?? '').trim();
+      if (riderId === kid || riderId === name) matches.push(r);
+    }
+
+    // 同名歧义：直接返回候选列表（姓名/ID/站点），不拉单量，让用户选 ID 再查。
+    if (matches.length >= 2) {
+      const candidates = matches.map((r) => {
+        const kid = String(r.knightId ?? '');
+        const name = (r.knightName ?? '').trim();
+        const teamId = r.teamId ?? null;
+        const teamName =
+          teamId != null ? (cfg.teamNames[String(teamId)] ?? String(teamId)) : '—';
+        return { rider_name: name, knight_id: kid, team_name: teamName };
+      });
+      return { rider_id: riderId, status: 'ambiguous', candidates };
+    }
+
+    const r = matches[0] ?? null;
     let orderDetail: RiderQueryResult['order_detail'] = null;
     let orderErr: string | null = null;
     try {
@@ -199,20 +230,13 @@ export class RiderQueryService {
     let teamName = '—';
     let attErr: string | null = this.rosterCache.err;
 
-    const rows = await this.fetchAllTeams(cookie, cfg);
-    for (const r of rows) {
-      if (!r || typeof r !== 'object') continue;
-      const kid = String(r.knightId ?? '');
-      const name = (r.knightName ?? '').trim();
-      if (riderId === kid || riderId === name) {
-        riderName = name;
-        knightId = kid;
-        teamId = r.teamId ?? teamId;
-        validHours = fmtDuration(r.fullDayValidOnlineTime);
-        onlineHours = fmtDuration(r.fullDayOnlineTime);
-        timeOrder = r.timeFinishOrder;
-        break;
-      }
+    if (r) {
+      riderName = (r.knightName ?? '').trim();
+      knightId = String(r.knightId ?? '');
+      teamId = r.teamId ?? null;
+      validHours = fmtDuration(r.fullDayValidOnlineTime);
+      onlineHours = fmtDuration(r.fullDayOnlineTime);
+      timeOrder = r.timeFinishOrder;
     }
     if (teamId != null) teamName = cfg.teamNames[String(teamId)] ?? String(teamId);
 

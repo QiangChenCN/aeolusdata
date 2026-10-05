@@ -36,7 +36,7 @@ export interface BotReply {
   /** AI 卡片终态标题；缺省「查询结果」 */
   title?: string;
   /** 终态类别，用于卡片标题与降级文案 */
-  state?: 'ok' | 'timeout' | 'error';
+  state?: 'ok' | 'timeout' | 'error' | 'ambiguous';
 }
 
 export interface BotCheckResult {

@@ -92,10 +92,13 @@
             </el-select>
           </template>
         </el-table-column>
-        <el-table-column label="状态" width="130">
+        <el-table-column label="状态" min-width="140">
           <template #default="{ row }">
             <el-tag v-if="!row.enabled" size="small" type="info">已禁用</el-tag>
             <el-tag v-else-if="!row.credentialsRef" size="small" type="warning">未绑定凭据</el-tag>
+            <el-tag v-else-if="!credExists(row.credentialsRef)" size="small" type="danger">绑定凭据不存在</el-tag>
+            <el-tag v-else-if="!credEnabled(row.credentialsRef)" size="small" type="warning">凭据已停用</el-tag>
+            <el-tag v-else-if="!credHasSecret(row.credentialsRef)" size="small" type="danger">凭据缺少 Secret</el-tag>
             <el-tag v-else-if="refConnected(row.credentialsRef)" size="small" type="success">运行中</el-tag>
             <el-tag v-else size="small" type="warning">网关未连接</el-tag>
           </template>
@@ -111,9 +114,10 @@
       <el-table :data="status.connections" stripe border class="bc-table">
         <el-table-column prop="ref" label="凭据分组" min-width="180" />
         <el-table-column prop="clientId" label="Client ID" min-width="200" />
-        <el-table-column label="连接状态" width="120">
+        <el-table-column label="连接状态" min-width="160">
           <template #default="{ row }">
-            <el-tag size="small" :type="row.connected ? 'success' : 'info'">
+            <el-tag v-if="row.missingCredential" size="small" type="danger">凭据未配置</el-tag>
+            <el-tag v-else size="small" :type="row.connected ? 'success' : 'info'">
               {{ row.connected ? '已连接' : '未连接' }}
             </el-tag>
           </template>
@@ -256,6 +260,20 @@ async function bindBot(row, v) {
 
 function refConnected(ref) {
   return !!status.connections.find((c) => c.ref === ref && c.connected);
+}
+function findCred(id) {
+  return creds.value.find((c) => c.id === id);
+}
+function credExists(id) {
+  return !!findCred(id);
+}
+function credEnabled(id) {
+  const c = findCred(id);
+  return !!c && c.enabled !== false;
+}
+function credHasSecret(id) {
+  const c = findCred(id);
+  return !!c && !!c.hasSecret;
 }
 
 function openCredAdd() {

@@ -83,6 +83,22 @@ export class BotConfigService {
         },
       ];
     }
+    // 文件无凭据时，回落读取 .env 的 DING_CLIENT_ID / DING_CLIENT_SECRET（兼容旧部署约定）。
+    // 旧版 Python dingbot 凭据全在 .env，若只迁移了代码而没在前端配置 bot_config.json，
+    // 这里能保证机器人依旧可用，避免出现「配置了却不连」的静默失败。
+    const envId = (this.nest.get<string>('DING_CLIENT_ID') || '').trim();
+    const envSecret = (this.nest.get<string>('DING_CLIENT_SECRET') || '').trim();
+    if (envId || envSecret) {
+      return [
+        {
+          id: 'dingtalk:default',
+          label: '默认（来自 .env）',
+          clientId: envId,
+          secret: envSecret,
+          enabled: true,
+        },
+      ];
+    }
     return [];
   }
 

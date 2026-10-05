@@ -119,22 +119,30 @@ export class DingtalkStreamGateway implements OnModuleInit, OnModuleDestroy {
     this.clients.clear();
   }
 
-  /** 当前是否至少有一条已建立的连接（供状态查询）。 */
+  /** 当前是否至少有一条「真实建立」的连接（供状态查询）。
+   *  必须以 SDK 的 client.connected 为准，不能用 clients.has(ref)——
+   *  后者在 connect() 异步完成前就为 true，会制造「显示已连接但实际没连上」的假象。 */
   isConnected(): boolean {
-    return this.clients.size > 0;
+    return Array.from(this.clients.values()).some((c) => c.connected);
   }
 
-  /** 连接明细（前端展示每个凭据分组的连接状态）。 */
-  listConnections(): { ref: string; clientId: string; connected: boolean }[] {
-    const refs = new Set<string>([
-      ...this.registry.activeRefs(),
-      ...this.clientProvider.availableRefs(),
-    ]);
-    return [...refs].map((ref) => ({
-      ref,
-      clientId: this.clientProvider.getClientId(ref),
-      connected: this.clients.has(ref),
-    }));
+  /** 连接明细（前端展示每个凭据分组的连接状态）。
+   *  - connected：以 SDK 真实连接态 client.connected 为准（WebSocket open 后才为 true）。
+   *  - missingCredential：该 ref 被启用的 bot 引用，但凭据分组不存在/未启用/缺 secret，
+   *    导致根本不会建连——这是「设置看着正常却无响应」的典型成因，显式标红。 */
+  listConnections(): { ref: string; clientId: string; connected: boolean; missingCredential: boolean }[] {
+    const active = new Set(this.registry.activeRefs());
+    const avail = new Set(this.clientProvider.availableRefs());
+    const refs = new Set<string>([...active, ...avail]);
+    return [...refs].map((ref) => {
+      const client = this.clients.get(ref);
+      return {
+        ref,
+        clientId: this.clientProvider.getClientId(ref),
+        connected: client?.connected ?? false,
+        missingCredential: active.has(ref) && !avail.has(ref),
+      };
+    });
   }
 
   onModuleDestroy(): void {
@@ -172,6 +180,13 @@ export class DingtalkStreamGateway implements OnModuleInit, OnModuleDestroy {
     const messageId = res.headers?.messageId ?? '';
     try {
       const data = JSON.parse(res.data) as RobotMessageShape;
+      this.logger.warn(
+        '[card-debug] robotCode=%s convType=%s convId=%s keys=%s',
+        data.robotCode,
+        data.conversationType,
+        data.conversationId,
+        Object.keys(data).join(','),
+      );
       const msg = this.toIncoming(data, messageId);
       const ctx = this.toCardContext(data, messageId);
       await this.replyWithCard(msg, ctx, ref);
@@ -188,16 +203,17 @@ export class DingtalkStreamGateway implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  /** AI 卡片主路径：建加载卡 → 查询 → 打字 → 终态；任何卡片步骤失败降级 webhook。 */
+  /** AI 卡片主路径（内置 markdown AI 卡片）：建加载卡 → 查询 → 打字 → 终态；
+   * 任何卡片步骤失败降级 webhook markdown。原生打字光标由钉钉 AI 卡片模板提供。 */
   private async replyWithCard(msg: IncomingMessage, ctx: AiCardContext, ref: string): Promise<void> {
     const client = this.clients.get(ref);
     if (!client) {
       this.logger.warn('ref %s 无可用连接，跳过消息', ref);
       return;
     }
-    let outTrackId: string | null = null;
+    let card: { outTrackId: string; cardInstanceId: string } | null = null;
     try {
-      outTrackId = await this.card.create(ctx, client, '查询中', '🔎 查询中… 请稍候…');
+      card = await this.card.create(ctx, client, '查询中', '🔎 查询中… 请稍候…');
     } catch (e) {
       this.logger.warn('AI 卡片创建失败，降级 webhook markdown: ' + (e as Error).message);
       const r = await this.queryWithTimeout(msg, ref);
@@ -206,15 +222,15 @@ export class DingtalkStreamGateway implements OnModuleInit, OnModuleDestroy {
     }
 
     const reply = await this.queryWithTimeout(msg, ref);
-    const content = reply?.content ?? '（无返回）';
-    const title = this.pickTitle(reply);
+    this.logger.warn(`[card-debug] reply state=${reply?.state} title=${this.pickTitle(reply)} content=${(reply?.content ?? 'NULL').replace(/\n/g, ' ').slice(0, 160)}`);
     try {
+      const content = reply?.content ?? '（无返回）';
+      const title = this.pickTitle(reply);
       if (this.cfg.isTypingEnabled()) {
-        await this.card.streamTyping(outTrackId, client, content, { isError: reply?.state === 'error' });
-        await this.card.finish(outTrackId, client, title, content);
+        await this.card.streamTyping(card.cardInstanceId, client, content, { isError: reply?.state === 'error' });
+        await this.card.finish(card.cardInstanceId, client, title, content);
       } else {
-        // 关闭打字效果：直接落定终态，省去流式动画
-        await this.card.finish(outTrackId, client, title, content);
+        await this.card.finish(card.cardInstanceId, client, title, content);
       }
     } catch (e) {
       this.logger.error('AI 卡片终态失败，降级 webhook: ' + (e as Error).message);
