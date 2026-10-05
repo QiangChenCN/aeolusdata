@@ -91,6 +91,16 @@ backend/data/group_recent.json
 dashboard/data/
 dashboard/standard/cache/
 
+# 运行时配置（由 Nest 后端通过 UI 落盘，属于各环境本地状态）：
+# 这些 *.json 是用户在「等级标准设置」里保存的活数据，绝不能进版本控制——
+# 否则每次 git pull 会用仓库里的版本覆盖掉服务器上用户已保存的设置（表现为「不持久」）。
+python/dashboard/standard/grade_standards.json
+python/dashboard/standard/threshold_config.json
+python/dashboard/standard/teams_config.json
+# 旧版孤立副本（迁移后计算侧已改读 dashboard/standard/ 下的共享文件，此处不再使用）
+python/analytics/threshold_config.json
+python/analytics/teams_config.json
+
 # 调试/嗅探产物（逆向导出链路捕获，非源码；本地可保留，不进版本控制）
 sniff_delivery_*.json
 _sniff/
