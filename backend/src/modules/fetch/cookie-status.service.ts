@@ -72,37 +72,39 @@ export class CookieStatusService {
   async check(): Promise<CookieStatus> {
     const checkedAt = stamp();
 
-    let aeolus: AeolusStatus;
-    try {
-      aeolus = await this.checkAeolus();
-    } catch (e) {
-      const msg = String((e as Error).message).slice(0, 120);
-      aeolus = {
-        ok: true,
-        status: 'unknown',
-        reason: `aeolus 探针异常: ${msg}`,
-        checked_at: checkedAt,
-      };
-      this.logger.error(`[cookies/status] aeolus 探针异常: ${(e as Error).message}`);
-    }
-
-    let quark: QuarkStatus;
-    try {
-      const q = await this.quark.cacheStatus();
-      quark = { ok: true, ...q, checked_at: checkedAt };
-    } catch (e) {
-      const msg = String((e as Error).message).slice(0, 120);
-      quark = {
-        ok: true,
-        status: 'unknown',
-        reason: `quark 探针异常: ${msg}`,
-        checked_at: checkedAt,
-        age_hours: null,
-      };
-      this.logger.error(`[cookies/status] quark 探针异常: ${(e as Error).message}`);
-    }
+    // 两个探针互不依赖（aeolus 只读本地 cookie.txt，quark 只读 da_cache.json，
+    // 都不触发重登/写盘），故并发执行：总耗时 = max(①,②) 而非 ①+②。
+    // 串行时 ≈ 250ms+250ms≈500ms；并发后 ≈ 250ms，回到「单次 < 300ms」目标。
+    const [aeolus, quark] = await Promise.all([
+      this.checkAeolus().catch((e: unknown) => this.aeolusUnknown(e, checkedAt)),
+      this.quark
+        .cacheStatus()
+        .then((q) => ({ ok: true, ...q, checked_at: checkedAt }) as QuarkStatus)
+        .catch((e: unknown) => this.quarkUnknown(e, checkedAt)),
+    ]);
 
     return { ...aeolus, quark };
+  }
+
+  private aeolusUnknown(e: unknown, checkedAt: string): AeolusStatus {
+    this.logger.error(`[cookies/status] aeolus 探针异常: ${(e as Error).message}`);
+    return {
+      ok: true,
+      status: 'unknown',
+      reason: `aeolus 探针异常: ${String((e as Error).message).slice(0, 120)}`,
+      checked_at: checkedAt,
+    };
+  }
+
+  private quarkUnknown(e: unknown, checkedAt: string): QuarkStatus {
+    this.logger.error(`[cookies/status] quark 探针异常: ${(e as Error).message}`);
+    return {
+      ok: true,
+      status: 'unknown',
+      reason: `quark 探针异常: ${String((e as Error).message).slice(0, 120)}`,
+      checked_at: checkedAt,
+      age_hours: null,
+    };
   }
 
   /**
