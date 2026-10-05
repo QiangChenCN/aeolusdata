@@ -119,6 +119,8 @@ export class RefreshRunnerService {
   /** 频控：key → 上次放行的毫秒时间戳（按用户分桶）。仅内存态，重启即清。 */
   private readonly rateState = new Map<string, number>();
   private lastGlobalAt = 0;
+  /** 项目根（PROJECT_ROOT 或 cwd 上一级），用于直接读 grade_standards.json 取当月参与站。 */
+  private readonly rootDir: string;
 
   constructor(
     private readonly config: ConfigService,
@@ -129,10 +131,10 @@ export class RefreshRunnerService {
     private readonly auth: AuthService,
     private readonly dataPerm: DataPermService,
   ) {
-    const root = path.resolve(
+    this.rootDir = path.resolve(
       this.config.get<string>('PROJECT_ROOT') || path.resolve(process.cwd(), '..'),
     );
-    this.logsDir = path.join(root, 'dashboard', 'standard', 'logs');
+    this.logsDir = path.join(this.rootDir, 'dashboard', 'standard', 'logs');
   }
 
   private freshState(): RefreshState {
@@ -173,7 +175,8 @@ export class RefreshRunnerService {
   /**
    * 启动全量刷新。
    *
-   * `teams` 为空时取「参与站点」（由 Python `teams-config` 提供，仍以那边为唯一来源）。
+   * `teams` 为空时取「参与站点」：优先取对话框配置的 grade_standards 当月参与站（单一数据源），
+   * 仅当该月从未配置时才回落旧 teams-config。
    * 历史日期护栏与迁移前逐字一致：考勤/运单接口只服务「当天」，刷新非当天日期会用近空
    * 数据覆盖历史快照（2026-09-17 事故根因），故默认拒绝，须显式 force 或设环境变量。
    */
@@ -201,9 +204,9 @@ export class RefreshRunnerService {
     }
 
     let teams = (opts.teams || []).map((t) => String(t).trim()).filter(Boolean);
-    if (!teams.length) teams = await this.configuredTeams();
+    if (!teams.length) teams = await this.configuredTeams(startDate.slice(0, 7));
     if (!teams.length) {
-      return { ok: false, error: '参与站点为空，请先到『系统设置』勾选站点' };
+      return { ok: false, error: '参与站点为空，请先到『标准达成 → 等级标准设置』配置并启用参与站点' };
     }
 
     if (this.state.running) {
@@ -280,7 +283,12 @@ export class RefreshRunnerService {
       ? (body!.teams as unknown[]).map(String).filter(Boolean)
       : undefined;
     if (scope) {
-      const base = teams && teams.length ? teams : await this.configuredTeams();
+      const base =
+        teams && teams.length
+          ? teams
+          : await this.configuredTeams(
+              ((typeof body?.start === 'string' && body.start.trim()) || todayYmd()).slice(0, 7),
+            );
       teams = base.filter((t) => scope.has(String(t)));
       if (!teams.length) {
         // 绝不能把空列表交给 start —— start 内部会回落成「全量参与站点」，
@@ -441,12 +449,47 @@ export class RefreshRunnerService {
   }
 
   // ---------------------------------------------------------------- 辅助
-  /** 「参与站点」id 列表：由 Python `teams-config` 提供（那边仍是该配置的唯一来源）。 */
-  async configuredTeams(): Promise<string[]> {
-    const r = await this.compute.proxy({ endpoint: '/api/standard/teams-config', method: 'GET' });
-    const d = r.data as { teams?: unknown } | undefined;
-    const ids = Array.isArray(d?.teams) ? (d!.teams as unknown[]) : [];
-    return ids.map(String).filter(Boolean);
+  /**
+   * 「参与站点」id 列表 —— 单一数据源 = 对话框里配置的 grade_standards 当月参与站。
+   *
+   * 之前依赖无人维护的 teams-config（python/analytics/teams_config.json），导致「对话框里配了站、
+   * 刷新却不去拉那些站的数据」的失真（报表因此报『今日尚有站点数据未落盘』）。现改为直接读
+   * Nest 落盘的 grade_standards.json，与看板显示 / 报表口径完全一致；仅当该月从未在
+   * grade_standards 配置过时，才回落旧 teams-config（兼容老部署，其本身会回落默认三站）。
+   */
+  async configuredTeams(month?: string): Promise<string[]> {
+    const m = (month || '').trim() || todayYmd().slice(0, 7);
+    const gp = await this.gradeParticipating(m);
+    if (gp && gp.length) return gp; // 单一数据源：对话框配置的参与站
+    // 回落旧 teams-config（grade_standards 该月未配置时）
+    try {
+      const r = await this.compute.proxy({ endpoint: '/api/standard/teams-config', method: 'GET' });
+      const d = r.data as { teams?: unknown } | undefined;
+      if (Array.isArray(d?.teams)) return (d!.teams as unknown[]).map(String).filter(Boolean);
+    } catch (e) {
+      this.logger.warn(`teams-config 读取失败，已忽略：${(e as Error).message}`);
+    }
+    return gp || [];
+  }
+
+  /**
+   * 直接读 grade_standards.json 取某月参与站（enabled !== false 的站点）。
+   * 返回 null 表示文件缺失 / 该月从未配置（调用方回落 teams-config）；
+   * 返回 [] 表示该月已配置但无参与站（用户显式移除全部）。
+   */
+  private async gradeParticipating(month: string): Promise<string[] | null> {
+    const file = path.join(this.rootDir, 'python', 'dashboard', 'standard', 'grade_standards.json');
+    try {
+      const data = JSON.parse(await fs.promises.readFile(file, 'utf8'));
+      const months = (data && data.months) || {};
+      if (!(month in months)) return null;
+      const cfg = months[month] || {};
+      return Object.keys(cfg)
+        .filter((t) => (cfg[t] && cfg[t].enabled) !== false)
+        .map(String);
+    } catch {
+      return null;
+    }
   }
 
   /** 站点 id → 名称（来自 Nest 的站点目录，失败则回落 id）。 */
