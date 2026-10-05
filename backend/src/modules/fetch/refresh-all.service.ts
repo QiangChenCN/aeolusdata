@@ -39,6 +39,8 @@ export class RefreshAllService {
     total: number;
     hit: number;
     perTeam: { team: string; rows: number; saved: boolean }[];
+    /** 抓取返回里实际出现的站点 id（含无 teamId 的 _unknown），用于诊断「配置站 vs 账号可见站」错配。 */
+    distinctTeams: string[];
     stats: unknown;
   }> {
     const [startMs, endMs] = dayRangeMs(date);
@@ -73,6 +75,13 @@ export class RefreshAllService {
     // （详见 RawWriteOptions.notify 的注释）。原先这里是整批通知一次，机制下沉后每行都会通知，
     // 省掉「新增写入点却忘了通知」这个隐蔽坑 —— 那种漏掉的表现是刷新成功但看板数字不变。
     this.logger.log(`阶段 0 完成：全量 ${rows.length} 条，本批站点命中 ${hit} 条`);
-    return { ok: true, total: rows.length, hit, perTeam, stats: this.pace.statsSnapshot() };
+    return {
+      ok: true,
+      total: rows.length,
+      hit,
+      perTeam,
+      distinctTeams: [...grouped.keys()],
+      stats: this.pace.statsSnapshot(),
+    };
   }
 }

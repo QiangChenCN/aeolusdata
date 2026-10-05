@@ -361,6 +361,11 @@ export class RefreshRunnerService {
         const r = await this.ordersStage.refreshOrders(teams, start);
         shared = !!r.ok;
         this.log(`共享运单：全量 ${r.total} 条，本批站点命中 ${r.hit} 条`);
+        // 诊断：每个配置站点的命中行数 + 抓取实际返回的站点 id（排查「配置站 vs 账号可见站」错配）
+        for (const pt of r.perTeam) {
+          this.log(`  · 站点 ${pt.team} → ${pt.rows} 行（${pt.saved ? '已落盘' : '空，未落盘'}）`);
+        }
+        this.log(`抓取实际返回的站点 id 集合：${[...r.distinctTeams].join(',') || '(无)'}`);
       } catch (e) {
         // 阶段 0 是运单的**唯一**来源：Python 侧的本地拉取路径已按「取数归 NestJS」移除，
         // 因此这里失败即整体失败 —— 不再「降级为逐站拉取」（那等于恢复一套已删除的实现）。
