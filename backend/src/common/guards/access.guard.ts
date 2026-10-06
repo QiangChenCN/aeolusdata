@@ -9,6 +9,7 @@ import { ConfigService } from '@nestjs/config';
 import { Request } from 'express';
 import { AuthService } from '../../modules/auth/auth.service';
 import { routePerm } from '../../modules/auth/permissions';
+import { extractToken } from '../token.util';
 
 /**
  * 统一访问闸门（全局 APP_GUARD）。对应旧 server.py 的「机器令牌闸门 + RBAC 会话鉴权」双闸门：
@@ -88,11 +89,7 @@ export class AccessGuard implements CanActivate {
   }
 
   private token(req: Request): string | undefined {
-    const auth = req.headers['authorization'] as string | undefined;
-    const bearer = auth?.replace(/^Bearer\s+/i, '');
-    const q = (req.query as Record<string, unknown>)['token'];
-    const xt = req.headers['x-token'] as string | undefined;
-    return xt || (typeof q === 'string' ? q : undefined) || bearer;
+    return extractToken(req);
   }
 
   /** 请求是否携带有效的机器令牌（仅 Bearer / ?token=，不含会话）。 */

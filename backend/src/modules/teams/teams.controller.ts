@@ -3,6 +3,7 @@ import { Request } from 'express';
 import { AuthService } from '../auth/auth.service';
 import { DataPermService } from '../auth/data-perm.service';
 import { TeamRef, TeamsFetchService } from '../fetch/teams-fetch.service';
+import { extractToken } from '../../common/token.util';
 
 /**
  * `GET /api/teams` —— 全部站点目录（前端站点选择器用）。
@@ -41,9 +42,7 @@ export class TeamsController {
 
   /** 本次请求可见的站点 id 集合；null 表示不受限（与 ProxyController 的 x-scope='*' 同口径）。 */
   private allowedIds(req: Request): Set<string> | null {
-    const t =
-      (req.headers['x-token'] as string) ||
-      ((req.query as Record<string, unknown>)['token'] as string | undefined);
+    const t = extractToken(req);
     const s = this.auth.getSession(t);
     if (!s) return null; // 系统 / iframe（已过机器令牌闸门）→ 不受限
     const ids = this.dataPerm.resolveAllowed(s.user, s.role, 'team');

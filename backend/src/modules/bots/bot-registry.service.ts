@@ -40,6 +40,15 @@ export class BotRegistryService {
     return this.manifest.getCredentialsRef(botId);
   }
 
+  /** 某连接(ref)对应的查询超时：取绑定该 ref 的首个实例的设置，否则回落默认。 */
+  timeoutForRef(ref: string): number {
+    for (const b of this.active.values()) {
+      if (b.type !== 'dingtalk') continue;
+      if (this.refOf(b.botId) === ref) return this.manifest.getQueryTimeout(b.botId);
+    }
+    return this.manifest.getDefaultQueryTimeout();
+  }
+
   /** 按类型 + 凭据分组路由分发；只交给「绑定该 ref 且已启用」的 bot。 */
   async dispatch(msg: IncomingMessage, ref: string): Promise<BotReply | void> {
     let reply: BotReply | undefined;
@@ -94,10 +103,11 @@ export class BotRegistryService {
   }[] {
     return [...this.all.values()].map((b) => ({
       botId: b.botId,
-      displayName: b.displayName,
+      displayName: this.manifest.getDisplayName(b.botId),
       type: b.type,
       enabled: this.manifest.getEnabled(b.botId),
       credentialsRef: this.manifest.getCredentialsRef(b.botId),
+      queryTimeout: this.manifest.getQueryTimeout(b.botId),
     }));
   }
 }

@@ -15,11 +15,9 @@ import * as path from 'path';
  *    `getGroup(id)` 供运行时取真实凭据；老的单组字段（dingClientId/secret）自动迁移为
  *    `dingtalk:default` 分组，保证历史部署向后兼容。
  *  - 写入：`saveGroups()` 原子写盘；secret 留空表示「不修改」原有值；id 必填且唯一。
- *  - 全局开关（不按分组）：aiCardTyping（AI 卡片打字效果）、dingbotQueryTimeout（查询
- *    超时秒）、botEnabled（总开关）。
+ *  - 全局开关（不按分组）：botEnabled（总开关）。查询超时改为按机器人实例单独设置，
+ *    不再有全局默认。
  */
-
-const DEFAULT_QUERY_TIMEOUT = 60;
 
 /** 一组钉钉应用凭据（含明文 secret，仅落盘/内存，对外脱敏）。 */
 export interface CredentialGroup {
@@ -28,6 +26,10 @@ export interface CredentialGroup {
   clientId: string;
   secret: string;
   enabled: boolean;
+  /** AI 卡片打字效果（按凭据分组控制；缺省视为开）。 */
+  aiCardTyping?: boolean;
+  /** 渠道类型：钉钉(dingtalk) / 企微(wecom) 等，便于以后扩展非钉钉推送渠道。 */
+  type?: string;
 }
 
 interface BotConfigFile {
@@ -35,8 +37,6 @@ interface BotConfigFile {
   // 以下为历史单组字段，读取时迁移为 dingtalk:default，saveGroups 时清掉
   dingClientId?: string;
   dingClientSecret?: string;
-  aiCardTyping?: boolean;
-  dingbotQueryTimeout?: number;
   botEnabled?: boolean;
 }
 
@@ -80,6 +80,7 @@ export class BotConfigService {
           clientId: f.dingClientId || '',
           secret: f.dingClientSecret || '',
           enabled: true,
+          type: 'dingtalk',
         },
       ];
     }
@@ -96,6 +97,7 @@ export class BotConfigService {
           clientId: envId,
           secret: envSecret,
           enabled: true,
+          type: 'dingtalk',
         },
       ];
     }
@@ -103,13 +105,15 @@ export class BotConfigService {
   }
 
   /** 脱敏后的凭据分组列表（前端展示，secret 不外泄）。 */
-  listGroups(): { id: string; label: string; clientId: string; hasSecret: boolean; enabled: boolean }[] {
+  listGroups(): { id: string; label: string; clientId: string; hasSecret: boolean; enabled: boolean; aiCardTyping: boolean; type: string }[] {
     return this.readGroups().map((g) => ({
       id: g.id,
       label: g.label,
       clientId: g.clientId,
       hasSecret: !!g.secret,
       enabled: g.enabled,
+      aiCardTyping: g.aiCardTyping !== false,
+      type: g.type || '',
     }));
   }
 
@@ -123,8 +127,8 @@ export class BotConfigService {
    * 非法输入抛错，由调用方捕获为 {ok:false, error}。
    */
   saveGroups(
-    input: { id?: unknown; label?: unknown; clientId?: unknown; secret?: unknown; enabled?: unknown }[],
-  ): { id: string; label: string; clientId: string; hasSecret: boolean; enabled: boolean }[] {
+    input: { id?: unknown; label?: unknown; clientId?: unknown; secret?: unknown; enabled?: unknown; aiCardTyping?: unknown; type?: unknown }[],
+  ): { id: string; label: string; clientId: string; hasSecret: boolean; enabled: boolean; aiCardTyping: boolean; type: string }[] {
     const groups: CredentialGroup[] = [];
     const seen = new Set<string>();
     const existing = this.readGroups();
@@ -137,10 +141,12 @@ export class BotConfigService {
       const clientId = typeof g.clientId === 'string' ? g.clientId.trim() : '';
       const secretInput = typeof g.secret === 'string' ? g.secret : '';
       const enabled = g.enabled !== false;
+      const aiCardTyping = g.aiCardTyping !== false;
+      const type = typeof g.type === 'string' && g.type.trim() ? g.type.trim() : '';
       // secret 留空 → 沿用同 id 旧组的 secret
       const old = existing.find((x) => x.id === id);
       const secret = secretInput.length ? secretInput : (old?.secret || '');
-      groups.push({ id, label, clientId, secret, enabled });
+      groups.push({ id, label, clientId, secret, enabled, aiCardTyping, type });
     }
     const f = this.readFile();
     f.credentials = groups;
@@ -162,15 +168,17 @@ export class BotConfigService {
     return { clientId: g.clientId, clientSecret: g.secret };
   }
 
-  isTypingEnabled(): boolean {
-    const f = this.readFile();
-    if (typeof f.aiCardTyping === 'boolean') return f.aiCardTyping;
+  /**
+   * AI 卡片打字效果：按凭据分组（ref）读取；分组未显式设置时回落默认「开」。
+   * 不再使用全局打字开关——打字是「每个机器人(应用)的回复表现」，跟随连接(ref)生效。
+   * @param ref 凭据分组 id；缺省返回默认（开）。
+   */
+  isTypingEnabled(ref?: string): boolean {
+    if (ref) {
+      const g = this.getGroup(ref);
+      if (g) return g.aiCardTyping !== false;
+    }
     return true; // 默认开
-  }
-  getQueryTimeoutSec(): number {
-    const f = this.readFile();
-    const v = Number(f.dingbotQueryTimeout);
-    return Number.isFinite(v) && v > 0 ? v : DEFAULT_QUERY_TIMEOUT;
   }
   isBotEnabled(): boolean {
     const f = this.readFile();
@@ -178,28 +186,19 @@ export class BotConfigService {
     return true; // 默认开
   }
 
-  /** 全局开关脱敏快照（前端「连接配置」卡片）。 */
+  /** 全局开关脱敏快照（前端「全局配置」卡片）。查询超时已移至按实例设置。 */
   getConfig(): Record<string, unknown> {
     return {
-      aiCardTyping: this.isTypingEnabled(),
-      dingbotQueryTimeout: this.getQueryTimeoutSec(),
       botEnabled: this.isBotEnabled(),
       groupCount: this.listGroups().length,
     };
   }
 
-  /** 保存全局开关（不含凭据，凭据走 saveGroups）；secret 留空不变。返回脱敏快照。 */
+  /** 保存全局开关（仅总开关；凭据走 saveGroups，查询超时按实例设置）。返回脱敏快照。 */
   saveConfig(patch: {
-    aiCardTyping?: unknown;
-    dingbotQueryTimeout?: unknown;
     botEnabled?: unknown;
   }): Record<string, unknown> {
     const f = this.readFile();
-    if (typeof patch.aiCardTyping === 'boolean') f.aiCardTyping = patch.aiCardTyping;
-    if (patch.dingbotQueryTimeout !== undefined && patch.dingbotQueryTimeout !== null) {
-      const v = Number(patch.dingbotQueryTimeout);
-      if (Number.isFinite(v) && v > 0) f.dingbotQueryTimeout = Math.floor(v);
-    }
     if (typeof patch.botEnabled === 'boolean') f.botEnabled = patch.botEnabled;
     this.writeFile(f);
     this.logger.log('机器人全局开关已保存');

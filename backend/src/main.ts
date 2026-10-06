@@ -7,6 +7,7 @@ import compression from 'compression';
 import { AppModule } from './app.module';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { loadAppConfig } from './config/configuration';
+import { injectMachineToken, resolveIndexHtml } from './common/serve-html.util';
 
 /**
  * 请求体上限。
@@ -73,6 +74,32 @@ async function bootstrap(): Promise<void> {
           );
         },
       })(req, res, next);
+    });
+  }
+
+  // SPA 深链接回退（History 模式必需）：前端去掉 hash 后，/tasks、/bot/global 这类前端路由
+  // 会直接打到服务器。静态中间件找不到同名文件 → 必须回退到 index.html，否则「刷新页面」或
+  // 「直接打开链接」会 404。
+  //
+  // 为什么做在 Express 中间件层，而不是给 ServeController 加 @Get('*') 通配路由：
+  // 通配路由属于 Nest 路由，会被全局 AccessGuard 拦截 —— 冷启动访问深链接时浏览器还没有会话
+  // （也没有机器令牌），机器令牌闸门会把它挡成 401，浏览器收到的是 401 JSON 而不是登录页。
+  // 做在 Express 层与静态资源同级，在 Nest 路由之前短路返回，不经过守卫。
+  if (existsSync(distDir)) {
+    // 必须继续交给 Nest 处理的非页面路径（加了通配回退后不能被吞掉）
+    const NON_SPA_PATHS = new Set(['/', '/index.html', '/health', '/tokens.css', '/favicon.ico']);
+    app.use((req: express.Request, res: express.Response, next: express.NextFunction) => {
+      const m = (req.method || 'GET').toUpperCase();
+      if (m !== 'GET' && m !== 'HEAD') return next();
+      const p = req.path;
+      if (p.startsWith('/api') || NON_SPA_PATHS.has(p)) return next();
+      // 只认浏览器导航；XHR/fetch 误命中时不要返回 HTML 页面
+      if (!(req.headers.accept || '').includes('text/html')) return next();
+      // 带扩展名的按静态资源处理：找不到就让它 404，而不是回退成页面
+      if (/\.[A-Za-z0-9]+$/.test(p)) return next();
+      const html = resolveIndexHtml(config.projectRoot);
+      if (html == null) return next();
+      res.type('text/html').send(injectMachineToken(html, config.authToken));
     });
   }
 

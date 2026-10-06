@@ -1,8 +1,9 @@
 import { Controller, Get, Res } from '@nestjs/common';
 import { Response } from 'express';
-import { existsSync, readFileSync } from 'fs';
+import { existsSync } from 'fs';
 import * as path from 'path';
 import { ConfigService } from '@nestjs/config';
+import { injectMachineToken, resolveIndexHtml } from '../../common/serve-html.util';
 
 /**
  * 单文件 / 入口页（serve-static 不便托管的）：
@@ -10,6 +11,8 @@ import { ConfigService } from '@nestjs/config';
  *    占位符替换为真实 AUTH_TOKEN 后下发 —— 对齐 Vite 插件与旧 Python server 的注入逻辑，
  *    使浏览器能携带机器令牌调用 /api（闭合鉴权环路）。
  *  · `tokens.css`、`favicon.ico`、`health`。
+ *  · SPA 深链接（/tasks、/bot/global 等）不在此处理：由 main.ts 的 Express 中间件回退
+ *    index.html。原因见那里的注释 —— 交给 Nest 路由会被全局 AccessGuard 拦成 401。
  */
 @Controller()
 export class ServeController {
@@ -20,28 +23,15 @@ export class ServeController {
     return this.config.get<string>('AUTH_TOKEN') || '';
   }
 
-  private resolveHtml(): string | null {
-    const root =
-      this.config.get<string>('PROJECT_ROOT') || path.resolve(process.cwd(), '..');
-    const candidates = [
-      path.join(root, 'web', 'dist', 'index.html'), // 生产构建产物
-      path.join(root, 'web', 'index.html'), // web/ dev 入口（Vite root=web）
-    ];
-    for (const c of candidates) {
-      if (existsSync(c)) return readFileSync(c, 'utf-8');
-    }
-    return null;
-  }
-
   @Get()
   @Get('index.html')
   index(@Res() res: Response): void {
-    const html = this.resolveHtml();
+    const html = resolveIndexHtml(this.config.get<string>('PROJECT_ROOT'));
     if (html == null) {
       res.status(404).end();
       return;
     }
-    res.type('text/html').send(html.replace(/__SERVER_API_TOKEN__/g, this.resolveToken()));
+    res.type('text/html').send(injectMachineToken(html, this.resolveToken()));
   }
 
   @Get('tokens.css')

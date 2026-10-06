@@ -1,4 +1,10 @@
-import { Injectable, Logger, OnModuleInit, UnauthorizedException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  OnModuleDestroy,
+  OnModuleInit,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -41,7 +47,12 @@ export interface Session {
   user: string;
   role: string;
   ip: string;
+  /** 滑动过期时刻：每次成功校验都会向后刷新，但不越过 max_exp。 */
   exp: number;
+  /** 绝对上限：自登录时刻起不可逾越，避免「持续活跃 = 永不过期」。 */
+  max_exp: number;
+  /** 本次会话的滑动窗口长度（秒），由登录时是否勾选「记住我」决定。 */
+  ttl: number;
   fp: string;
 }
 
@@ -60,7 +71,15 @@ export interface Policy {
   allow_paste: boolean;
 }
 
-const SESSION_TTL = 12 * 3600;
+// 会话时长：区分「记住我」与否。
+//  - ttl（滑动空闲窗口）：该时长内无任何访问即失效；每次访问都会刷新。
+//  - cap（绝对上限）：自登录时刻起的最长寿命，滑动续期不得越过它。
+//    双重限制的目的是：用户持续使用时不会被中途踢下线，同时会话不会因一直活跃而永不终结。
+const SESSION_TTL = 12 * 3600; // 未勾选「记住我」：空闲 12h
+const SESSION_CAP = 24 * 3600; // 未勾选「记住我」：最长 24h
+const SESSION_TTL_REMEMBER = 7 * 24 * 3600; // 记住我：空闲 7d
+const SESSION_CAP_REMEMBER = 30 * 24 * 3600; // 记住我：最长 30d
+const SESSION_SWEEP_INTERVAL_MS = 10 * 60 * 1000; // 过期会话定期清理周期
 const SCRYPT_N = 16384;
 const SCRYPT_R = 8;
 const SCRYPT_P = 1;
@@ -111,9 +130,10 @@ function nowStr(): string {
 }
 
 @Injectable()
-export class AuthService implements OnModuleInit {
+export class AuthService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(AuthService.name);
   private readonly sessions = new Map<string, Session>();
+  private sweepTimer: ReturnType<typeof setInterval> | null = null;
   private usersFile = '';
   private rolesFile = '';
   private policyFile = '';
@@ -128,6 +148,33 @@ export class AuthService implements OnModuleInit {
     this.policyFile = path.join(dataDir, '.pwpolicy.json');
     this.auditFile = path.join(dataDir, '.audit.jsonl');
     this.ensureBootstrap();
+
+    // 过期会话定期清理：会话只在被访问时惰性删除（getSession），长期不再访问的会话
+    // 会永久滞留在 Map 里。「记住我」把生命周期拉长到 7~30 天后，这个累积更明显。
+    this.sweepTimer = setInterval(() => this.sweepSessions(), SESSION_SWEEP_INTERVAL_MS);
+    // 不阻止进程退出（Nest 关闭时不因该定时器挂住）
+    (this.sweepTimer as { unref?: () => void }).unref?.();
+  }
+
+  onModuleDestroy(): void {
+    if (this.sweepTimer) {
+      clearInterval(this.sweepTimer);
+      this.sweepTimer = null;
+    }
+  }
+
+  private sweepSessions(): void {
+    const now = Date.now() / 1000;
+    let removed = 0;
+    for (const [token, s] of this.sessions) {
+      if (s.exp < now || s.max_exp <= now) {
+        this.sessions.delete(token);
+        removed++;
+      }
+    }
+    if (removed > 0) {
+      this.logger.debug(`清理过期会话 ${removed} 个，剩余 ${this.sessions.size} 个`);
+    }
   }
 
   // ---------------- 口令哈希（scrypt，与 Python 互通） ----------------
@@ -390,7 +437,12 @@ export class AuthService implements OnModuleInit {
   }
 
   // ---------------- 会话 ----------------
-  login(username: string, password: string, ip: string): { token: string; role: string; expiresIn: number } | null {
+  login(
+    username: string,
+    password: string,
+    ip: string,
+    remember = false,
+  ): { token: string; role: string; expiresIn: number } | null {
     const users = this.loadUsers();
     const u = users.find((x) => x.username === username);
     if (!u) {
@@ -422,15 +474,20 @@ export class AuthService implements OnModuleInit {
     this.saveUsers(users);
     const token = randomBytes(24).toString('hex');
     const fp = createHash('sha256').update(token).digest('hex').slice(0, 12);
+    const ttl = remember ? SESSION_TTL_REMEMBER : SESSION_TTL;
+    const cap = remember ? SESSION_CAP_REMEMBER : SESSION_CAP;
+    const nowSec = Date.now() / 1000;
     this.sessions.set(token, {
       user: username,
       role: u.role,
       ip,
-      exp: Date.now() / 1000 + SESSION_TTL,
+      exp: nowSec + ttl,
+      max_exp: nowSec + cap,
+      ttl,
       fp,
     });
     this.audit('login', true, username, ip, u.role);
-    return { token, role: u.role, expiresIn: SESSION_TTL };
+    return { token, role: u.role, expiresIn: ttl };
   }
 
   logout(token?: string): void {
@@ -445,10 +502,20 @@ export class AuthService implements OnModuleInit {
     if (!token) return null;
     const s = this.sessions.get(token);
     if (!s) return null;
-    if (s.exp < Date.now() / 1000) {
+    const now = Date.now() / 1000;
+    // 1) 越过绝对上限：不可续期，直接失效
+    if (s.max_exp <= now) {
       this.sessions.delete(token);
       return null;
     }
+    // 2) 空闲超过滑动窗口：失效
+    if (s.exp < now) {
+      this.sessions.delete(token);
+      return null;
+    }
+    // 3) 滑动续期：每次访问刷新空闲窗口，但不得越过绝对上限
+    const next = Math.min(now + s.ttl, s.max_exp);
+    if (next > s.exp) s.exp = next;
     return s;
   }
 

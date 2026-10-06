@@ -1,6 +1,7 @@
 import { Body, Controller, Get, Post } from '@nestjs/common';
 import { BotConfigService } from './bot-config.service';
 import { BotRegistryService } from './bot-registry.service';
+import { BotManifestService } from './bot-manifest.service';
 import { DingtalkStreamGateway } from './dingtalk/dingtalk-stream.gateway';
 
 /**
@@ -13,6 +14,7 @@ export class BotController {
     private readonly cfg: BotConfigService,
     private readonly gateway: DingtalkStreamGateway,
     private readonly registry: BotRegistryService,
+    private readonly manifest: BotManifestService,
   ) {}
 
   /** 读取脱敏后的全局开关配置（AI 打字 / 超时 / 总开关）。 */
@@ -34,12 +36,10 @@ export class BotController {
     };
   }
 
-  /** 保存全局开关并热重载 Stream 长连接（凭据变化即时生效）。 */
+  /** 保存全局开关并热重载 Stream 长连接（凭据变化即时生效）。打字效果已移至凭据分组。 */
   @Post('bot/config')
   async saveConfig(@Body() b: Record<string, any>) {
     const config = this.cfg.saveConfig({
-      aiCardTyping: b?.aiCardTyping,
-      dingbotQueryTimeout: b?.dingbotQueryTimeout,
       botEnabled: b?.botEnabled,
     });
     const reload = await this.gateway.reload();
@@ -71,11 +71,13 @@ export class BotController {
   }
 
   /**
-   * 单个机器人实例配置：在线启停（enabled）与凭据分组绑定（credentialsRef）。
-   * 仅改 enabled 不需重连；改 credentialsRef 需重建连接（自动 reload）。
+   * 单个机器人实例配置：在线启停（enabled）、凭据分组绑定（credentialsRef）、展示名（displayName）。
+   * 仅改 enabled 不需重连；改 credentialsRef 需重建连接（自动 reload）；displayName 仅覆盖展示名。
    */
   @Post('bot/bots')
-  async setBot(@Body() b: { botId?: string; enabled?: boolean; credentialsRef?: string }) {
+  async setBot(
+    @Body() b: { botId?: string; enabled?: boolean; credentialsRef?: string; displayName?: string; queryTimeout?: number },
+  ) {
     if (!b?.botId) return { ok: false, error: 'botId 必填' };
     let needReload = false;
     if (typeof b.enabled === 'boolean') {
@@ -88,6 +90,16 @@ export class BotController {
         return { ok: false, error: '凭据绑定失败（botId 不存在）' };
       }
       needReload = true;
+    }
+    if (typeof b.displayName === 'string') {
+      if (!this.manifest.setDisplayName(b.botId, b.displayName)) {
+        return { ok: false, error: '展示名保存失败（botId 不存在）' };
+      }
+    }
+    if (typeof b.queryTimeout === 'number') {
+      if (!this.manifest.setQueryTimeout(b.botId, b.queryTimeout)) {
+        return { ok: false, error: '查询超时设置失败（botId 不存在或数值非法）' };
+      }
     }
     const reload = needReload ? await this.gateway.reload() : null;
     return { ok: true, bots: this.registry.listStatus(), reload };

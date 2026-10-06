@@ -1,4 +1,4 @@
-import { request, withToken } from './request.js';
+import { request } from './request.js';
 
 export function runTask(taskId, args) {
   // 后端 POST /api/run 的 DTO 要求 { items:[{ task_id, args }] }（全局 ValidationPipe 开了
@@ -26,10 +26,10 @@ export function fetchArtifacts(taskId) {
   return request('/files?task_id=' + encodeURIComponent(taskId));
 }
 
-/** 文件预览/下载 URL（img/iframe/a 用，带 token 查询） */
+/** 文件预览/下载 URL（img/iframe/a 用，同源自动携带会话 Cookie） */
 export function artifactUrl(rel) {
-  return withToken('/api/file?path=' + encodeURIComponent(rel));
+  return '/api/file?path=' + encodeURIComponent(rel);
 }
 export function sheetUrl(rel) {
-  return withToken('/api/sheet?path=' + encodeURIComponent(rel));
+  return '/api/sheet?path=' + encodeURIComponent(rel);
 }

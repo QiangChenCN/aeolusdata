@@ -14,6 +14,7 @@ import { ComputeService } from '../compute/compute.service';
 import { FetchPaceService } from './fetch-pace.service';
 import { RefreshAllService } from './refresh-all.service';
 import { TeamsFetchService } from './teams-fetch.service';
+import { extractToken } from '../../common/token.util';
 
 /**
  * 全量刷新「编排器」（原 Python `dashboard/standard/refresh_all.py` 的 Nest 原生实现）。
@@ -338,11 +339,7 @@ export class RefreshRunnerService {
   }
 
   private token(req: Request): string | undefined {
-    const auth = req.headers['authorization'] as string | undefined;
-    const bearer = auth?.replace(/^Bearer\s+/i, '');
-    const q = (req.query as Record<string, unknown>)['token'];
-    const xt = req.headers['x-token'] as string | undefined;
-    return xt || (typeof q === 'string' ? q : undefined) || bearer;
+    return extractToken(req);
   }
 
   // ---------------------------------------------------------------- 编排主体

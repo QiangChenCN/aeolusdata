@@ -128,3 +128,6 @@ backend/*.out
 python/logs/
 python/**/*.err
 python/jobs/**/out/
+# 仓库根的 Nest 启动重定向日志（run<port>.out/.err；上面 backend/*.out 只覆盖 backend/ 目录）
+/run*.out
+/run*.err

@@ -1,4 +1,4 @@
-import { createRouter, createWebHashHistory } from 'vue-router';
+import { createRouter, createWebHistory } from 'vue-router';
 import HomeView from '../views/HomeView.vue';
 import TaskCenterView from '../views/TaskCenterView.vue';
 import HistoryView from '../views/HistoryView.vue';
@@ -10,10 +10,15 @@ import OverviewView from '../views/OverviewView.vue';
 import RealtimeView from '../views/RealtimeView.vue';
 import GroupsView from '../views/GroupsView.vue';
 import AdminView from '../views/AdminView.vue';
-import BotConfigView from '../views/BotConfigView.vue';
+import BotGlobalView from '../views/BotGlobalView.vue';
+import BotRobotView from '../views/BotRobotView.vue';
+import BotInstanceView from '../views/BotInstanceView.vue';
+import LoginView from '../views/LoginView.vue';
+import { useAuthStore } from '../stores/auth.js';
 
 // 导航 kind 与路由对应（hub/dash 仅侧栏容器，不单独成路由）
 const routes = [
+  { path: '/login', name: 'login', component: LoginView, meta: { public: true, title: '登录' } },
   { path: '/', redirect: '/home' },
   { path: '/home', name: 'home', component: HomeView, meta: { title: '首页', kind: 'home' } },
   { path: '/tasks', name: 'tasks-all', component: TaskCenterView, meta: { title: '全部任务', kind: 'tasks', id: 'all' } },
@@ -27,10 +32,39 @@ const routes = [
   { path: '/realtime', name: 'realtime', component: RealtimeView, meta: { title: '实时数据' } },
   { path: '/groups', name: 'groups', component: GroupsView, meta: { title: '群组' } },
   { path: '/admin', name: 'admin', component: AdminView, meta: { title: '系统设置' } },
-  { path: '/bot', name: 'bot', component: BotConfigView, meta: { title: '机器人配置', kind: 'botconfig' } },
+  { path: '/bot/global', name: 'bot-global', component: BotGlobalView, meta: { title: '全局配置', kind: 'botcfg', id: 'global' } },
+  { path: '/bot/robot', name: 'bot-robot', component: BotRobotView, meta: { title: '机器人配置', kind: 'botcfg', id: 'robot' } },
+  { path: '/bot/instance', name: 'bot-instance', component: BotInstanceView, meta: { title: '实例配置', kind: 'botcfg', id: 'instance' } },
+  { path: '/bot', redirect: '/bot/global' },
 ];
 
-export default createRouter({
-  history: createWebHashHistory(),
+// History 模式（无 #）：深链接需服务端回退到 index.html。
+//   · 开发环境：Vite(appType='spa') 自带 history 回退，且会把 index.html 里的相对资源
+//     重写为绝对路径，嵌套路由（/bot/global）也不会取错资源。
+//   · 生产环境：由 Nest 的 SPA 回退中间件负责（backend/src/main.ts）。
+//     缺少该回退时，刷新 /tasks 这类深层路由会 404。
+const router = createRouter({
+  history: createWebHistory(),
   routes,
 });
+
+// 全局鉴权守卫：未登录访问受保护页 → 重定向到登录页并保留来源；
+// 已登录访问登录页 → 跳回首页；引导阶段确保会话校验完成。
+router.beforeEach(async (to) => {
+  const auth = useAuthStore();
+  if (!auth.bootstrapped) await auth.bootstrap();
+
+  if (to.meta && to.meta.public) {
+    if (auth.authenticated) return { path: '/' };
+    return true;
+  }
+  if (!auth.authenticated) {
+    const redirect = to.fullPath && to.fullPath !== '/' ? to.fullPath : null;
+    return redirect
+      ? { path: '/login', query: { redirect } }
+      : { path: '/login' };
+  }
+  return true;
+});
+
+export default router;

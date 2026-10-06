@@ -1,4 +1,3 @@
-import { getToken } from '../api/request.js';
 import { useAppStore } from '../stores/app.js';
 import { useRunsStore } from '../stores/runs.js';
 import { useTasksStore } from '../stores/tasks.js';
@@ -13,8 +12,8 @@ export function useSse() {
 
   function connect() {
     if (es) return;
-    const token = getToken();
-    const url = '/api/events' + (token ? '?token=' + encodeURIComponent(token) : '');
+    // 同源 EventSource 自动携带会话 Cookie，无需手动拼 token。
+    const url = '/api/events';
     es = new EventSource(url);
 
     es.onopen = () => { app.setConnected(true); app.setSseBroken(false); reconnectDelay = 1000; };

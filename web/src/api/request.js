@@ -1,23 +1,11 @@
-// 请求层：统一封装 fetch（X-Token 头、超时、401 回调、GET 5xx 重试一次、中文报错）。
-// 替代原 main.js 的 api()；令牌存 sessionStorage（键名沿用 wb_token，兼容旧会话）。
-const TOKEN_KEY = 'wb_token';
+// 请求层：统一封装 fetch（同源 Cookie 自动携带会话、超时、401 回调、GET 5xx 重试一次、中文报错）。
+// 鉴权改为 HttpOnly 会话 Cookie：登录后后端通过 Set-Cookie 下发，浏览器同源请求自动携带，
+// 不再由前端手动维护 X-Token 头或 sessionStorage（避免 XSS 窃取长时效令牌）。
 const API_BASE = '/api';
-
-export function getToken() { return sessionStorage.getItem(TOKEN_KEY) || ''; }
-export function setToken(t) { if (t) sessionStorage.setItem(TOKEN_KEY, t); else sessionStorage.removeItem(TOKEN_KEY); }
-export function clearToken() { sessionStorage.removeItem(TOKEN_KEY); }
 
 let unauthorizedHandler = null;
 export function setUnauthorizedHandler(fn) { unauthorizedHandler = fn; }
 function emitUnauthorized() { if (unauthorizedHandler) unauthorizedHandler(); }
-
-/** 给一个路径拼上 ?token= （仅用于 <img>/<iframe>/EventSource 等不能加请求头的地方） */
-export function withToken(path) {
-  const t = getToken();
-  if (!t) return path;
-  const sep = path.includes('?') ? '&' : '?';
-  return path + sep + 'token=' + encodeURIComponent(t);
-}
 
 export class ApiError extends Error {
   constructor(message, status, data) {
@@ -28,23 +16,24 @@ export class ApiError extends Error {
   }
 }
 
-/** 返回解析后的 JSON（2xx）；非 2xx 抛 ApiError；401 触发登录弹窗。 */
+/** 返回解析后的 JSON（2xx）；非 2xx 抛 ApiError；401 触发登录重定向。 */
 export async function request(path, opts = {}) {
   const url = path.startsWith('http') ? path : API_BASE + path;
   const headers = Object.assign({}, opts.headers);
-  const token = getToken();
-  if (token) headers['X-Token'] = token;
 
   const ctrl = new AbortController();
   const timeout = opts.timeout ?? 15000;
   const timer = setTimeout(() => ctrl.abort(), timeout);
   let res;
   try {
+    // credentials: 'include' 确保同源（及跨源）请求携带会话 Cookie；
+    // 同源场景浏览器本就会带，这里显式声明以兼容可能的跨源部署。
     res = await fetch(url, {
       method: opts.method || 'GET',
       headers,
       body: opts.body,
       signal: ctrl.signal,
+      credentials: 'include',
     });
   } catch (e) {
     clearTimeout(timer);
@@ -78,7 +67,11 @@ export async function request(path, opts = {}) {
 export function requestRaw(path, opts = {}) {
   const url = path.startsWith('http') ? path : API_BASE + path;
   const headers = Object.assign({}, opts.headers);
-  const token = getToken();
-  if (token) headers['X-Token'] = token;
-  return fetch(url, { method: opts.method || 'GET', headers, body: opts.body, signal: opts.signal });
+  return fetch(url, {
+    method: opts.method || 'GET',
+    headers,
+    body: opts.body,
+    signal: opts.signal,
+    credentials: 'include',
+  });
 }

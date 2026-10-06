@@ -182,5 +182,7 @@ export function reloadBot() { return request('/bot/reload', j({})); }
 export function fetchBotStatus() { return request('/bot/status'); }
 export function setBotEnabled(botId, enabled) { return request('/bot/bots', j({ botId, enabled })); }
 export function setBotCredentialsRef(botId, ref) { return request('/bot/bots', j({ botId, credentialsRef: ref })); }
+/** 通用实例补丁：可同时/分别传 enabled / credentialsRef / displayName。 */
+export function patchBot(botId, patch = {}) { return request('/bot/bots', j(Object.assign({ botId }, patch))); }
 export function fetchBotCredentials() { return request('/bot/credentials'); }
 export function saveBotCredentials(groups) { return request('/bot/credentials', j({ groups })); }

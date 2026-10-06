@@ -34,7 +34,7 @@
 </template>
 
 <script setup>
-import { computed } from 'vue';
+import { computed, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useTasksStore } from '../../stores/tasks.js';
 import { useAppStore } from '../../stores/app.js';
@@ -59,7 +59,7 @@ function to(it) {
     case 'realtime': return '/realtime';
     case 'todo': return '/todo';
     case 'admin': return '/admin';
-    case 'botconfig': return '/bot';
+    case 'botcfg': return '/bot/' + it.id;
     default: return '/home';
   }
 }
@@ -83,8 +83,13 @@ const navItems = computed(() => {
 
   items.push({ type: 'leaf', key: 'todo', kind: 'todo', id: '', name: '工作内容', icon: 'List' });
   if (auth.isAdmin) {
-    items.push({ type: 'leaf', key: 'botconfig', kind: 'botconfig', id: '', name: '机器人配置', icon: 'ChatDotRound' });
-    items.push({ type: 'leaf', key: 'admin', kind: 'admin', id: '', name: '系统设置', icon: 'Setting' });
+    const botSubs = [
+      { type: 'leaf', kind: 'botcfg', id: 'global', name: '全局配置', icon: 'Setting' },
+      { type: 'leaf', kind: 'botcfg', id: 'robot', name: '机器人配置', icon: 'Key' },
+      { type: 'leaf', kind: 'botcfg', id: 'instance', name: '实例配置', icon: 'Cpu' },
+    ];
+    items.push({ type: 'parent', key: 'botcfg', name: '机器人配置', icon: 'ChatDotRound', children: botSubs });
+    items.push({ type: 'leaf', key: 'admin', kind: 'admin', id: '', name: '系统设置', icon: 'Tools' });
   }
   return items;
 });
@@ -119,6 +124,16 @@ function busy(it) {
     : [];
   return ids.includes(rid);
 }
+
+/** 深链/刷新进入某子页时，自动展开其所属父级导航（避免父项折叠导致子项不可见）。 */
+function ensureActiveParents() {
+  navItems.value.forEach((it) => {
+    if (it.type === 'parent' && parentOn(it) && app.navOpen[it.key] !== true) {
+      app.setNavOpen(it.key, true);
+    }
+  });
+}
+watch(() => route.fullPath, ensureActiveParents, { immediate: true });
 </script>
 
 <style scoped>

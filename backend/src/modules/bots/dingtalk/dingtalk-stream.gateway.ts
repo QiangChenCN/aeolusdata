@@ -226,7 +226,7 @@ export class DingtalkStreamGateway implements OnModuleInit, OnModuleDestroy {
     try {
       const content = reply?.content ?? '（无返回）';
       const title = this.pickTitle(reply);
-      if (this.cfg.isTypingEnabled()) {
+      if (this.cfg.isTypingEnabled(ref)) {
         await this.card.streamTyping(card.cardInstanceId, client, content, { isError: reply?.state === 'error' });
         await this.card.finish(card.cardInstanceId, client, title, content);
       } else {
@@ -240,7 +240,7 @@ export class DingtalkStreamGateway implements OnModuleInit, OnModuleDestroy {
 
   /** 统一查询一次，超时返回「查询超时」终态回复（绝不无限停在「查询中」）。 */
   private async queryWithTimeout(msg: IncomingMessage, ref: string): Promise<BotReply> {
-    const timeoutSec = this.cfg.getQueryTimeoutSec();
+    const timeoutSec = this.registry.timeoutForRef(ref);
     let reply: BotReply | void;
     try {
       reply = await Promise.race([

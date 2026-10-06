@@ -7,6 +7,7 @@ import { AuthService } from '../auth/auth.service';
 import { DataPermService } from '../auth/data-perm.service';
 import { RefreshRunnerService } from '../fetch/refresh-runner.service';
 import { ConfigService } from '../config/config.service';
+import { extractToken } from '../../common/token.util';
 
 /**
  * Python 生态独占端点转发（见 server.py→NestJS 映射文档 §6）。
@@ -40,9 +41,7 @@ export class ProxyController {
 
   /** 计算当前调用者的数据可见范围，下发 x-scope（'*' 表示不限）。 */
   private scopeHeaders(req: Request): Record<string, string> {
-    const t =
-      (req.headers['x-token'] as string) ||
-      ((req.query as Record<string, unknown>)['token'] as string | undefined);
+    const t = extractToken(req);
     const s = this.auth.getSession(t);
     let scope = '*';
     if (s) {
@@ -65,9 +64,7 @@ export class ProxyController {
   private configSession(
     req: Request,
   ): { user: string; allowed: Set<string> | null } | null {
-    const t =
-      (req.headers['x-token'] as string) ||
-      ((req.query as Record<string, unknown>)['token'] as string | undefined);
+    const t = extractToken(req);
     const s = this.auth.getSession(t);
     if (!s) return null;
     return { user: s.user, allowed: this.dataPerm.resolveAllowed(s.user, s.role, 'team') };

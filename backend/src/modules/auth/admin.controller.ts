@@ -4,6 +4,7 @@ import { AuthService } from './auth.service';
 import { DataPermService, DEFAULT_SCOPE } from './data-perm.service';
 import { PERM_CATALOG, ALL_PERMS } from './permissions';
 import { ComputeService } from '../compute/compute.service';
+import { extractToken } from '../../common/token.util';
 
 /**
  * 账号 / 角色 / 密码策略 / 数据权限 管理端点（端口自 core/auth.py 与 core/dataperm.py，
@@ -20,9 +21,7 @@ export class AdminController {
   ) {}
 
   private currentUser(req: Request): { user: string; role: string } | null {
-    const t =
-      (req.headers['x-token'] as string) ||
-      ((req.query as Record<string, unknown>)['token'] as string | undefined);
+    const t = extractToken(req);
     const s = this.auth.getSession(t);
     return s ? { user: s.user, role: s.role } : null;
   }

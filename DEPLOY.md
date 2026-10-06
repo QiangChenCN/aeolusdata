@@ -97,9 +97,20 @@ systemctl restart aeolus-backend aeolus-compute
 
 # 4) 确认启动正常 + 看到 bootstrap 提示
 journalctl -u aeolus-backend -n 30 --no-pager
+
+# 5) 验证深链接回退（History 路由生效的关键）
+#    前端已去掉 URL 里的 #，页面路径（/tasks、/bot/global …）会直接打到服务器。
+#    下列请求都应返回 200 且 Content-Type 为 text/html；返回 404 说明 nginx 拦了。
+curl -s -o /dev/null -w "%{http_code} %{content_type}\n" -H "Accept: text/html" http://127.0.0.1:8787/tasks
+curl -s -o /dev/null -w "%{http_code} %{content_type}\n" -H "Accept: text/html" http://127.0.0.1:8787/bot/global
+#    健康检查必须仍是 JSON（不能被回退规则吞掉）
+curl -s -o /dev/null -w "%{http_code} %{content_type}\n" http://127.0.0.1:8787/health
 ```
 
 重启后若 `backend/data/` 下无 `.users.json`，NestJS 自动建默认管理员并打印告警（见第 5 节）。
+
+> ⚠️ **重启 = 全体登出**：会话（session）保存在 NestJS **内存**里，不落盘。每次重启 `aeolus-backend`
+> 都会清空所有会话，「记住我」的用户也会被要求重新登录。排"上线后要输入密码"的现象时先看这里。
 
 ---
 
@@ -151,7 +162,7 @@ curl -X POST -H "X-Token: $TOKEN" -H "Content-Type: application/json" \
 > 旧的 `python manage_users.py ...` CLI 已随 Python 侧 RBAC（`core/auth.py`）一并删除：
 > 用户库虽是同一份 `backend/data/.users.json`，但**用户管理只应有 NestJS 一个入口**，不要维护第二份实现。
 
-> 旧会话在新 RBAC 下会失效，被重定向到登录框 —— 正常。
+> 旧会话失效（如重启清空了内存会话）会被重定向到**登录页** —— 正常。
 
 ---
 
@@ -160,6 +171,8 @@ curl -X POST -H "X-Token: $TOKEN" -H "Content-Type: application/json" \
 | 现象 | 原因 | 解决 |
 |------|------|------|
 | 改了前端但页面没变 | `web/dist` 未重建（gitignored） | 服务器上 `cd web && npm run build` 后重启 |
+| 访问 `/tasks` 等深层路由刷新后 404（URL 已无 `#`） | nginx 试图从磁盘找同名静态文件，没反代给 Nest | nginx 的 `location /` 一律 `proxy_pass` 到 8787（见第 8 节），或用第 4 节的 curl 自检 |
+| 登录成功后一刷新又要登录 | 会话在 Nest 内存里：后端重启即全部失效；或 Cookie 未种下（`Secure` 在 http 下无效 / 非 HTTPS 域名 | 确认未频繁重启；确认访问的是 HTTPS 域名而不是内网 http |
 | 服务器登录不了 | `backend/data/.users.json` 不在仓库，首次需 bootstrap | 用 `admin/admin123`，或设 `WB_ADMIN_PASSWORD` |
 | 本地 `git push` 公钥拒绝 | SSH key 没进 agent | 用 HTTPS remote + GCM（见第 3 节） |
 | 提交里混入一堆 `*.json` | 缓存文件被跟踪且反复变 | 暂存时排除（见第 2 节），或 `git rm --cached` 后加进 `.gitignore` |
@@ -177,20 +190,18 @@ curl -X POST -H "X-Token: $TOKEN" -H "Content-Type: application/json" \
 
 ### 7.1 落盘配置文件（均位于仓库根，已被 `.gitignore` 忽略，服务器上是独立一份）
 
-- **`bot_config.json`**：凭据分组数组 + 全局开关。
+- **`bot_config.json`**：凭据分组数组 + 全局总开关（查询超时已改为按实例设置，不在此处）。
   ```json
   {
     "credentials": [
-      { "id": "dingtalk:default", "label": "默认", "clientId": "…", "secret": "…", "enabled": true }
+      { "id": "dingtalk:default", "label": "默认", "clientId": "…", "secret": "…", "enabled": true, "type": "dingtalk" }
     ],
-    "aiCardTyping": true,
-    "dingbotQueryTimeout": 60,
     "botEnabled": true
   }
   ```
-- **`bot_manifest.json`**：实例运行时覆盖（在线启停 + 凭据绑定），重启保留、无需改源码。
+- **`bot_manifest.json`**：实例运行时覆盖（在线启停 + 凭据绑定 + 查询超时），重启保留、无需改源码。
   ```json
-  { "overrides": { "std-achievement": { "enabled": true, "credentialsRef": "dingtalk:default" } } }
+  { "overrides": { "std-achievement": { "enabled": true, "credentialsRef": "dingtalk:default", "queryTimeout": 60 } } }
   ```
 
 > **向后兼容**：老格式的单组字段 `dingClientId` / `dingClientSecret` 会被**读取时自动迁移**为 `dingtalk:default` 凭据组，历史部署升级无需手动改文件；首次在前端保存凭据组即会落盘为新结构（老字段被清掉）。建议升级后到「凭据分组」补一份 `dingtalk:default` 组以固化。
@@ -210,3 +221,54 @@ curl -X POST -H "X-Token: $TOKEN" -H "Content-Type: application/json" \
 - 机器人一直停在「查询中」卡片 → 多半是风神 401 / 超时导致卡片终态失败；卡片服务已降级走 webhook，但仍会延迟。检查凭据有效性 / 风神登录态。
 - 实例收不到消息 → 凭据分组未绑定 / 该组凭据缺失或失效 / 未触发重连；看「连接明细」定位。
 - 权限点 `admin:bot`：GET/POST `/api/bot/*`（config / status / credentials / bots / reload）统一由 `AccessGuard` 按 `permissions.ts` 裁决。
+
+---
+
+## 8. 前端 History 路由（无 `#`）与会话 Cookie
+
+### 8.1 为什么需要 nginx 配合
+
+前端已从 Hash 路由（`/#/tasks`）切到 **History 路由**（`/tasks`）。差别在于：Hash 模式下浏览器永远只
+向服务器请求 `/`，服务器从不知道具体路由；切到 History 后，**每一个页面路径都会真实打到服务器**，
+服务器必须把未知路径回退到 `index.html`，否则刷新或直接打开链接就是 404。
+
+回退由 **NestJS 负责**（`backend/src/main.ts` 的 SPA 回退中间件）。它注册在 Express 层、早于 Nest 路由，
+因此不会落到全局 `AccessGuard`（若改成 Nest 通配路由，冷启动访问深链接会被机器令牌闸门挡成 401 JSON
+而不是登录页）。
+
+**nginx 侧要求：** `location /` 必须整体反代给 Nest，不要试图用 `try_files` 在 nginx 层找静态文件或提供
+index.html —— 那样 `/tasks` 会 404（或拿到一份没经过机器令牌注入的页面）。推荐写法：
+
+```nginx
+location / {
+    proxy_pass http://127.0.0.1:8787;
+    proxy_set_header Host              $host;
+    proxy_set_header X-Real-IP         $remote_addr;
+    proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+}
+```
+
+`/api/*` 不需要单独 location —— 走上面这条 `location /` 反代即可（Nest 内部区分 `/api` 与页面路径）。
+改完 nginx 记得 `nginx -t && systemctl reload nginx`，再用第 4 节第 5) 步的 curl 自检。
+
+> 另一个前提：回退中间件只在 `web/dist` **存在**时注册，所以服务器上必须已执行
+> `cd web && npm run build`（平时 `<distDir>` 也在 ServeController 的候选列表里）。
+
+### 8.2 会话 Cookie 与「记住我」
+
+- 登录后由后端下发 `Set-Cookie: wb_token=…; HttpOnly; SameSite=Lax; Path=/`
+  （勾选「记住我」时额外带 `Max-Age=7d`；**不勾选**为会话 Cookie，关浏览器才失效）。
+- 令牌不再存 `sessionStorage`/`localStorage`，因此**关闭标签页再打开不会掉登录**（不必关浏览器）。
+- 服务端会话采用「滑动空闲窗口 + 绝对上限」双限制：
+
+| | 空闲窗口（滑动续期） | 绝对上限 |
+|---|---|---|
+| 未勾选记住我 | 12 小时 | 24 小时 |
+| 勾选记住我 | 7 天 | 30 天 |
+
+- **`Secure` 标记**：后端按 `req.secure` 决定是否加。本项目**未开启** `app.set('trust proxy')`，而 HTTPS
+  由 nginx 终止，因此 Express 认为请求是 http —— 结果是不带 `Secure`。功能不受影响（HTTPS 下浏览器照样
+  携带 Cookie，且 `SameSite=Lax` 已挡掉大部分跨站场景）。若想强制 `Secure`，在 `main.ts` 加
+  `app.set('trust proxy', 1)`（注意它会同时影响 `req.ip`，让限频改用 `X-Forwarded-For`）。
+- **后端重启 = 全体登出**：会话只存在 Nest 进程内存里，不持久化。
