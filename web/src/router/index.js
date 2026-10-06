@@ -52,7 +52,10 @@ const router = createRouter({
 // 已登录访问登录页 → 跳回首页；引导阶段确保会话校验完成。
 router.beforeEach(async (to) => {
   const auth = useAuthStore();
-  if (!auth.bootstrapped) await auth.bootstrap();
+  // 必须无条件 await：bootstrap 内部已幂等（共享 Promise），
+  // 这里若改成「只在未引导时才等」，就会与 App.vue 的 onMounted 抢跑，
+  // 拿到未填充的登录态而误判未登录。
+  await auth.bootstrap();
 
   if (to.meta && to.meta.public) {
     if (auth.authenticated) return { path: '/' };

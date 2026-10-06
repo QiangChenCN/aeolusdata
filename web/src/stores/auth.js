@@ -6,13 +6,17 @@ import { signin as apiSignin, signout as apiSignout, me as apiMe } from '../api/
 let loginRedirector = null;
 export function setLoginRedirector(fn) { loginRedirector = fn; }
 
+// 会话校验的 Promise：路由守卫与 App.vue 可能同时发起 bootstrap（初始导航未完成时 App 已挂载），
+// 必须共用同一个 Promise，否则后发起的一方会因「已在引导中」而跳过等待，
+// 拿到尚未填充的登录态 → 误判未登录 → 刷新即跳登录页。
+let bootPromise = null;
+
 // 鉴权状态：登录态完全由后端会话 Cookie 决定。前端只缓存「me 校验得到的用户信息」，
 // 用于界面展示与路由守卫判定；不持有令牌本身（HttpOnly Cookie 由浏览器管理，XSS 不可读）。
 export const useAuthStore = defineStore('auth', {
   state: () => ({
     user: null,
     role: null,
-    bootstrapped: false,
   }),
   getters: {
     authenticated: (s) => !!s.user,
@@ -20,15 +24,19 @@ export const useAuthStore = defineStore('auth', {
   },
   actions: {
     // 启动时：调 /auth/me 校验会话 Cookie；有效则填充用户信息，无效则保持未登录（由路由守卫跳登录页）。
+    // 幂等：多次调用共享同一个 Promise，调用方 await 到的永远是「校验已完成」的时点。
     async bootstrap() {
-      if (this.bootstrapped) return;
-      this.bootstrapped = true;
-      try {
-        const data = await apiMe();
-        if (data && data.authenticated) {
-          this.user = data.user; this.role = data.role;
-        }
-      } catch (e) { /* 未登录 / 网络异常：保持 user=null，等待守卫重定向 */ }
+      if (!bootPromise) {
+        bootPromise = (async () => {
+          try {
+            const data = await apiMe();
+            if (data && data.authenticated) {
+              this.user = data.user; this.role = data.role;
+            }
+          } catch (e) { /* 未登录 / 网络异常：保持 user=null，等待守卫重定向 */ }
+        })();
+      }
+      await bootPromise;
     },
     async signin(username, password, remember = false) {
       const data = await apiSignin(username, password, remember);

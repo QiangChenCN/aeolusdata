@@ -81,9 +81,12 @@ function stopServices() {
 
 onMounted(() => { auth.bootstrap(); });
 
+// immediate：刷新进入时登录态可能已由守卫填充完毕，此时 watcher 注册后不会再触发变化，
+// 不加 immediate 会导致任务/事件流等后台服务始终不启动（页面空白、无数据）。
 watch(
   () => auth.authenticated,
   (ok) => { if (ok) startServices(); else stopServices(); },
+  { immediate: true },
 );
 </script>
 

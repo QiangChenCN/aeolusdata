@@ -28,4 +28,8 @@ window.addEventListener('unhandledrejection', (e) => {
   console.error('[未处理的 Promise 拒绝]', (e.reason && e.reason.stack) || e.reason);
 });
 
-app.mount('#app');
+// 等初始导航完成（含鉴权守卫里的 /auth/me 会话校验）后再挂载 App。
+// 否则 App.vue 会先于守卫完成就挂载并读取登录态，产生「刷新即跳登录页」的竞态。
+router.isReady().then(() => {
+  app.mount('#app');
+});
