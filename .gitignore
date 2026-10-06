@@ -73,6 +73,9 @@ backend/data/.audit.jsonl
 # RBAC 角色配置（可配置 + 继承）与密码策略（本地状态，不提交）
 backend/data/.roles.json
 backend/data/.pwpolicy.json
+# RBAC 会话快照（含活跃会话令牌，跨重启保留登录态；本地状态，绝不提交）
+backend/data/.sessions.json
+backend/data/.sessions.json.tmp
 
 # 后端运行期数据 / 日志 / 截图（可重建，不提交）
 backend/runs/

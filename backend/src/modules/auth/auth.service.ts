@@ -16,8 +16,8 @@ import { ALL_PERMS } from './permissions';
  * 原 Python 实现已删除，本服务是唯一入口（用户库仍为同一份 .users.json）。
  * 状态文件统一落在 backend/data/（.users.json / .roles.json / .pwpolicy.json / .audit.jsonl），
  * 与 backend/data/quark/ 同属后端私有本地状态，全部 gitignore、不在仓库。
- * 职责：用户库 .users.json / 会话（内存表，TTL 12h）/ 角色（.roles.json，支持继承+环检测）
- * / 密码策略（.pwpolicy.json，NIST 800-63B）/ 路由→权限 / 审计 .audit.jsonl。
+ * 职责：用户库 .users.json / 会话（内存表 + 落盘 .sessions.json，滑动 TTL）/ 角色（.roles.json，
+ * 支持继承+环检测）/ 密码策略（.pwpolicy.json，NIST 800-63B）/ 路由→权限 / 审计 .audit.jsonl。
  *
  * 关键兼容：口令哈希沿用 Python scrypt(n=16384,r=8,p=1,dklen=64) 同一套参数，
  * 存储格式 `saltHex$keyHex`，与既有 .users.json 互通（切换后端零迁移）。
@@ -138,6 +138,7 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
   private rolesFile = '';
   private policyFile = '';
   private auditFile = '';
+  private sessionsFile = '';
 
   constructor(private readonly config: ConfigService) {}
 
@@ -147,7 +148,10 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     this.rolesFile = path.join(dataDir, '.roles.json');
     this.policyFile = path.join(dataDir, '.pwpolicy.json');
     this.auditFile = path.join(dataDir, '.audit.jsonl');
+    this.sessionsFile = path.join(dataDir, '.sessions.json');
     this.ensureBootstrap();
+    // 恢复上次运行遗留的会话：否则每次发版重启都会让所有已登录用户（含「记住我」）重新登录
+    this.loadSessions();
 
     // 过期会话定期清理：会话只在被访问时惰性删除（getSession），长期不再访问的会话
     // 会永久滞留在 Map 里。「记住我」把生命周期拉长到 7~30 天后，这个累积更明显。
@@ -161,6 +165,8 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
       clearInterval(this.sweepTimer);
       this.sweepTimer = null;
     }
+    // 优雅停机落盘：让会话跨重启存活（systemd stop/restart 会走到这里）
+    this.persistSessions();
   }
 
   private sweepSessions(): void {
@@ -174,6 +180,55 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     }
     if (removed > 0) {
       this.logger.debug(`清理过期会话 ${removed} 个，剩余 ${this.sessions.size} 个`);
+    }
+    // 周期性快照：滑动续期只改内存里的 exp，靠这里把最新值写回磁盘。
+    // 不做每次请求都写盘 —— 那样 QPS 一高就是持续 IO。
+    this.persistSessions();
+  }
+
+  // ---------------- 会话持久化 ----------------
+  /**
+   * 会话是「活跃凭证」，落盘让后端重启不清空登录态。取舍说明：
+   *  - 文件权限 0600 + 落在 gitignore 的 backend/data/，与 .users.json 同口径；
+   *  - 滑动续期只更新内存 exp，由 sweep 周期写回，最差丢失一个周期的续期时长；
+   *  - 停机期间已超时的会话在加载时直接丢弃，不会「复活」。
+   */
+  private loadSessions(): void {
+    if (!this.sessionsFile || !fs.existsSync(this.sessionsFile)) return;
+    try {
+      const raw = JSON.parse(fs.readFileSync(this.sessionsFile, 'utf-8')) as Record<string, unknown>;
+      const now = Date.now() / 1000;
+      let loaded = 0;
+      for (const [token, val] of Object.entries(raw || {})) {
+        const rec = val as Partial<Session>;
+        // 缺关键字段的记录不认（旧结构 / 半坏数据），避免加载出不可用的会话
+        if (!rec || typeof rec.exp !== 'number' || typeof rec.max_exp !== 'number') continue;
+        if (rec.exp < now || rec.max_exp <= now) continue; // 停机期间已过期
+        this.sessions.set(token, rec as Session);
+        loaded++;
+      }
+      if (loaded > 0) this.logger.log(`已从磁盘恢复 ${loaded} 个会话（避免重启后全员重新登录）`);
+    } catch (e) {
+      this.logger.warn(`会话文件读取失败，按空会话启动：${(e as Error).message}`);
+    }
+  }
+
+  private persistSessions(): void {
+    if (!this.sessionsFile) return;
+    try {
+      const obj: Record<string, Session> = {};
+      for (const [token, s] of this.sessions) obj[token] = s;
+      const body = JSON.stringify(obj);
+      const tmp = this.sessionsFile + '.tmp';
+      fs.writeFileSync(tmp, body, { mode: 0o600 });
+      try {
+        // 原子替换：避免写到一半崩溃留下损坏的会话文件
+        fs.renameSync(tmp, this.sessionsFile);
+      } catch (e) {
+        fs.writeFileSync(this.sessionsFile, body, { mode: 0o600 });
+      }
+    } catch (e) {
+      this.logger.warn(`会话落盘失败：${(e as Error).message}`);
     }
   }
 
@@ -486,6 +541,7 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
       ttl,
       fp,
     });
+    this.persistSessions(); // 登录立即落盘：立刻重启也要还活着
     this.audit('login', true, username, ip, u.role);
     return { token, role: u.role, expiresIn: ttl };
   }
@@ -494,6 +550,7 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     const s = token ? this.sessions.get(token) : null;
     if (s) {
       this.sessions.delete(token as string);
+      this.persistSessions(); // 登出立即落盘：否则重启后会话会「复活」
       this.audit('logout', true, s.user, s.ip, s.role);
     }
   }

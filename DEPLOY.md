@@ -109,8 +109,10 @@ curl -s -o /dev/null -w "%{http_code} %{content_type}\n" http://127.0.0.1:8787/h
 
 重启后若 `backend/data/` 下无 `.users.json`，NestJS 自动建默认管理员并打印告警（见第 5 节）。
 
-> ⚠️ **重启 = 全体登出**：会话（session）保存在 NestJS **内存**里，不落盘。每次重启 `aeolus-backend`
-> 都会清空所有会话，「记住我」的用户也会被要求重新登录。排"上线后要输入密码"的现象时先看这里。
+> ℹ️ **重启不再全体登出**：会话会持久化到 `backend/data/.sessions.json`（0600 权限、gitignore）。
+> 正常重启（`systemctl restart`）会走优雅停机落盘，即便是 `kill -9`/崩溃也能保住登录态——因为
+> 登录、登出时已即时落盘。想强制所有人重新登录，删掉该文件即可：
+> `rm /opt/aeolusdata/backend/data/.sessions.json && systemctl restart aeolus-backend`
 
 ---
 
@@ -271,4 +273,6 @@ location / {
   由 nginx 终止，因此 Express 认为请求是 http —— 结果是不带 `Secure`。功能不受影响（HTTPS 下浏览器照样
   携带 Cookie，且 `SameSite=Lax` 已挡掉大部分跨站场景）。若想强制 `Secure`，在 `main.ts` 加
   `app.set('trust proxy', 1)`（注意它会同时影响 `req.ip`，让限频改用 `X-Forwarded-For`）。
-- **后端重启 = 全体登出**：会话只存在 Nest 进程内存里，不持久化。
+- **会话跨重启存活**：登录后即时写盘，启动时用该文件恢复。滑动续期的最新 `exp` 由每 10 分钟的周期
+  快照写回，所以**非正常关机最多丢失一个快照周期的续期时长**（不影响正常使用）。
+- 排查「重启后仍保持着已失效的登录」：删掉 `.sessions.json` 再重启即可强制全部下线。
