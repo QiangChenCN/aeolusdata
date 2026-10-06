@@ -12,8 +12,8 @@ export interface Standard {
  */
 export const STANDARDS: Standard[] = [
   { level: 1, orders: 18, hours: 6 },
-  { level: 2, orders: 30, hours: 6 },
-  { level: 3, orders: 37, hours: 6 },
-  { level: 4, orders: 45, hours: 7 },
-  { level: 5, orders: 56, hours: 8 },
+  { level: 2, orders: 21, hours: 6 },
+  { level: 3, orders: 26, hours: 6 },
+  { level: 4, orders: 32, hours: 7 },
+  { level: 5, orders: 39, hours: 8 },
 ];
