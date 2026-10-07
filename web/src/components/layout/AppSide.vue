@@ -17,16 +17,18 @@
           <span v-if="it.count != null" class="ct">{{ it.count }}</span>
           <el-icon class="nv-arw"><ArrowRight /></el-icon>
         </div>
-        <div v-if="open(it)" class="nv-subs">
-          <RouterLink
-            v-for="c in it.children" :key="c.kind + c.id"
-            :to="to(c)" class="nv-sub" :class="{ on: isActive(c) }"
-          >
-            <el-icon class="ic"><component :is="c.icon" /></el-icon>
-            <span class="nm">{{ c.name }}</span>
-            <span v-if="c.count != null" class="ct">{{ c.count }}</span>
-            <span v-if="busy(c)" class="nv-dot nv-dot--busy"></span>
-          </RouterLink>
+        <div class="nv-subs-wrap" :class="{ open: open(it) }">
+          <div class="nv-subs">
+            <RouterLink
+              v-for="c in it.children" :key="c.kind + c.id"
+              :to="to(c)" class="nv-sub" :class="{ on: isActive(c) }"
+            >
+              <el-icon class="ic"><component :is="c.icon" /></el-icon>
+              <span class="nm">{{ c.name }}</span>
+              <span v-if="c.count != null" class="ct">{{ c.count }}</span>
+              <span v-if="busy(c)" class="nv-dot nv-dot--busy"></span>
+            </RouterLink>
+          </div>
         </div>
       </template>
     </template>
@@ -35,7 +37,7 @@
 
 <script setup>
 import { computed, watch } from 'vue';
-import { useRoute, useRouter } from 'vue-router';
+import { useRoute } from 'vue-router';
 import { useTasksStore } from '../../stores/tasks.js';
 import { useAppStore } from '../../stores/app.js';
 import { useAuthStore } from '../../stores/auth.js';
@@ -43,7 +45,6 @@ import { useRunsStore } from '../../stores/runs.js';
 import { GROUP_ICONS } from '../../utils/tokens.js';
 
 const route = useRoute();
-const router = useRouter();
 const tasks = useTasksStore();
 const app = useAppStore();
 const auth = useAuthStore();
@@ -116,13 +117,16 @@ function match(it) {
 }
 function parentOn(it) { return it.children.some((c) => isActive(c)); }
 function open(it) { return app.navOpen[it.key] === true; }
+/**
+ * 手风琴：展开一个分组时自动收起其它分组（互斥）；只做展开/收起，不跳转。
+ * （旧行为会在展开时跳到第一个子项，手风琴语义下已去掉。）
+ */
 function onParent(it) {
-  if (!open(it)) {
-    app.setNavOpen(it.key, true);
-    if (!parentOn(it)) router.push(to(it.children[0]));
-  } else {
-    app.setNavOpen(it.key, false);
-  }
+  const willOpen = !open(it);
+  navItems.value.forEach((o) => {
+    if (o.type === 'parent' && o.key !== it.key) app.setNavOpen(o.key, false);
+  });
+  app.setNavOpen(it.key, willOpen);
 }
 function busy(it) {
   const rid = runs.runningTaskId;
@@ -133,12 +137,17 @@ function busy(it) {
   return ids.includes(rid);
 }
 
-/** 深链/刷新进入某子页时，自动展开其所属父级导航（避免父项折叠导致子项不可见）。 */
+/**
+ * 深链/刷新进入某子页时，自动展开其所属父级导航（避免父项折叠导致子项不可见）。
+ * 手风琴互斥：同一时刻最多一个分组展开——这里也会把历史遗留的多开状态收敛掉。
+ */
 function ensureActiveParents() {
-  navItems.value.forEach((it) => {
-    if (it.type === 'parent' && parentOn(it) && app.navOpen[it.key] !== true) {
-      app.setNavOpen(it.key, true);
-    }
+  const parents = navItems.value.filter((it) => it.type === 'parent');
+  const active = parents.filter((it) => parentOn(it));
+  const keep = new Set(active.map((it) => it.key));
+  parents.forEach((it) => {
+    const want = keep.has(it.key);
+    if (open(it) !== want) app.setNavOpen(it.key, want);
   });
 }
 watch(() => route.fullPath, ensureActiveParents, { immediate: true });
@@ -167,7 +176,12 @@ watch(() => route.fullPath, ensureActiveParents, { immediate: true });
 .nv-parent .nv-arw { transition: transform 0.18s ease; color: var(--muted); }
 .nv-parent.open .nv-arw { transform: rotate(90deg); }
 .nv-parent.parent-on { color: var(--brand); }
-.nv-subs { display: flex; flex-direction: column; gap: 2px; margin: 2px 0 var(--sp-4); }
+/* 手风琴折叠动画：用 grid-template-rows 0fr→1fr 过渡到「内容真实高度」，
+   无需知道子项数量（任务中心分组数不定）。旧浏览器不支持插值时仍能正常折叠，只是无动画。 */
+.nv-subs-wrap { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 0.22s ease; }
+.nv-subs-wrap.open { grid-template-rows: 1fr; }
+.nv-subs { overflow: hidden; min-height: 0; display: flex; flex-direction: column; gap: 2px; margin: 0; }
+.nv-subs-wrap.open .nv-subs { margin: 2px 0 var(--sp-4); }
 .nv-dot--busy {
   position: absolute; right: var(--sp-10); top: 50%; transform: translateY(-50%);
   width: 7px; height: 7px; border-radius: 50%; background: var(--brand);
