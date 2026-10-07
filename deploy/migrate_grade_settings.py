@@ -74,6 +74,16 @@ def main():
     ap.add_argument("--apply", action="store_true", help="真正写盘（否则仅预览）")
     args = ap.parse_args()
 
+    # 1) 已是新格式 → 无需迁移（避免重复迁移覆盖服务器上用户已保存的设置）
+    if os.path.exists(NEW_FILE):
+        print(f"[SKIP] 新格式文件已存在，无需迁移：{NEW_FILE}")
+        return
+
+    # 2) 旧文件不存在 → 无从迁移（可能已迁移过，或从未使用旧格式）
+    if not os.path.exists(OLD_GRADE):
+        print(f"[INFO] 旧文件不存在，无需迁移：{OLD_GRADE}")
+        return
+
     old_grade = load(OLD_GRADE)
     old_thresh = load(OLD_THRESH)
 
@@ -85,7 +95,14 @@ def main():
                 print(f"        threshold_config.json['{cand}'] = {old_thresh[cand]}")
 
     if not isinstance(old_grade, dict) or not isinstance(old_grade.get("months"), dict):
-        print("[ERROR] 旧 grade_standards.json 缺少 months 字段或格式不符，无法迁移。请先 `cat` 该文件发给我确认结构。")
+        # 区分"格式不符"的具体情形，直接把可用于适配的信息打出来
+        print("[ERROR] 旧 grade_standards.json 缺少 months 字段或格式不符，无法自动迁移。")
+        if isinstance(old_grade, dict):
+            print(f"        顶层键: {list(old_grade.keys())}")
+            print(f"        内容样本: {json.dumps(old_grade, ensure_ascii=False)[:800]}")
+        else:
+            print(f"        解析结果类型: {type(old_grade)}（读取失败，或不是 JSON 对象）")
+        print("        请把上面的输出发我，我按实际结构适配脚本。")
         sys.exit(2)
 
     months_old = old_grade["months"]
