@@ -120,7 +120,7 @@ export class RefreshRunnerService {
   /** 频控：key → 上次放行的毫秒时间戳（按用户分桶）。仅内存态，重启即清。 */
   private readonly rateState = new Map<string, number>();
   private lastGlobalAt = 0;
-  /** 项目根（PROJECT_ROOT 或 cwd 上一级），用于直接读 grade_standards.json 取当月参与站。 */
+  /** 项目根（PROJECT_ROOT 或 cwd 上一级），用于读全局标准达成设置取参与站 / 写刷新日志。 */
   private readonly rootDir: string;
 
   constructor(
@@ -452,43 +452,42 @@ export class RefreshRunnerService {
 
   // ---------------------------------------------------------------- 辅助
   /**
-   * 「参与站点」id 列表 —— 单一数据源 = 对话框里配置的 grade_standards 当月参与站。
-   *
-   * 之前依赖无人维护的 teams-config（python/analytics/teams_config.json），导致「对话框里配了站、
-   * 刷新却不去拉那些站的数据」的失真（报表因此报『今日尚有站点数据未落盘』）。现改为直接读
-   * Nest 落盘的 grade_standards.json，与看板显示 / 报表口径完全一致；仅当该月从未在
-   * grade_standards 配置过时，才回落旧 teams-config（兼容老部署，其本身会回落默认三站）。
+   * 「参与站点」id 列表 —— 单一数据源 = 「标准达成设置」中该月【配置了记录】的站点
+   * （standard_grade_settings.json 的 months[月]，与看板「标准达成」、机器人「运力达成查询」同源，
+   * 不再维护独立参与名单）。该月从未配置 → 空列表（不回落任何默认站点）。
    */
   async configuredTeams(month?: string): Promise<string[]> {
     const m = (month || '').trim() || todayYmd().slice(0, 7);
-    const gp = await this.gradeParticipating(m);
-    if (gp && gp.length) return gp; // 单一数据源：对话框配置的参与站
-    // 回落旧 teams-config（grade_standards 该月未配置时）
-    try {
-      const r = await this.compute.proxy({ endpoint: '/api/standard/teams-config', method: 'GET' });
-      const d = r.data as { teams?: unknown } | undefined;
-      if (Array.isArray(d?.teams)) return (d!.teams as unknown[]).map(String).filter(Boolean);
-    } catch (e) {
-      this.logger.warn(`teams-config 读取失败，已忽略：${(e as Error).message}`);
-    }
+    const gp = await this.globalParticipating(m);
     return gp || [];
   }
 
   /**
-   * 直接读 grade_standards.json 取某月参与站（enabled !== false 的站点）。
-   * 返回 null 表示文件缺失 / 该月从未配置（调用方回落 teams-config）；
-   * 返回 [] 表示该月已配置但无参与站（用户显式移除全部）。
+   * 读「标准达成设置」（standard_grade_settings.json）某月的参与考核站点 =
+   * months[month] 下配置了记录的站点 id。
+   * 返回 null 表示文件缺失 / 该月从未配置（调用方回落默认三站）。
    */
-  private async gradeParticipating(month: string): Promise<string[] | null> {
-    const file = path.join(this.rootDir, 'python', 'dashboard', 'standard', 'grade_standards.json');
+  private async globalParticipating(month: string): Promise<string[] | null> {
+    const file = path.join(
+      this.rootDir,
+      'python',
+      'dashboard',
+      'standard',
+      'standard_grade_settings.json',
+    );
     try {
       const data = JSON.parse(await fs.promises.readFile(file, 'utf8'));
-      const months = (data && data.months) || {};
-      if (!(month in months)) return null;
-      const cfg = months[month] || {};
-      return Object.keys(cfg)
-        .filter((t) => (cfg[t] && cfg[t].enabled) !== false)
-        .map(String);
+      const months = data && data.months && typeof data.months === 'object' ? data.months : {};
+      const m = month && months[month];
+      if (m && typeof m === 'object') {
+        const out = Object.keys(m).map(String).filter(Boolean);
+        return out.length ? out : null;
+      }
+      // 旧单套 schema：顶层 participating_teams 套用到未单独配置的月份（旧配置本就不分月份）。
+      const legacy = Array.isArray(data?.participating_teams)
+        ? data.participating_teams.map((x: unknown) => String(x).trim()).filter((x: string) => x)
+        : [];
+      return legacy.length ? legacy : null;
     } catch {
       return null;
     }

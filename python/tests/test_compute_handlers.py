@@ -55,10 +55,12 @@ def test_key_routes_present():
     # 故不在此列（见下方 NEST_NATIVE）。
     for p in ("/api/standard/station-report",
               "/api/standard/achievement", "/api/standard/riders",
-              "/api/realtime/station", "/api/realtime/targets",
+              "/api/realtime/station",
               "/api/attend-period/months", "/api/overview/standard"):
         assert p in handlers.GET_ROUTES, "缺少关键 GET 路由 %s" % p
-    for p in ("/api/standard/teams-config", "/api/attend-period/config"):
+    # /api/standard/teams-config 已随「参与考核站点」字段一并移除（改为
+    # 标准达成设置里【按月份 × 站点】有配置即考核，由 Nest grade-global 端点负责）。
+    for p in ("/api/attend-period/config",):
         assert p in handlers.POST_ROUTES, "缺少关键 POST 路由 %s" % p
 
 

@@ -136,7 +136,7 @@
 | `dashboard.standard.period_config` | 同上（`periodConfigGet/Post`，按月分文件） | `GET/POST /api/attend-period/config` | ✅ 已迁移 |
 | `dashboard.standard.attend_period_teams` | 同上（`apTeamsGet/Post`） | `GET/POST /api/attend-period/teams` | ✅ 已迁移 |
 | `dashboard.realtime.config`（selection） | 同上（`realtimeSelectionGet/Post`，按用户名分区 + x-scope 越权站点剔除） | `GET/POST /api/realtime/selection` | ✅ 已迁移 |
-| `dashboard.realtime.config`（targets） | 同上（`realtimeTargetsGet/Post`，静态常量 + 行级校验） | `GET/POST /api/realtime/targets` | ✅ 已迁移 |
+| `dashboard.realtime.config`（站点选择） | 同上（`realtimeSelectionGet/Post`） | `GET/POST /api/realtime/selection` | ✅ 已迁移 |
 
 > 拦截点：`backend/src/modules/proxy/proxy.controller.ts` 在 `standard / attend-period / realtime`
 > 通配 handler 内**显式改派** `ConfigService.dispatch(method, path, body, query, user, allowed)`
@@ -150,13 +150,11 @@
 
 | 文件 | 路径（相对仓库根 `PROJECT_ROOT`） | 内容 | 写入方 | 读取方 |
 |---|---|---|---|---|
-| 参与站点 | `python/dashboard/standard/teams_config.json` | `{teams:[...]}` | Nest `ConfigService` | Python 计算（站点范围） |
-| 考核标准 | `python/dashboard/standard/grade_standards.json` | `{schema_version,months}` | Nest | Python（grade / build_levels） |
-| 门槛封顶 | `python/dashboard/standard/threshold_config.json` | `{schema_version:2,months}` | Nest | Python |
+| 标准达成设置（按月份 × 站点：默认模板 + 各站点档位） | `python/dashboard/standard/standard_grade_settings.json` | `{schema_version,default:{levels,threshold_pct,cap_pct},months:{<月>:{<站>:{levels,threshold_pct,cap_pct}\|{use_default:true}}}}` | Nest `ConfigService` | Python（grade / 报表 / 刷新参与站）、机器人 |
 | 时段配置 | `python/dashboard/standard/period_config_YYYY-MM.json` | `{schema_version:3,periods}` | Nest（按月分文件） | Python |
 | 出勤参与站点 | `python/dashboard/standard/attend_period_teams.json` | `{teams:[...]}` | Nest | Python |
 | 实时站点选择 | `.realtime_selection.json`（仓库根） | `{<user>: [team,...]}` | Nest（按用户名分区） | Python（realtime 聚合） |
-| 实时考核目标 | `.realtime_targets.json`（仓库根） | `{version,rows,updated_*}` | Nest | Python（realtime 聚合） |
+| 服务质量考核目标 | `.service_quality_targets.json`（仓库根） | `{version,months:{<月>:{weights,kinds,<指标>:{<日期类型>:{<天气>:{t0,t60,t100}}}}}}` | Nest `ConfigService` | Python（`analytics/service_quality.py`，实时看板打分口径来源） |
 
 > 落盘格式：Nest 端 `JSON.stringify(obj, null, 2)` + **原子写**（先写 `.tmp` 再 `rename`），与 Python
 > 原 `json.dump(ensure_ascii=False, indent=2)` 解析兼容（文件内容均为 ASCII 友好的数字/枚举，中文转义
@@ -197,7 +195,7 @@
 2. 共享原始层 `python/dashboard/data/{kind}_{team}_{date}.json` —— **Nest 是唯一写入方**（`raw-cache.service.ts`），Python 只读取（计算的输入端口）；落盘格式以 `raw-cache.service.ts` 为准，Python 的 `cache.save_raw` 仅转发，不再自己写文件
 3. 共享 `python/dashboard/standard/cache/pace_state.json` —— 两边学到的节奏下限互通
 4. **Nest 写完原始层后必须调 `POST /api/cache/invalidate`** —— 否则 Python 进程内结果缓存不失效，看板返回旧聚合结果（已实测复现：移走数据文件后报表数字仍不变）
-5. 共享看板配置文件（`python/dashboard/standard/{teams_config,grade_standards,threshold_config,period_config_YYYY-MM,attend_period_teams}.json` 与仓库根 `.realtime_selection.json` / `.realtime_targets.json`）—— **Nest 是唯一写入方**（`config.service.ts`），Python 只读取（计算输入端口）；落盘格式以 `config.service.ts` 为准（原子写 + `indent=2`），Python 不再写这些文件。grade-standards / thresholds 写入后由 Nest 调 `invalidateAll()` 全量失效结果缓存（见 §6.1.3）
+5. 共享看板配置文件（`python/dashboard/standard/{teams_config,grade_standards,threshold_config,period_config_YYYY-MM,attend_period_teams}.json` 与仓库根 `.realtime_selection.json` / `.service_quality_targets.json`）—— **Nest 是唯一写入方**（`config.service.ts`），Python 只读取（计算输入端口）；落盘格式以 `config.service.ts` 为准（原子写 + `indent=2`），Python 不再写这些文件。grade-standards / thresholds 写入后由 Nest 调 `invalidateAll()` 全量失效结果缓存（见 §6.1.3）
 
 ## 8. 映射后模块归属总览
 

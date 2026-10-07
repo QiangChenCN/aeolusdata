@@ -131,18 +131,14 @@ POST_NEVER_SEND = {
     "/api/stop": "无参即生效，会停掉当前任务",
     "/api/todo/trigger": "会真实触发提醒任务",
     # —— 空载荷即写入配置（由状态快照实测发现，已自动还原）——
-    # 顺带说明：这两个端点接受空载荷并直接落盘，本身值得单独加固。
     "/api/realtime/selection": "空载荷即写入 .realtime_selection.json",
-    "/api/standard/thresholds": "空载荷即写入 analytics/threshold_config.json",
 }
 # 可写状态文件：POST 探测前后比对哈希，变了就说明该端点会真写入
 STATE_FILES = [
     "backend/data/.data_perms.json", "backend/data/.pwpolicy.json", ".realtime_selection.json",
-    ".realtime_targets.json", "backend/data/.roles.json", "backend/data/.users.json", "org_tree.json",
+    ".realtime_selection.json", "backend/data/.roles.json", "backend/data/.users.json", "org_tree.json",
     "analytics/attend_period_teams.json",
-    "python/dashboard/standard/grade_standards.json",
-    "analytics/teams_config.json",
-    "analytics/threshold_config.json",
+    "python/dashboard/standard/standard_grade_settings.json",
     "backend/data/todo.db",
 ]
 # 可用「文件复制」安全还原的：只有 JSON 配置。

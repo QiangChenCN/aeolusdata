@@ -89,7 +89,7 @@ TIME_SLOTS = {
 # 骑手等级标准（占位默认值，需按业务口径校准）。
 # 每档：level（序号，0 为兜底未定级）/ name / min_valid_orders（全天有效单量下限）
 #        / min_valid_minutes（全天有效在线分钟下限）。从低到高排列。
-# 等级标准由 analytics.grade_standards.build_levels(team_id, month) 提供；
+# 等级标准由 analytics.grade_standards.site_levels(month, team) 提供（按月份 × 站点）；
 # _grade() 现在吃传入的 levels，不再读这个常量（保留以备离线/未配置场景兜底）
 
 # 取数键与「有效单」口径 **单一来源** = analytics.order_rules
@@ -396,7 +396,7 @@ def riders_with_completed_orders_today(orders, team_id, today_ymd):
 # ===================== 等级判定 =====================
 def _grade(full_valid_orders, full_valid_min, levels):
     """按全天有效单量 + 全天有效在线分钟，定位当前等级与升一级的缺口。
-    levels 由 grade_standards.build_levels(team_id, month) 提供；约定
+    levels 由 grade_standards.site_levels(month, team) 提供（按月份 × 站点）；约定
       levels[0] = 未定级，levels[1..5] = 标准1..5（按老板截图口径）。
     full_valid_min 传 None 表示「全天有效在线时长未知（典型：未排班骑手，
     考勤接口未返回）」—— 此时按时长轴无法定位，按未排班处理返回未定级，
@@ -519,13 +519,13 @@ def _build(team_id, start, end, month, riders_raw, orders, target_tc, source):
     target_tc 直接取「拉取时记录的时段码」，不随当前时间漂移 ——
     保证「拉的是午高峰就按午高峰算」，切站点 / 切维度时口径一致。
 
-    month: YYYY-MM（默认 = 当前北京时间当月）；从 grade_standards.build_levels 取阈值。
+    month: YYYY-MM（默认 = 当前北京时间当月）；从 grade_standards.site_levels 取 (月,站) 阈值。
     """
     team_id = str(team_id)
     team_name = TEAM_NAMES.get(team_id, "team " + team_id)
     if not month:
         month = datetime.datetime.now(BJ).strftime("%Y-%m")
-    levels = GS.build_levels(team_id, month)
+    levels = GS.site_levels(month, team_id)
     error = None
     riders_raw = riders_raw or []
     orders = orders or []
@@ -746,7 +746,7 @@ def _build(team_id, start, end, month, riders_raw, orders, target_tc, source):
         "cache_time": CACHE.latest_cache_time(team_id, start) if source == "cache" else None,
         "summary": summary,
         "rows": rows,
-        "grade_note": "等级阈值取自 grade_standards（按站点 × 月份），老板通过『等级标准设置』tab 维护。",
+        "grade_note": "等级阈值取自全局『标准达成设置』（不分站点/月份），在考核设置配置。",
         "rider_set_note": "骑手集合 = 今日排班(考勤快照) ∪ 今日未排班但有完成单的骑手；"
                           "「今日有单」按运单接单时间(acceptAtLast)归属日期，状态=已完成(40/配送成功)即算 1 单。"
                           "有效单量口径：接单时间归属当天 + 配送完成 + 剔除逆向单/改派单。",

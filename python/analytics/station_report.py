@@ -53,7 +53,6 @@ import datetime
 from analytics import cache as CACHE
 from analytics import rider_dimension as RD
 from analytics import achievement as AC
-from analytics import threshold_config as TC
 from analytics import grade_standards as GS
 from analytics import order_rules as OR
 
@@ -109,30 +108,19 @@ def build_one(team_id, start, end, month, source="cache"):
     date = start
     if not month:
         month = datetime.datetime.now(BJ).strftime("%Y-%m")
-    # 站点考核配置：未参与考核（未启用 / 未配置且非默认站）的站点，标准达成看板不展示
-    if team_id not in GS.participating_teams(month):
+    # 站点考核配置：该月下无配置记录的站点不参与考核，标准达成看板不展示。
+    if team_id not in GS.graded_team_ids(month):
         return {
             "team_id": team_id,
             "team_name": TEAM_NAMES.get(team_id, team_id),
             "need_refresh": False,
             "data_status": "not_enabled",
-            "data_note": "该站点未启用考核，已在看板中隐藏",
+            "data_note": "该站点未配置考核标准，已在看板中隐藏",
         }
-    _cfg = GS.get_config(team_id, month)
-    # 门槛/封顶百分比：单站优先，回落全局月度 threshold_config。
-    # 这部分配置直接影响门槛/封顶人数，故纳入进程内结果缓存的 key（见下方 _cfg_ver），
-    # 使「配置一改即自动失效旧口径」，无需依赖 invalidateAll 的跨进程 HTTP 回调是否成功
-    # （历史上多次出现 invalidate 未触达、看板静默返回旧阈值 64 而非 76 的失真）。
-    # 注意：不再兜底 80/100 —— 未设置时由下方标记 config_missing，让前端明确报错提醒，
-    # 而不是静默用错误口径掩盖「忘了设配置」。
-    _tp = _cfg.get("threshold_pct")
-    _cp = _cfg.get("cap_pct")
-    if _tp is None or _cp is None:
-        _g = TC.get(month)
-        if _tp is None:
-            _tp = _g.get("threshold_pct")
-        if _cp is None:
-            _cp = _g.get("cap_pct")
+    # 门槛/封顶百分比：按 (月,站) 取自「标准达成设置」，与看板、机器人共用。
+    # 纳入进程内结果缓存的 key（见下方 _cfg_ver），使「配置一改即自动失效旧口径」。
+    # 未设置时由下方标记 config_missing，让前端明确报错提醒。
+    _tp, _cp = GS.site_threshold_cap(month, team_id)
     _missing = [n for n, v in (("门槛", _tp), ("封顶", _cp)) if v is None]
     _cfg_ver = "cache#tp%s_cp%s" % (_tp, _cp)
     cached = CACHE.get_result("station_report", team_id, date, month, _cfg_ver)

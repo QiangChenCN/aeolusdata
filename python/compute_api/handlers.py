@@ -204,7 +204,7 @@ def _configured_teams():
 
 
 def _part_teams(month):
-    """本月「参与考核」的站点 [(team_id, name)]（enabled 且已配置；初始无配置回落默认三站）。
+    """参与考核的站点 [(team_id, name)]（标准达成设置：某月下【配置了记录的站点】即参与）。
 
     标准达成看板仅展示这些站点，实现「站点考核按需配置 + 看板联动」。
     """
@@ -213,7 +213,7 @@ def _part_teams(month):
     names = dict(_teams_with_names())
     names.update(TCFG.TEAM_NAMES)
     out = []
-    for tid in GS.participating_teams(month):
+    for tid in GS.graded_team_ids(month):
         out.append((tid, names.get(tid, tid)))
     return out
 
@@ -456,9 +456,9 @@ def _get_std_riders(self, qs):
         self._json(MT.riders_all(_teams, start, end,
                                  time_code=tc, month=month))
         return
-    # 单站：未启用考核则看板隐藏（与站点报表一致）
+    # 单站：未启用考核（该月无配置记录）则看板隐藏（与站点报表一致）
     from analytics import grade_standards as GS
-    if str(team) not in GS.participating_teams(month):
+    if str(team) not in GS.graded_team_ids(month):
         self._json({"ok": True, "team": team, "rows": [],
                     "data_status": "not_enabled",
                     "data_note": "该站点未启用考核，已在看板中隐藏",
@@ -532,106 +532,19 @@ def _get_std_station_report(self, qs):
                     "data_status": "error", "need_refresh": False})
 
 
-def _get_std_teams_config(self, qs):
-    from analytics import teams_config as TCFG
-    self._json({"ok": True, "teams": TCFG.get_teams(),
-                "default": list(TCFG.DEFAULT_TEAMS),
-                "all": [{"id": i, "name": n} for i, n in _teams_with_names()]})
-
-
 # 注：`/api/standard/refresh-all-status` 已于 2026-09-23 迁为 NestJS 原生端点
 # （`backend/src/modules/fetch/refresh.controller.ts` → `RefreshRunnerService.status()`）。
 # 全量刷新的**编排**（阶段调度 / 状态机 / 日志 / 单飞 / 频控 / 数据权限收敛）归 Nest；
 # **计算**留在本服务，见 compute_api/main.py 的 `/api/compute/{violations,rider-dimension,achievement}`。
 
 
-def _get_std_grade_standards(self, qs):
-    month = (qs.get("month") or [""])[0].strip() or None
-    team_only = (qs.get("team") or [""])[0].strip() or None
-    try:
-        from analytics import grade_standards as GS
-        if team_only:
-            rec = GS.get(team_only, month or "")
-            self._json({"ok": True, "record": rec,
-                        "month": rec.get("month"),
-                        "team_id": rec.get("team_id"),
-                        "thresholds": GS.build_levels(
-                            team_only, rec.get("month") or "")[1:6]})
-        else:
-            out = GS.get_all(month or "")
-            self._json({"ok": True, **out})
-    except Exception as e:
-        self._json({"ok": False, "error": "%s: %s" % (type(e).__name__, e)})
-
-
-def _get_std_thresholds(self, qs):
-    try:
-        from analytics import threshold_config as TC
-        month = (qs.get("month") or [None])[0]
-        self._json({"ok": True, **TC.get(month)})
-    except Exception as e:
-        self._json({"ok": False, "error": "%s: %s" % (type(e).__name__, e)})
-
-
 # >>>ROUTES_MARKER<<<
-
-def _post_std_teams_config(self, data):
-    from analytics import teams_config as TCFG
-    ok, teams, msg = TCFG.set_teams(data.get("teams"))
-    self._json({"ok": ok, "teams": teams, "error": (msg or None)})
-
 
 # 注：`POST /api/standard/refresh-all` 已于 2026-09-23 迁为 NestJS 原生端点。
 # 频控（60s/用户 + 15s 全局间隔）、数据权限收敛（收敛为空必须 403，绝不能把空列表交给
 # 编排器 —— 那会回落成全量参与站点，等于越权）、单飞接入，现全在
 # `backend/src/modules/fetch/refresh-runner.service.ts::startFromRequest`，
 # 并由 `tests/refresh-runner.spec.ts` 覆盖（原 `tests/test_data_scope.py` 的对应用例已随之移除）。
-
-
-def _post_std_grade_standards(self, data):
-    tid = str(data.get("team_id") or "").strip()
-    mo = str(data.get("month") or "").strip()
-    action = str(data.get("action") or "save").strip()
-    if not tid or not mo:
-        self._json({"ok": False, "error": "team_id 与 month 都必填"}, 400)
-        return
-    from analytics import cache as _CACHE
-    try:
-        from analytics import grade_standards as _GS
-        if action == "delete":
-            deleted = _GS.delete(tid, mo)
-            _CACHE.clear_results()
-            self._json({"ok": True, "deleted": deleted})
-            return
-        order = data.get("order")
-        dur_h = data.get("duration_h") or data.get("duration")
-        if not isinstance(order, list) or len(order) != 5:
-            self._json({"ok": False, "error": "order 须是长度为 5 的数组"}, 400)
-            return
-        if not isinstance(dur_h, list) or len(dur_h) != 5:
-            self._json({"ok": False, "error": "duration_h 须是长度为 5 的数组"}, 400)
-            return
-        saved = _GS.save(tid, mo, order, dur_h)
-        _CACHE.clear_results()
-        self._json({"ok": True, "saved": saved})
-    except Exception as e:
-        self._json({"ok": False, "error": "%s: %s" % (type(e).__name__, e)}, 400)
-
-
-def _post_std_thresholds(self, data):
-    try:
-        from analytics import threshold_config as _TC
-        from analytics import cache as _CACHE
-        tp = data.get("threshold_pct")
-        cp = data.get("cap_pct")
-        month = data.get("month")
-        saved = _TC.save(tp, cp, month)
-        _CACHE.clear_results()
-        self._json({"ok": True, **saved})
-    except ValueError as e:
-        self._json({"ok": False, "error": str(e)}, 400)
-    except Exception as e:
-        self._json({"ok": False, "error": "%s: %s" % (type(e).__name__, e)}, 400)
 
 
 # >>>ROUTES_MARKER<<<
@@ -879,44 +792,6 @@ def _post_realtime_selection(self, qs):
     self._json({"ok": True, "teams": clean})
 
 
-# ---------------- 实时数据：考核目标设置（按场景分档阈值 + 权重） ----------------
-# 计算/配置逻辑（阈值种子 / 校验 / 读写）已迁至 analytics/realtime/config.py；
-# 此处仅保留 HTTP 路由 + 鉴权。读取所有人可见，保存需 realtime:targets 权限。
-def _get_realtime_targets(self, qs):
-    from analytics.realtime import config as RT
-    s = self.session
-    if not s:
-        self._json({"ok": False, "error": "未登录"}, 401); return
-    obj = RT.load_realtime_targets()
-    self._json({
-        "ok": True,
-        "metrics": RT.RT_METRICS, "date_types": RT.RT_DATE_TYPES, "weather": RT.RT_WEATHER,
-        "rows": obj["rows"], "updated_at": obj.get("updated_at", ""),
-        "updated_by": obj.get("updated_by", ""),
-    })
-
-
-def _post_realtime_targets(self, data):
-    from analytics.realtime import config as RT
-    s = self.session
-    if not s:
-        self._json({"ok": False, "error": "未登录"}, 401); return
-    rows = data.get("rows") if isinstance(data, dict) else None
-    if not isinstance(rows, list):
-        self._json({"ok": False, "error": "rows 必须为数组"}, 400); return
-    errors = RT.validate_realtime_targets(rows)
-    if errors:
-        self._json({"ok": False, "errors": errors}, 400); return
-    obj = {
-        "version": 1,
-        "updated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        "updated_by": s["user"],
-        "rows": rows,
-    }
-    RT.save_realtime_targets(obj, s["user"])
-    self._json({"ok": True, "updated_at": obj["updated_at"], "updated_by": obj["updated_by"]})
-
-
 # ---------------- 实时数据：站点概览（推配送单量 / 配送完成单） ----------------
 # 计算逻辑已迁至 analytics/realtime/board.py；此处仅做站点权限闸门 + 转发。
 def _get_realtime_station(self, qs):
@@ -1015,9 +890,6 @@ GET_ROUTES = {
     "/api/standard/achievement": _get_std_achievement,
     "/api/standard/riders": _get_std_riders,
     "/api/standard/station-report": _get_std_station_report,
-    "/api/standard/teams-config": _get_std_teams_config,
-    "/api/standard/grade-standards": _get_std_grade_standards,
-    "/api/standard/thresholds": _get_std_thresholds,
     "/api/attend-period/valid": _get_ap_valid,
     "/api/attend-period/rider-detail": _get_ap_rider_detail,
     "/api/attend-period/station-data": _get_ap_station_data,
@@ -1029,16 +901,11 @@ GET_ROUTES = {
     "/api/overview/standard": _get_ov_standard,
     "/api/overview/assessment": _get_ov_assessment,
     "/api/realtime/selection":  _get_realtime_selection,
-    "/api/realtime/targets":    _get_realtime_targets,
     "/api/realtime/station":    _get_realtime_station,
 }
 
 POST_ROUTES = {
-    "/api/standard/teams-config": _post_std_teams_config,
-    "/api/standard/grade-standards": _post_std_grade_standards,
-    "/api/standard/thresholds": _post_std_thresholds,
     "/api/attend-period/config": _post_ap_config,
     "/api/attend-period/teams": _post_ap_teams,
     "/api/realtime/selection": _post_realtime_selection,
-    "/api/realtime/targets":    _post_realtime_targets,
 }

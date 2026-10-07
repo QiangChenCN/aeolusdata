@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { FetchModule } from '../fetch/fetch.module';
+import { ConfigModule } from '../config/config.module';
 import { BOTS } from './bot.interface';
 import { BotConfigService } from './bot-config.service';
 import { DingtalkClientProvider } from './dingtalk-client.provider';
@@ -26,7 +27,7 @@ import { RiderQueryService } from './impls/std-achievement/rider-query.service';
  */
 
 @Module({
-  imports: [FetchModule],
+  imports: [FetchModule, ConfigModule],
   controllers: [BotController],
   providers: [
     BotConfigService,

@@ -1,34 +1,34 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""骑手等级标准（按站点 × 月份 配置表）。
+"""「标准达成设置」（按月份 × 站点）。
 
-存盘 JSON：`analytics/grade_standards.json`
-结构：
+数据模型（落盘 <python>/dashboard/standard/standard_grade_settings.json，由 Nest ConfigService 读写；
+Python 计算侧按此路径读取，与看板、机器人同源）：
+
   {
-    存盘 JSON：<python>/dashboard/standard/grade_standards.json
-    （配置写入方已迁 Nest：backend/src/modules/config/config.service.ts 的 stdDir；
-     Python 计算侧必须读同一份，否则 UI 保存的标准不会生效。）
-    结构：
-      {
-        "schema_version": 1,
-        "updated_at": "ISO8601",
-        "months": {
-          "2026-09": {
-            "917521130": {"order":[18,27,33,40,50], "duration_h":[6,6,6,7,8]},
-            "917521136": {...}, "917521139": {...}
-          }
-        }
+    "schema_version": 2,
+    "updated_at": "...", "updated_by": "...",
+    "default": { "levels":[5 档], "threshold_pct": 80, "cap_pct": 100 },   # 默认档位模板
+    "months": {
+      "<YYYY-MM>": {
+        "<team_id>": { "levels":[5 档], "threshold_pct":.., "cap_pct":.. }   # 独立配置
+                   | { "use_default": true }                                # 沿用默认模板
       }
+    }
+  }
 
+「参与考核站点」已移除：某月下【配置了记录的站点】即参与考核（有设置就默认考核）。
+某月从未保存过时参与站点为空（由前端提示去配置），**不回落任何默认站点**。
+迁移：旧单套 schema（顶层 levels/threshold/cap/participating_teams）读取时，顶层档位当默认模板、
+顶层 participating_teams 套用到任何未单独配置的月份（旧配置本就不分月份），旧数据不丢。
 
 对外：
-  defaults()                                          → {team_id: {order, duration_h}}（业务硬编码兜底）
-  get_all(month)                                      → 同上，叠加已配置项覆盖
-  get(team_id, month)                                 → 单条；未配则回退到 defaults()
-  save(team_id, month, order, duration_h) -> dict     → 落盘；验值后写
-  build_levels(team_id, month)                        → 5 档 level dict（直接喂 rider_dimension._grade）
+  grade_settings(month)            → {schema_version, updated_at, updated_by, month, configured, default, teams:{tid:{...}}}
+  graded_team_ids(month)           → 参与考核站点 id 列表（有配置记录即参与；该月从未配置 → 空列表）
+  site_settings(month, team)       → 某 (月,站) 配置，回落默认模板
+  site_levels(month, team)         → 6 档 level（level0=未定级 + 标准1..5），喂 rider_dimension / assessment_overview
+  site_threshold_cap(month, team)  → (门槛%, 封顶%)；任一为 None 表示未设置
 """
-import os
 
 # >>> python-home bootstrap (added by layout migration) >>>
 import os as _os
@@ -45,76 +45,64 @@ if PY_HOME and PY_HOME not in _sys.path:
     _sys.path.insert(0, PY_HOME)
 # <<< python-home bootstrap <<<
 
+import os
 import json
-import datetime
-import threading
+import datetime as _dt
 
-BJ = datetime.timezone(datetime.timedelta(hours=8))
+# 与 Nest ConfigService.stdDir 对齐：配置实际落盘于 <python>/dashboard/standard/
+_GLOBAL_PATH = os.path.join(PY_HOME, "dashboard", "standard", "standard_grade_settings.json")
 
-_HERE = os.path.dirname(os.path.abspath(__file__))
-# 关键：配置实际由 Nest ConfigService 落盘到 <python>/dashboard/standard/
-# （迁移后写入方已迁 Nest，见 backend/src/modules/config/config.service.ts 的 stdDir）。
-# 此前本文件随包搬家到 analytics/ 后 _PATH 仍指向 analytics/ 下的孤立副本，导致 UI 保存的
-# 等级标准与骑手等级计算读取的不是同一份文件 —— 标准改了但计算永远用默认（旧）阈值。
-# 现改为读 Nest 写入的共享文件；不要再改回 analytics/ 下的孤立副本。
-_PY_DIR = PY_HOME if PY_HOME else os.path.dirname(_HERE)
-_PATH = os.path.join(_PY_DIR, "dashboard", "standard", "grade_standards.json")
-_LOCK = threading.Lock()
-
-# 兜底默认值（与老板 2026-09-09 给的截图一致，黄江/万科/大岭山三站同配置）。
-# 标准 = 有效单量(全天)、时长(小时、全天有效在线)。两轴均达标才记到该级（最高命中级）。
-DEFAULT_BY_TEAM = {
-    "917521130": {"order": [18, 27, 33, 40, 50], "duration_h": [6, 6, 6, 7, 8]},
-    "917521136": {"order": [18, 27, 33, 40, 50], "duration_h": [6, 6, 6, 7, 8]},
-    "917521139": {"order": [18, 27, 33, 40, 50], "duration_h": [6, 6, 6, 7, 8]},
-}
+# 默认模板（首运行 / 新站点沿用），与「运力达成查询」机器人口径一致。
+DEFAULT_LEVELS = [
+    {"level": 1, "orders": 18, "hours": 6},
+    {"level": 2, "orders": 21, "hours": 6},
+    {"level": 3, "orders": 26, "hours": 6},
+    {"level": 4, "orders": 32, "hours": 7},
+    {"level": 5, "orders": 39, "hours": 8},
+]
+DEFAULT_THRESHOLD = 80.0
+DEFAULT_CAP = 100.0
 
 
-def _now_iso():
-    return datetime.datetime.now(BJ).strftime("%Y-%m-%dT%H:%M:%S+08:00")
+def _bj_now():
+    return _dt.datetime.now(_dt.timezone(_dt.timedelta(hours=8)))
 
 
-def _read():
-    if not os.path.exists(_PATH):
-        return {"schema_version": 1, "updated_at": _now_iso(), "months": {}}
+def current_month():
+    return _bj_now().strftime("%Y-%m")
+
+
+def _read_global():
+    if not os.path.exists(_GLOBAL_PATH):
+        return None
     try:
-        with open(_PATH, encoding="utf-8") as f:
+        with open(_GLOBAL_PATH, encoding="utf-8") as f:
             return json.load(f)
     except Exception:
-        # 损坏文件不抛：兜底按空配置走，避免拖死看板
-        return {"schema_version": 1, "updated_at": _now_iso(), "months": {}}
+        return None
 
 
-def _write(data):
-    """原子写：先写 .tmp 再 rename，避免半截文件被读。Windows 与 Linux 通用。"""
-    tmp = _PATH + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
-    os.replace(tmp, _PATH)
+def _norm_level(src, idx):
+    if not isinstance(src, dict):
+        src = {}
+    try:
+        orders = max(0, int(src.get("orders", 0)))
+    except (ValueError, TypeError):
+        orders = 0
+    try:
+        hours = max(0.0, min(24.0, float(src.get("hours", 0) or 0)))
+    except (ValueError, TypeError):
+        hours = 0.0
+    return {"level": idx + 1, "orders": orders, "hours": round(hours, 2)}
 
 
-def _val_list(v, n=5, vtype=int):
-    """归一化输入为长度 n 的列表：缺位补 0，多位截断，非数值容错。"""
-    out = []
-    for x in (v or []):
-        try:
-            out.append(vtype(x))
-        except (ValueError, TypeError):
-            out.append(0)
-        if len(out) >= n:
-            break
-    while len(out) < n:
-        out.append(0)
-    return out
-
-
-def defaults():
-    return {tid: {"order": list(v["order"]), "duration_h": list(v["duration_h"])}
-            for tid, v in DEFAULT_BY_TEAM.items()}
+def _norm_levels(arr):
+    raw = arr if isinstance(arr, list) else []
+    return [_norm_level(raw[i] if i < len(raw) else DEFAULT_LEVELS[i], i) for i in range(5)]
 
 
 def _norm_pct(v, cap=None):
-    """归一化百分比：空/None → None（未设置）；否则 float，校验 0~100（cap 允许 >100）。"""
+    """归一化百分比：None/空 → None（未设置）；否则 float，超范围 → None（避免脏数据）。"""
     if v is None or v == "":
         return None
     try:
@@ -126,195 +114,138 @@ def _norm_pct(v, cap=None):
     return f
 
 
-def get_all(month):
-    """取某月的全表（已配项覆盖默认项）；含 schema 元数据便于前端判断。
-
-    每条 team 记录除 order/duration_h 外，还含：
-      · enabled          : 是否参与考核（默认 True）
-      · threshold_pct    : 门槛(%)，None=未设置 → 回落全局 threshold_config
-      · cap_pct          : 封顶(%)，None=未设置 → 回落全局 threshold_config
-    participating：本月经「参与考核」的站点 id 列表（含 enabled 回落默认三站逻辑）。
-    """
-    month = (month or _current_month()).strip()
-    data = _read()
-    configured = (data.get("months") or {}).get(month) or {}
-    dflt = defaults()
-
-    def _merge(rec):
+def _template(d):
+    """解析默认档位模板：优先 default 键；兼容旧单套 schema（顶层 levels/threshold/cap）；否则内置默认。"""
+    d = d or {}
+    tmpl = d.get("default")
+    if isinstance(tmpl, dict) and (
+        isinstance(tmpl.get("levels"), list) or tmpl.get("threshold_pct") is not None or tmpl.get("cap_pct") is not None
+    ):
         return {
-            "order": _val_list(rec.get("order")),
-            "duration_h": _val_list(rec.get("duration_h"), vtype=float),
-            "enabled": rec.get("enabled", True) is not False,
-            "threshold_pct": _norm_pct(rec.get("threshold_pct"), cap=200),
-            "cap_pct": _norm_pct(rec.get("cap_pct"), cap=200),
+            "levels": _norm_levels(tmpl.get("levels")),
+            "threshold_pct": _norm_pct(tmpl.get("threshold_pct"), 100),
+            "cap_pct": _norm_pct(tmpl.get("cap_pct")),
         }
-
-    merged = {}
-    for tid, d in dflt.items():
-        cfg = configured.get(tid) or {}
-        merged[tid] = _merge(cfg if cfg else {"order": d["order"], "duration_h": d["duration_h"]})
-    # 兜底清单以外也回填（已配置的未知站也带上，方便前端渲染）
-    for tid, cfg in configured.items():
-        if tid not in merged:
-            merged[tid] = _merge(cfg)
+    if isinstance(d.get("levels"), list) or d.get("threshold_pct") is not None or d.get("cap_pct") is not None:
+        return {
+            "levels": _norm_levels(d.get("levels")),
+            "threshold_pct": _norm_pct(d.get("threshold_pct"), 100),
+            "cap_pct": _norm_pct(d.get("cap_pct")),
+        }
     return {
+        "levels": _norm_levels(DEFAULT_LEVELS),
+        "threshold_pct": DEFAULT_THRESHOLD,
+        "cap_pct": DEFAULT_CAP,
+    }
+
+
+def _norm_site(cfg, dflt):
+    if isinstance(cfg, dict) and cfg.get("use_default"):
+        return {
+            "levels": [dict(lv) for lv in dflt["levels"]],
+            "threshold_pct": dflt["threshold_pct"],
+            "cap_pct": dflt["cap_pct"],
+            "use_default": True,
+        }
+    cfg = cfg or {}
+    return {
+        "levels": _norm_levels(cfg.get("levels")),
+        "threshold_pct": _norm_pct(cfg.get("threshold_pct"), 100),
+        "cap_pct": _norm_pct(cfg.get("cap_pct")),
+        "use_default": False,
+    }
+
+
+def _legacy_team_ids(d):
+    """旧单套 schema 的参与站点名单（顶层 participating_teams）。
+
+    旧配置本就不分月份，迁移时把这份名单套用到【任何尚未单独配置的月份】，避免旧数据丢失。
+    """
+    if not isinstance(d, dict):
+        return []
+    p = d.get("participating_teams")
+    if not isinstance(p, list):
+        return []
+    return [str(x).strip() for x in p if str(x).strip()]
+
+
+def grade_settings(month=None):
+    """读取某月「标准达成设置」；参与考核站点 = 该月下配置了记录的站点。
+
+    该月从未配置时：
+      - 旧单套 schema（有顶层 participating_teams）→ 套用旧名单（迁移，不丢旧数据）；
+      - 否则 → 站点为空（前端据此提示「尚未配置」，不再回落默认三站）。
+    """
+    if not month:
+        month = current_month()
+    raw = _read_global()
+    empty = not (raw and isinstance(raw, dict))
+    dflt = _template(None if empty else raw)
+    months = (raw.get("months") if (raw and isinstance(raw.get("months"), dict)) else {}) if not empty else {}
+    entry = months.get(month) if (isinstance(months.get(month), dict)) else None
+    teams = {}
+    if entry is not None:
+        for tid, cfg in entry.items():
+            teams[str(tid)] = _norm_site(cfg, dflt)
+    else:
+        for tid in ([] if empty else _legacy_team_ids(raw)):
+            teams[tid] = {
+                "levels": [dict(lv) for lv in dflt["levels"]],
+                "threshold_pct": dflt["threshold_pct"],
+                "cap_pct": dflt["cap_pct"],
+                "use_default": True,
+            }
+    return {
+        "schema_version": (2 if empty else raw.get("schema_version", 2)) or 2,
+        "updated_at": None if empty else raw.get("updated_at"),
+        "updated_by": None if empty else raw.get("updated_by"),
         "month": month,
-        "schema_version": data.get("schema_version", 1),
-        "updated_at": data.get("updated_at"),
-        "configured_ids": list(configured.keys()),
-        "participating": participating_teams(month),
-        "teams": merged,
-        "defaults": dflt,
+        "configured": entry is not None,
+        "default": dflt,
+        "teams": teams,
     }
 
 
-def participating_teams(month):
-    """本月经「参与考核」的站点 id 列表。
-
-    · 若该月已有任何配置记录 → 取其中 enabled 不为 False 的站点（显式配置，按需启停）；
-    · 若月份记录存在但已被清空（用户移除了全部站点）→ 返回空，由前端提示无参与站，
-      不再回落默认三站（避免「移除全部」后被悄悄复活为默认三站）；
-    · 仅当该月从未配置过（连月份记录都不存在）→ 回落默认三站，保证首运行看板非空。
-    """
-    month = (month or _current_month()).strip()
-    data = _read()
-    months = data.get("months") or {}
-    configured = months.get(month) or {}
-    if not configured:
-        if month in months:
-            return []
-        return [str(t) for t in DEFAULT_BY_TEAM.keys()]
-    return [str(t) for t, cfg in configured.items()
-            if (cfg.get("enabled", True) is not False)]
+def graded_team_ids(month=None):
+    """参与考核站点 id 列表（有配置记录即参与；该月从未配置 → 空列表）。"""
+    return [str(t) for t in grade_settings(month)["teams"].keys()]
 
 
-def get_config(team_id, month):
-    """取某站某月的完整配置（含 enabled/threshold_pct/cap_pct）。
-    未配回退默认；并标注 configured / enabled / participating。"""
-    all_data = get_all(month)
-    tid = str(team_id)
-    rec = dict(all_data["teams"].get(tid, {}))
-    rec["team_id"] = tid
-    rec["month"] = all_data["month"]
-    rec["configured"] = tid in (all_data.get("configured_ids") or [])
-    rec["enabled"] = rec.get("enabled", True) is not False
-    rec["participating"] = tid in (all_data.get("participating") or [])
-    return rec
-
-
-def get(team_id, month):
-    """取单站单月：未配回退默认。"""
-    all_data = get_all(month)
-    tid = str(team_id)
-    if tid in all_data["teams"]:
-        rec = dict(all_data["teams"][tid])
-        rec["team_id"] = tid
-        rec["month"] = all_data["month"]
-        return rec
-    # 未知站：用 defaults() 的第一行兜底（避免回 None 阻塞调用方）
-    d = defaults().get(tid) or next(iter(defaults().values()))
-    return {
-        "team_id": tid, "month": all_data["month"],
-        "order": list(d["order"]), "duration_h": list(d["duration_h"]),
-    }
-
-
-def save(team_id, month, order, duration_h, enabled=True,
-          threshold_pct=None, cap_pct=None):
-    """校验 + 落盘。返回保存后的记录（含 enabled/threshold_pct/cap_pct）。
-
-    门槛/封顶均为百分比；考核人数分母（天应排）取自排班目标，不再单独配置。
-    """
-    tid = str(team_id).strip()
-    mo = str(month).strip()
-    if not tid or not mo:
-        raise ValueError("team_id 与 month 不能为空")
-    if not mo or len(mo) != 7 or mo[4] != "-":
-        raise ValueError("month 须为 YYYY-MM 格式")
-    o = _val_list(order)
-    d_h = _val_list(duration_h, vtype=float)
-    # 归一化：负数置 0，时长上限 24
-    o = [max(0, x) for x in o]
-    d_h = [max(0.0, min(24.0, float(x))) for x in d_h]
-    en = (enabled is not False)
-    tp = _norm_pct(threshold_pct, cap=200)
-    cp = _norm_pct(cap_pct, cap=200)
-    with _LOCK:
-        data = _read()
-        data.setdefault("months", {})
-        data["months"].setdefault(mo, {})
-        data["months"][mo][tid] = {
-            "order": o, "duration_h": d_h,
-            "enabled": en,
-            "threshold_pct": tp,
-            "cap_pct": cp,
+def site_settings(month, team):
+    """某 (月,站) 配置，回落默认模板。"""
+    s = grade_settings(month)
+    t = s["teams"].get(str(team))
+    if t is None:
+        d = s["default"]
+        return {
+            "levels": [dict(lv) for lv in d["levels"]],
+            "threshold_pct": d["threshold_pct"],
+            "cap_pct": d["cap_pct"],
+            "use_default": True,
         }
-        data["updated_at"] = _now_iso()
-        _write(data)
-    return {"team_id": tid, "month": mo, "order": o, "duration_h": d_h,
-            "enabled": en,
-            "threshold_pct": tp, "cap_pct": cp}
+    return t
 
 
-def delete(team_id, month):
-    """删除某 (team_id, month) 的等级标准配置（仅删该月，不动其它月）。
-
-    返回 {"team_id","month","existed":bool}。若本就未配置也返回 ok（幂等）。
-    """
-    tid = str(team_id).strip()
-    mo = str(month).strip()
-    if not tid or not mo:
-        raise ValueError("team_id 与 month 不能为空")
-    if len(mo) != 7 or mo[4] != "-":
-        raise ValueError("month 须为 YYYY-MM 格式")
-    with _LOCK:
-        data = _read()
-        months = data.setdefault("months", {})
-        m = months.get(mo) or {}
-        existed = tid in m
-        if existed:
-            del m[tid]
-            months[mo] = m
-            data["updated_at"] = _now_iso()
-            _write(data)
-    return {"team_id": tid, "month": mo, "existed": existed}
-
-
-def _levels_from_rec(orders, durs_h):
-    """由 (order[5], duration_h[5]) 拼出 6 档 level（level 0 = 未定级），喂 _grade。"""
-    levels = [{"level": 0, "name": "未定级", "min_valid_orders": 0, "min_valid_minutes": 0.0}]
-    for i in range(5):
-        levels.append({
+def site_levels(month, team):
+    """某 (月,站) 的 6 档 level（level0=未定级 + 标准1..5），喂 rider_dimension._grade / assessment_overview。"""
+    t = site_settings(month, team)
+    out = [{"level": 0, "name": "未定级", "min_valid_orders": 0, "min_valid_minutes": 0.0}]
+    for i, lv in enumerate(t["levels"]):
+        out.append({
             "level": i + 1,
             "name": "标准%d" % (i + 1),
-            "min_valid_orders": int(orders[i] or 0),
-            "min_valid_minutes": float(durs_h[i] or 0.0) * 60.0,
+            "min_valid_orders": int(lv["orders"]),
+            "min_valid_minutes": float(lv["hours"]) * 60.0,
         })
-    return levels
+    return out
 
 
-def _current_month():
-    return datetime.datetime.now(BJ).strftime("%Y-%m")
-
-
-def build_levels(team_id, month):
-    """按 (team_id, month) 拼出 5 档 level（level 0 = 未定级），喂 rider_dimension._grade。
-
-    每档：min_valid_orders（个，int）= cfg.order[i]
-          min_valid_minutes（分，float）= cfg.duration_h[i] * 60
-    名称固定为「标准1..标准5」，与业务口径一致（不再混用 见习/初级 等业务称谓）。
-
-    配置由 Nest ConfigService 落盘到 _PATH（<python>/dashboard/standard/grade_standards.json），
-    本模块已指向该共享文件；当月无配置时回落硬编码默认（保持首运行看板非空）。
-    """
-    rec = get(team_id, month)
-    return _levels_from_rec(_val_list(rec["order"]),
-                            _val_list(rec["duration_h"], vtype=float))
+def site_threshold_cap(month, team):
+    """某 (月,站) 门槛/封顶百分比（小数）；任一为 None 表示未设置。"""
+    t = site_settings(month, team)
+    return t["threshold_pct"], t["cap_pct"]
 
 
 if __name__ == "__main__":
-    import argparse as _ap
-    ap = _ap.ArgumentParser()
-    ap.add_argument("--month", default=_current_month())
-    ns = ap.parse_args()
-    print(json.dumps(get_all(ns.month), ensure_ascii=False, indent=2))
+    import json as _json
+    print(_json.dumps(grade_settings(), ensure_ascii=False, indent=2))

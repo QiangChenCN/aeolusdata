@@ -5,6 +5,8 @@ import HistoryView from '../views/HistoryView.vue';
 import PresetView from '../views/PresetView.vue';
 import TodoView from '../views/TodoView.vue';
 import StandardView from '../views/StandardView.vue';
+import AssessServiceView from '../views/AssessServiceView.vue';
+import AssessStandardView from '../views/AssessStandardView.vue';
 import AttendPeriodView from '../views/AttendPeriodView.vue';
 import OverviewView from '../views/OverviewView.vue';
 import RealtimeView from '../views/RealtimeView.vue';
@@ -26,6 +28,9 @@ const routes = [
   { path: '/history', name: 'history', component: HistoryView, meta: { title: '运行记录' } },
   { path: '/preset', name: 'preset', component: PresetView, meta: { title: '预设' } },
   { path: '/todo', name: 'todo', component: TodoView, meta: { title: '工作内容' } },
+  { path: '/assess', redirect: '/assess/service' },
+  { path: '/assess/service', name: 'assess-service', component: AssessServiceView, meta: { title: '服务质量设置', kind: 'assessService', id: '' } },
+  { path: '/assess/standard', name: 'assess-standard', component: AssessStandardView, meta: { title: '标准达成设置', kind: 'assessStandard', id: '' } },
   { path: '/standard', name: 'standard', component: StandardView, meta: { title: '标准达成' } },
   { path: '/attend-period', name: 'attend-period', component: AttendPeriodView, meta: { title: '时段出勤' } },
   { path: '/overview', name: 'overview', component: OverviewView, meta: { title: '总览' } },

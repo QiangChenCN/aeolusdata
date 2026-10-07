@@ -26,9 +26,6 @@
         <span v-else-if="cooldown > 0">请等待 {{ cooldown }}s</span>
         <span v-else>刷新数据</span>
       </el-button>
-      <el-button @click="openGradeSettings">
-        <el-icon><Setting /></el-icon> 等级标准设置
-      </el-button>
     </div>
 
     <el-alert v-if="needRefresh" type="info" :closable="false" show-icon class="dv-hint">
@@ -36,7 +33,12 @@
     </el-alert>
     <el-alert v-if="dataNote" type="warning" :closable="false" show-icon class="dv-hint">{{ dataNote }}</el-alert>
     <el-alert v-if="noStationConfig" type="warning" :closable="false" show-icon class="dv-hint">
-      尚未配置任何考核站点，请在「等级标准设置」中用「添加站点」加入站点，看板将仅展示已加入的站点。
+      <template v-if="!monthConfigured">
+        {{ monthOf() }} 月份尚未配置考核标准，请到「考核设置 → 标准达成设置」为该月份添加参与站点并保存，看板才会展示数据。
+      </template>
+      <template v-else>
+        {{ monthOf() }} 月份未添加任何参与考核站点（已保存为空），请到「考核设置 → 标准达成设置」添加站点。
+      </template>
     </el-alert>
 
     <el-tabs v-model="tab" class="dv-tabs">
@@ -163,64 +165,6 @@
         </template>
       </el-tab-pane>
     </el-tabs>
-
-    <el-dialog v-model="gsVisible" title="站点考核标准设置（按月配置）" width="1180px">
-      <div class="gs-bar">
-        <span>配置月份：</span>
-        <el-date-picker v-model="gsMonth" type="month" value-format="YYYY-MM"
-          placeholder="选择月份" @change="loadGradeSettings" />
-        <el-select
-          v-model="gsAddId" filterable remote :remote-method="gsSearchTeams" :loading="gsSearching"
-          clearable reserve-keyword placeholder="搜索并添加站点…" class="gs-add"
-          @focus="gsSearchTeams('')" @change="onGsAdd">
-          <el-option v-for="c in gsCandidates" :key="c.id" :label="c.name" :value="String(c.id)">
-            <span class="gs-opt-name">{{ c.name }}</span>
-            <span class="gs-opt-id">{{ c.id }}</span>
-          </el-option>
-        </el-select>
-        <span class="gs-tip">仅展示已纳入考核的站点；用上方「添加站点」从后台全部站点中检索并加入，行末「移除」可移出考核。考核人数分母（天应排）取自排班目标，无需手动设置；门槛/封顶在上方按月统一设置。标准1~5 为骑手达成档位（单量+时长双达标）。</span>
-      </div>
-      <div class="gs-global">
-        <span class="gs-global-label">本月统一门槛：</span>
-        <span class="gs-pct-field">
-          <el-input-number v-model="gsThresholdPct" :min="0" :max="100" :controls="false" size="small" class="gs-num" placeholder="未设置" />
-          <span class="gs-unit">%</span>
-        </span>
-        <span class="gs-global-label">本月统一封顶：</span>
-        <span class="gs-pct-field">
-          <el-input-number v-model="gsCapPct" :min="0" :max="200" :controls="false" size="small" class="gs-num" placeholder="未设置" />
-          <span class="gs-unit">%</span>
-        </span>
-        <span class="gs-tip">门槛/封顶为本月所有站点统一生效的百分比（%），留空回落全局默认（门槛80% / 封顶100%）。</span>
-      </div>
-      <div v-if="!gsRows.length" class="gs-empty">暂无参与考核站点，请用上方「添加站点」检索加入。</div>
-      <el-table v-else :data="gsRows" border class="dv-table" :row-key="(row) => row.team_id">
-        <el-table-column prop="name" label="站点" min-width="160" fixed />
-        <el-table-column v-for="i in 5" :key="i" :label="'标准' + i" align="center" min-width="132">
-          <template #default="{ row }">
-            <div class="gs-std">
-              <div class="gs-std-row">
-                <span class="gs-sub">单量</span>
-                <el-input-number v-model="row.standards[i - 1].order" :min="0" :max="999" :controls="false" size="small" class="gs-num" />
-              </div>
-              <div class="gs-std-row">
-                <span class="gs-sub">时长</span>
-                <el-input-number v-model="row.standards[i - 1].duration_h" :min="0" :max="24" :step="0.5" :precision="1" :controls="false" size="small" class="gs-num" />
-              </div>
-            </div>
-          </template>
-        </el-table-column>
-        <el-table-column label="操作" width="80" align="center" fixed="right">
-          <template #default="{ row }">
-            <el-button size="small" type="danger" plain @click="onGsRemove(row)">移除</el-button>
-          </template>
-        </el-table-column>
-      </el-table>
-      <template #footer>
-        <el-button @click="gsVisible = false">取消</el-button>
-        <el-button type="primary" :loading="gsSaving" @click="saveGradeSettings">保存</el-button>
-      </template>
-    </el-dialog>
   </div>
 </template>
 
@@ -232,15 +176,15 @@ import { filterRiders } from '../utils/riderFilter.js';
 import {
   fetchTeams, fetchStandardStationReport, fetchStandardRiders,
   refreshStandard, fetchRefreshStatus,
-  fetchGradeStandards, saveGradeStandard,
-  fetchThresholds, saveThresholds,
+  fetchStandardGradeGlobal,
 } from '../api/dashboards.js';
 
 const app = useAppStore();
 const teams = ref([]);
 const teamSel = ref('__all__');
-/* 站点下拉严格按「等级标准设置」里的参与考核站点（partIds）显示，不回落全部站点、不显示兜底三站 */
+/* 站点下拉严格按「标准达成设置」里当前月份的参与站点（partIds）显示，不回落全部站点、不回落默认站点 */
 const partIds = ref(new Set());
+const monthConfigured = ref(true);
 const teamOptions = computed(() => (teams.value || []).filter((t) => partIds.value.has(String(t.id))));
 const noStationConfig = computed(() => partIds.value.size === 0);
 const tab = ref('station');
@@ -522,156 +466,18 @@ async function loadRiders() {
 function start() { return effDate.value; }
 function end() { return effDate.value; }
 
-/* ===================== 等级标准设置（按月 × 站点 配置 std1~5）===================== */
-/* 仅展示「参与考核」站点（参与=grade_standards 中 enabled 记录）；新增站通过「添加站点」检索加入，
-   移除站通过行末按钮（删除该月记录）移出考核。避免对后台全量站点（可能上千）逐行渲染与全量保存。
-   门槛/封顶为本月全局统一值，存于 threshold_config，不随单站配置。 */
-const gsVisible = ref(false);
-const gsMonth = ref('');
-const gsRows = ref([]);            // 仅含已参与考核站点 + 本次新增
-const gsSaving = ref(false);
-const gsAddId = ref('');           // 「添加站点」当前选中值
-const gsCandidates = ref([]);      // 候选（后台全量中未添加的，最多 50）
-const gsSearching = ref(false);
-const gsRemovedIds = ref(new Set()); // 本次移除的预存在站点（保存时 delete）
-const gsThresholdPct = ref(null);  // 本月统一门槛(%)，全局
-const gsCapPct = ref(null);        // 本月统一封顶(%)，全局
-function openGradeSettings() {
-  gsMonth.value = monthOf() || '';
-  gsVisible.value = true;
-  gsRemovedIds.value = new Set();
-  gsAddId.value = '';
-  gsCandidates.value = [];
-  gsThresholdPct.value = null;
-  gsCapPct.value = null;
-  loadGradeSettings();
-}
-async function loadGradeSettings() {
-  if (!gsMonth.value) return;
-  try {
-    const [res, tres] = await Promise.all([
-      fetchGradeStandards({ month: gsMonth.value }),
-      fetchThresholds({ month: gsMonth.value }),
-    ]);
-    const teamsMap = (res && res.teams) || {};
-    const participating = (res && res.participating) || [];
-    gsRows.value = participating.map((id) => {
-      const t = (teams.value || []).find((x) => String(x.id) === String(id));
-      const rec = teamsMap[String(id)] || { order: [0, 0, 0, 0, 0], duration_h: [0, 0, 0, 0, 0] };
-      const order = [...(rec.order || [0, 0, 0, 0, 0])].map((x) => Number(x) || 0);
-      const dur = [...(rec.duration_h || [0, 0, 0, 0, 0])].map((x) => Number(x) || 0);
-      return {
-        team_id: String(id),
-        name: t ? t.name : String(id),
-        standards: [0, 1, 2, 3, 4].map((k) => ({ order: order[k], duration_h: dur[k] })),
-        isNew: false,
-      };
-    });
-    gsThresholdPct.value = (tres && tres.threshold_pct != null) ? Number(tres.threshold_pct) : null;
-    gsCapPct.value = (tres && tres.cap_pct != null) ? Number(tres.cap_pct) : null;
-    gsSearchTeams(''); // 预填候选（首次打开下拉前即可见）
-  } catch (e) {
-    app.toast(e.message || '加载等级标准失败', 'error');
-  }
-}
-/* 候选检索：在后台全量站点中排除已添加项，按关键字本地过滤（上限 50，避免下拉渲染过多）。 */
-function gsSearchTeams(query) {
-  const q = (query || '').trim().toLowerCase();
-  const added = new Set(gsRows.value.map((r) => r.team_id));
-  const list = (teams.value || []).filter((t) => {
-    if (added.has(String(t.id))) return false;
-    if (!q) return true;
-    return (String(t.name || '').toLowerCase().includes(q) || String(t.id).toLowerCase().includes(q));
-  });
-  gsCandidates.value = list.slice(0, 50);
-  gsSearching.value = false;
-}
-function onGsAdd() {
-  const id = gsAddId.value;
-  if (!id) return;
-  if (gsRows.value.some((r) => r.team_id === String(id))) {
-    gsAddId.value = '';
-    return;
-  }
-  gsRemovedIds.value.delete(String(id));
-  const t = (teams.value || []).find((x) => String(x.id) === String(id));
-  gsRows.value.push({
-    team_id: String(id),
-    name: t ? t.name : String(id),
-    standards: [0, 1, 2, 3, 4].map(() => ({ order: 0, duration_h: 0 })),
-    isNew: true,
-  });
-  gsAddId.value = '';
-}
-function onGsRemove(row) {
-  if (gsRows.value.length <= 1) {
-    app.toast('至少需保留一个参与考核站点，无法移除最后一项', 'warning');
-    return;
-  }
-  if (row.isNew) {
-    gsRows.value = gsRows.value.filter((r) => r.team_id !== row.team_id);
-  } else {
-    gsRemovedIds.value.add(row.team_id);
-    gsRows.value = gsRows.value.filter((r) => r.team_id !== row.team_id);
-  }
-}
-async function saveGradeSettings() {
-  if (!gsRows.value.length) {
-    app.toast('至少需保留一个参与考核站点，无法保存空配置', 'error');
-    return;
-  }
-  gsSaving.value = true;
-  try {
-    let anyOk = false;
-    for (const r of gsRows.value) {
-      const res = await saveGradeStandard({
-        team_id: r.team_id, month: gsMonth.value,
-        order: r.standards.map((s) => s.order),
-        duration_h: r.standards.map((s) => s.duration_h),
-        enabled: true,
-        threshold_pct: null,
-        cap_pct: null,
-      });
-      if (res && res.ok) anyOk = true;
-      else if (res && res.error) app.toast(`${r.name}: ${res.error}`, 'error');
-    }
-    for (const id of gsRemovedIds.value) {
-      const t = (teams.value || []).find((x) => String(x.id) === id);
-      const res = await saveGradeStandard({ team_id: id, month: gsMonth.value, action: 'delete' });
-      if (res && res.ok) anyOk = true;
-      else if (res && res.error) app.toast(`${t ? t.name : id}: ${res.error}`, 'error');
-    }
-    const tres = await saveThresholds({
-      month: gsMonth.value,
-      threshold_pct: gsThresholdPct.value ?? null,
-      cap_pct: gsCapPct.value ?? null,
-    });
-    if (tres && tres.ok) anyOk = true;
-    else if (tres && tres.error) app.toast(`门槛/封顶: ${tres.error}`, 'error');
-    if (anyOk) {
-      app.toast('站点考核标准已保存', 'success');
-      gsVisible.value = false;
-      await refreshParticipating();
-      data.value = null;
-      riderLoaded.value = false;
-      await load();
-      if (tab.value === 'rider') await loadRiders();
-    }
-  } catch (e) {
-    app.toast(e.message || '保存失败', 'error');
-  } finally {
-    gsSaving.value = false;
-  }
-}
-/* 拉取本月参与考核站点列表，驱动下拉与看板联动 */
+/* 当前月份的参与考核站点（来自「标准达成设置」，有配置即参与），驱动站点下拉与看板联动 */
 async function refreshParticipating() {
   try {
-    const res = await fetchGradeStandards({ month: monthOf() || '' });
-    partIds.value = new Set((res && res.participating) || []);
+    const res = await fetchStandardGradeGlobal(monthOf());
+    partIds.value = new Set(Object.keys((res && res.teams) || {}));
+    monthConfigured.value = !!(res && res.configured);
     if (teamSel.value !== '__all__' && !partIds.value.has(String(teamSel.value))) {
       teamSel.value = '__all__';
     }
-  } catch (e) { /* 忽略：配置接口不可用时退回默认三站 */ }
+  } catch (e) {
+    monthConfigured.value = true; // 配置接口异常时不误报「未配置」
+  }
 }
 
 async function load() {
@@ -807,20 +613,6 @@ onUnmounted(() => {
 .rate-good { color: #1aac5a; font-weight: var(--fw-bold); }
 .rate-mid { color: #e6a23c; font-weight: var(--fw-bold); }
 .rate-bad { color: #f56c6c; font-weight: var(--fw-bold); }
-.gs-bar { display: flex; align-items: center; gap: var(--sp-12); margin-bottom: var(--sp-12); flex-wrap: wrap; }
-.gs-global { display: flex; align-items: center; gap: var(--sp-12); margin-bottom: var(--sp-12); flex-wrap: wrap; }
-.gs-global-label { font-size: 13px; color: var(--text, #303133); white-space: nowrap; }
-.gs-tip { font-size: var(--fs-caption); color: var(--muted); }
-.gs-std { display: flex; flex-direction: column; gap: 6px; align-items: center; }
-.gs-std-row { display: flex; align-items: center; gap: 6px; justify-content: center; }
-.gs-sub { font-size: 12px; color: var(--muted); white-space: nowrap; }
-.gs-num { width: 72px; }
-.gs-pct-field { display: inline-flex; align-items: center; gap: 2px; }
-.gs-unit { color: var(--muted); font-size: 13px; }
-.gs-add { width: 240px; }
-.gs-empty { padding: var(--sp-32); text-align: center; color: var(--muted); }
-.gs-opt-name { float: left; }
-.gs-opt-id { float: right; color: var(--muted); font-size: 12px; margin-left: 12px; }
 /* 列设置弹层：按指标分组勾选 */
 .col-set { display: flex; flex-direction: column; gap: 12px; }
 .col-set-group { display: flex; flex-direction: column; gap: 4px; }

@@ -36,7 +36,7 @@ export const GET_ROUTE_PERMS: Record<string, string> = {
   '/api/admin/roles': 'admin:roles',
   '/api/policy': 'admin:policy',
   '/api/data-perms': 'admin:data-perm',
-  '/api/realtime/targets': 'view',
+  '/api/service-quality/targets': 'view',
   '/api/bot/config': 'admin:bot',
   '/api/bot/status': 'admin:bot',
   '/api/bot/credentials': 'admin:bot',
@@ -47,9 +47,6 @@ export const POST_ROUTE_PERMS: Record<string, string> = {
   '/api/stop': 'task:run',
   '/api/cancel': 'task:run',
   '/api/standard/refresh-all': 'data:refresh',
-  '/api/standard/teams-config': 'config:write',
-  '/api/standard/grade-standards': 'config:write',
-  '/api/standard/thresholds': 'config:write',
   '/api/attend-period/config': 'config:write',
   '/api/attend-period/teams': 'config:write',
   '/api/todo/lists': 'todo:write',
@@ -71,7 +68,7 @@ export const POST_ROUTE_PERMS: Record<string, string> = {
   '/api/bot/reload': 'admin:bot',
   '/api/bot/bots': 'admin:bot',
   '/api/bot/credentials': 'admin:bot',
-  '/api/realtime/targets': 'realtime:targets',
+  '/api/service-quality/targets': 'config:write',
   '/api/account/change-pw': 'self',
 };
 
@@ -96,9 +93,6 @@ const POST_PREFIX_PERMS: [RegExp, string][] = [
   // 不能落回默认的 'view' —— 否则任何登录用户都能触发。
   [/^\/api\/ding\/.*$/, 'machine'],
   [/^\/api\/standard\/refresh-all$/, 'data:refresh'],
-  [/^\/api\/standard\/teams-config$/, 'config:write'],
-  [/^\/api\/standard\/grade-standards$/, 'config:write'],
-  [/^\/api\/standard\/thresholds$/, 'config:write'],
   [/^\/api\/standard\/.*$/, 'view'],
   [/^\/api\/attend-period\/(config|teams)$/, 'config:write'],
   [/^\/api\/attend-period\/.*$/, 'view'],

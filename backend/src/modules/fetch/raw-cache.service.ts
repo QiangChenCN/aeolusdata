@@ -201,8 +201,8 @@ export class RawCacheService {
    * 配置变更后**全量**失效 Python 结果缓存（对应 Python `_CACHE.clear_results()`）。
    *
    * 看板配置（考核标准 / 门槛封顶）迁移到 Nest 后，写入方变了，但计算进程内的结果缓存
-   * 仍需失效，否则「改了标准再看板数字不变」。仅 grade-standards / thresholds 两个端点
-   * 触发（与 Python 原 handler 调用 `clear_results` 的范围一致）。
+   * 仍需失效，否则「改了标准再看板数字不变」。标准达成设置（grade-global）保存时触发
+   * 全量失效（与 Python 原 handler 调用 `clear_results` 的范围一致）。
    */
   async invalidateAll(): Promise<void> {
     const base = this.config.get<string>('PYTHON_COMPUTE_URL');

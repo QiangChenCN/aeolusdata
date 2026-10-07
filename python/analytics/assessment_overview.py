@@ -282,7 +282,8 @@ def _station_achieved_for_date(team_id, date):
         return None
     day_rows = AC._day_target_rows(sched)
     scale_target = int(day_rows[0]["predict_num"]) if day_rows else 0
-    levels = GS.build_levels(team_id, date[:7])
+    month = (date or "")[:7] or None
+    levels = GS.site_levels(month, team_id)
     base = levels[1] if len(levels) > 1 else None
     if not base:
         return (0, scale_target)
@@ -491,6 +492,5 @@ if __name__ == "__main__":
     _a = _ap.ArgumentParser()
     _a.add_argument("--date", default=CACHE.today_ymd())
     _ns = _a.parse_args()
-    from analytics import teams_config as TCFG
-    teams = [(str(t), TEAM_NAMES.get(str(t), str(t))) for t in TCFG.get_teams()]
+    teams = [(str(t), TEAM_NAMES.get(str(t), str(t))) for t in GS.graded_team_ids()]
     print(_json.dumps(build_assessment(_ns.date, teams), ensure_ascii=False, indent=2, default=str))

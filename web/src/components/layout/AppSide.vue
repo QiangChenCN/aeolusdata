@@ -58,6 +58,8 @@ function to(it) {
     case 'attendPeriod': return '/attend-period';
     case 'realtime': return '/realtime';
     case 'todo': return '/todo';
+    case 'assessService': return '/assess/service';
+    case 'assessStandard': return '/assess/standard';
     case 'admin': return '/admin';
     case 'botcfg': return '/bot/' + it.id;
     default: return '/home';
@@ -82,6 +84,12 @@ const navItems = computed(() => {
   items.push({ type: 'parent', key: 'dash', name: '数据看板', icon: 'DataLine', children: dashSubs });
 
   items.push({ type: 'leaf', key: 'todo', kind: 'todo', id: '', name: '工作内容', icon: 'List' });
+
+  const assessSubs = [
+    { type: 'leaf', kind: 'assessService', id: '', name: '服务质量设置', icon: 'Medal' },
+    { type: 'leaf', kind: 'assessStandard', id: '', name: '标准达成设置', icon: 'Aim' },
+  ];
+  items.push({ type: 'parent', key: 'assess', name: '考核设置', icon: 'Trophy', children: assessSubs });
   if (auth.isAdmin) {
     const botSubs = [
       { type: 'leaf', kind: 'botcfg', id: 'global', name: '全局配置', icon: 'Setting' },

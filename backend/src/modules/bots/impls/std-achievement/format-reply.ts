@@ -16,6 +16,7 @@ export interface StandardResult {
 export function computeStandard(
   orders: number | null | undefined,
   hours: number | null | undefined,
+  levels: Standard[] = STANDARDS,
 ): StandardResult | null {
   if (orders == null || hours == null) return null;
   if (!STANDARDS.length) return null;
@@ -62,6 +63,7 @@ export function formatReply(
   riderId: string,
   data: RiderQueryResult,
   withHeader = true,
+  levels: Standard[] = STANDARDS,
 ): string {
   const status = data.status;
   if (status === 'ok') {
@@ -92,7 +94,7 @@ export function formatReply(
       `• 在线总时长：${online} 小时\n` +
       `• 有效时长：**${dur} 小时**`;
 
-    const std = computeStandard(d.valid as number, data.valid_duration_hours as number);
+    const std = computeStandard(d.valid as number, data.valid_duration_hours as number, levels);
     let stdBlock: string;
     if (std == null) {
       stdBlock = '🎯 运力等级：—（数据不全）';

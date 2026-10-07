@@ -74,30 +74,28 @@ export function fetchStandardRiders({ team, start, end, month } = {}) {
   return request('/standard/riders' + (p.length ? '?' + p.join('&') : ''));
 }
 
-/* 等级标准（按月 × 站点配置 std1~5 的单量与时长阈值） */
-export function fetchGradeStandards({ month, team } = {}) {
-  const p = [];
-  if (month) p.push('month=' + enc(month));
-  if (team) p.push('team=' + enc(team));
-  return request('/standard/grade-standards' + (p.length ? '?' + p.join('&') : ''));
+/* 「标准达成设置」（按月份 × 站点：默认模板 + 该月各站点档位），看板与机器人共用 */
+export function fetchStandardGradeGlobal(month) {
+  const q = month ? '?month=' + encodeURIComponent(month) : '';
+  return request('/standard/grade-global' + q);
 }
-export function saveGradeStandard(body = {}) {
-  return request('/standard/grade-standards', j(body));
-}
-/* 门槛/封顶（本月全局，对所有站点统一生效） */
-export function fetchThresholds({ month } = {}) {
-  const p = [];
-  if (month) p.push('month=' + enc(month));
-  return request('/standard/thresholds' + (p.length ? '?' + p.join('&') : ''));
-}
-export function saveThresholds(body = {}) {
-  return request('/standard/thresholds', j(body));
+export function saveStandardGradeGlobal(body = {}) {
+  return request('/standard/grade-global', j(body));
 }
 export function refreshStandard(body = {}) {
   return request('/standard/refresh-all', j(body));
 }
 export function fetchRefreshStatus() {
   return request('/standard/refresh-all-status');
+}
+
+/* ============ 服务质量考核设置（考核项 × 周中/周末 × 天气，按月份） ============ */
+export function fetchServiceQualityTargets(month) {
+  const q = month ? '?month=' + encodeURIComponent(month) : '';
+  return request('/service-quality/targets' + q);
+}
+export function saveServiceQualityTargets(body = {}) {
+  return request('/service-quality/targets', j(body));
 }
 
 /* ============ 时段出勤 ============ */

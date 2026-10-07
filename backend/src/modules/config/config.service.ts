@@ -15,7 +15,7 @@ import { RawCacheService } from '../fetch/raw-cache.service';
  *
  * 落盘路径刻意与 Python 一致（不搬文件，避免改动 Python 计算侧的读取路径）：
  *   · 标准类配置 → `<root>/python/dashboard/standard/*.json`
- *   · 实时类配置 → `<root>/.realtime_(selection|targets).json`
+ *   · 实时类配置 → `<root>/.realtime_selection.json`、`<root>/.service_quality_targets.json`
  * 其中 `<root>` = PROJECT_ROOT（默认仓库根，与 Python 的 `_ROOT` 同源）。
  *
  * 接口形状逐条对齐 `compute_service/handlers.py` 的 `_get/_post_*` 处理函数，保证前端零改动。
@@ -53,13 +53,14 @@ function filterIds(ids: string[], allowed: Allowed): string[] {
 }
 
 // ============================================================================
-// 实时看板配置常量（与 `dashboard/realtime/config.py` 逐字对应）
+// 考核项 / 日期类型 / 天气 三维口径（与 `analytics/realtime/config.py` 逐字对应，
+// 也是实时看板计算得分唯一的目标来源 —— 见 service_quality.py）。
 // ============================================================================
 const RT_METRICS = [
   { key: 'delivery_rate', name: '物流妥投率', direction: 'pos', unit: '%' },
   { key: 'ontime_rate', name: '考核准时率', direction: 'pos', unit: '%' },
   { key: 'unsat_rate', name: '不满意率', direction: 'neg', unit: '%' },
-  { key: 'compound_overtime', name: '复合超时时长', direction: 'neg', unit: 'min' },
+  { key: 'compound_overtime', name: '复合超时时长', direction: 'neg', unit: 's' },
   { key: 'call_rate', name: '电联率', direction: 'pos', unit: '%' },
   { key: 'im_reply_rate', name: 'IM及时回复率', direction: 'pos', unit: '%' },
   { key: 'visit_rate', name: '新专送拜访', direction: 'pos', unit: '%' },
@@ -74,14 +75,29 @@ const RT_WEATHER = [
   { key: 'moderate', name: '一般恶天' },
   { key: 'severe', name: '严重恶天' },
 ] as const;
-const RT_DEFAULT_WEIGHT: Record<string, number> = {
-  delivery_rate: 20, ontime_rate: 30, unsat_rate: 20,
-  compound_overtime: 15, call_rate: 5, im_reply_rate: 5, visit_rate: 5,
-};
-const RT_METRIC_DIR = new Map<string, string>(RT_METRICS.map((m) => [m.key, m.direction]));
-const RT_METRIC_KEYS = new Set(RT_METRICS.map((m) => m.key));
-const RT_DT_KEYS = new Set(RT_DATE_TYPES.map((d) => d.key));
-const RT_WX_KEYS = new Set(RT_WEATHER.map((w) => w.key));
+
+// 服务质量考核项的「计分方式」：权重项=按指标权重加权计分；调分项=不参与权重，直接加减分。
+const SQ_KINDS = [
+  { key: 'weight', name: '权重项' },
+  { key: 'adjust', name: '调分项' },
+] as const;
+const SQ_KIND_KEYS = new Set<string>(SQ_KINDS.map((k) => k.key));
+
+// 考核项是否分层：决定三档阈值在「日期类型 / 天气」两个维度上的区分粒度。
+//   none         不分层——所有日期类型与天气共用一套阈值
+//   date         日期分层——周中/周末各一套，天气不影响
+//   weather      天气分层——每个天气等级各一套，日期类型不影响
+//   date_weather 日期天气分层——8 个场景各一套（默认，最细粒度）
+const SQ_LAYERING = [
+  { key: 'none', name: '不分层' },
+  { key: 'date', name: '日期分层' },
+  { key: 'weather', name: '天气分层' },
+  { key: 'date_weather', name: '日期天气分层' },
+] as const;
+const SQ_LAYERING_KEYS = new Set<string>(SQ_LAYERING.map((x) => x.key));
+/** 权重项合计须为 100%（允许 0.1 的浮点误差） */
+const SQ_WEIGHT_SUM = 100;
+const SQ_WEIGHT_SUM_TOL = 0.1;
 
 const DEFAULT_TEAMS = ['917521130', '917521136', '917521139'];
 
@@ -124,235 +140,268 @@ export class ConfigService {
     }
   }
 
-  // ------------------------------------------------------------ 站点目录（`all`）
-  private async allTeamRefs(): Promise<TeamRef[]> {
-    const p = await this.teams.fetchAll();
-    const list = (p.teams && p.teams.length ? p.teams : p.fallback) || [];
-    return list.map((t) => ({ id: String(t.id), name: String(t.name) }));
+  // ============================================================ 标准达成设置（按月份 × 站点）
+  // 数据模型：standard_grade_settings.json =
+  //   { schema_version, updated_at, updated_by,
+  //     default: { levels:[5], threshold_pct, cap_pct },   // 仅兜底/新站点填充用，前台已不再提供编辑
+  //     months: { "<YYYY-MM>": { "<team_id>": { levels:[5], threshold_pct, cap_pct } | {use_default:true} } } }
+  // 「参与考核站点」已移除：某月下【配置了记录的站点】即参与考核（有设置就默认考核）。
+  // 某月从未保存过时参与站点为空（前端提示），仅旧单套 schema 会套用旧名单做迁移。
+  // 落盘于 python/dashboard/standard/standard_grade_settings.json（计算侧按此路径读取，同源）。
+  private readonly SG_DEFAULT_LEVELS: { level: number; orders: number; hours: number }[] = [
+    { level: 1, orders: 18, hours: 6 },
+    { level: 2, orders: 21, hours: 6 },
+    { level: 3, orders: 26, hours: 6 },
+    { level: 4, orders: 32, hours: 7 },
+    { level: 5, orders: 39, hours: 8 },
+  ];
+  private readonly SG_DEFAULT_THRESHOLD = 80;
+  private readonly SG_DEFAULT_CAP = 100;
+  /**
+   * 旧单套 schema 的参与站点名单（顶层 participating_teams）。旧配置本就不分月份，
+   * 迁移时把这份名单套用到【任何尚未单独配置的月份】，避免旧数据丢失；新写入一律走 months。
+   */
+  private sgLegacyTeams(d: any): string[] {
+    const p = d && d.participating_teams;
+    if (!Array.isArray(p)) return [];
+    return p.map((x: unknown) => String(x).trim()).filter((x: string) => x);
   }
-
-  // ================================================================== teams_config
-  private tcGetTeams(): string[] {
-    const obj = this.readJson(this.stdPath('teams_config.json'));
-    const ids = obj && Array.isArray(obj.teams) ? obj.teams : null;
-    if (!ids) return [...DEFAULT_TEAMS];
-    const out = ids.map((x: unknown) => String(x).trim()).filter((x: string) => x);
-    return out.length ? out : [...DEFAULT_TEAMS];
+  private stdGradeGlobalPath(): string {
+    return path.join(this.stdDir, 'standard_grade_settings.json');
   }
-  private tcSetTeams(ids: unknown): { ok: boolean; teams: string[]; error: string | null } {
-    if (!Array.isArray(ids) || !ids.length) {
-      return { ok: false, teams: this.tcGetTeams(), error: '参与站点不能为空' };
-    }
-    const clean: string[] = [];
-    const seen = new Set<string>();
-    for (const x of ids) {
-      const s = String(x).trim();
-      if (!s || seen.has(s)) continue;
-      seen.add(s);
-      clean.push(s);
-    }
-    if (!clean.length) {
-      return { ok: false, teams: this.tcGetTeams(), error: '参与站点不能为空' };
-    }
-    try {
-      this.atomicWrite(this.stdPath('teams_config.json'), { teams: clean });
-      return { ok: true, teams: clean, error: null };
-    } catch (e) {
-      return { ok: false, teams: this.tcGetTeams(), error: `写入失败：${(e as Error).message}` };
-    }
+  private sgRead(): any {
+    return this.readJson(this.stdGradeGlobalPath());
   }
-
-  // ================================================================ grade_standards
-  private readonly GS_DEFAULT_BY_TEAM: Record<string, { order: number[]; duration_h: number[] }> = {
-    '917521130': { order: [18, 27, 33, 40, 50], duration_h: [6, 6, 6, 7, 8] },
-    '917521136': { order: [18, 27, 33, 40, 50], duration_h: [6, 6, 6, 7, 8] },
-    '917521139': { order: [18, 27, 33, 40, 50], duration_h: [6, 6, 6, 7, 8] },
-  };
-  private gsValList(v: unknown, n = 5, vtype: 'int' | 'float' = 'int'): number[] {
-    const out: number[] = [];
-    for (const x of Array.isArray(v) ? (v as unknown[]) : []) {
-      const num = vtype === 'int' ? parseInt(String(x), 10) : parseFloat(String(x));
-      out.push(isNaN(num) ? 0 : num);
-      if (out.length >= n) break;
-    }
-    while (out.length < n) out.push(0);
-    return out;
+  private sgNormLevel(src: any, idx: number): { level: number; orders: number; hours: number } {
+    const o = src && typeof src === 'object' ? src : {};
+    const orders = Math.max(0, parseInt(String(o.orders ?? 0), 10) || 0);
+    const hours = Math.max(0, Math.min(24, parseFloat(String(o.hours ?? 0)) || 0));
+    return { level: idx + 1, orders, hours: Math.round(hours * 100) / 100 };
   }
-  private gsDefaults(): Record<string, { order: number[]; duration_h: number[] }> {
-    const out: Record<string, { order: number[]; duration_h: number[] }> = {};
-    for (const [tid, v] of Object.entries(this.GS_DEFAULT_BY_TEAM)) {
-      out[tid] = { order: [...v.order], duration_h: [...v.duration_h] };
+  private sgNormLevels(d: any): { level: number; orders: number; hours: number }[] {
+    const raw: any[] = Array.isArray(d && d.levels) ? d.levels : [];
+    const out: { level: number; orders: number; hours: number }[] = [];
+    for (let i = 0; i < 5; i++) {
+      out.push(this.sgNormLevel(raw[i] || this.SG_DEFAULT_LEVELS[i], i));
     }
     return out;
   }
-  private gsRead(): { schema_version: number; updated_at?: string; months?: Record<string, any> } {
-    const d = this.readJson(this.stdPath('grade_standards.json'));
-    if (!d || typeof d !== 'object') return { schema_version: 1, updated_at: nowIso(), months: {} };
-    return { schema_version: d.schema_version || 1, updated_at: d.updated_at, months: d.months || {} };
-  }
-  private gsNormPct(v: unknown, cap = 200): number | null {
+  private sgNormThreshold(v: unknown): number | null {
     if (v === null || v === undefined || v === '') return null;
     const f = parseFloat(String(v));
-    if (isNaN(f) || f < 0 || f > cap) return null;
+    if (isNaN(f) || f < 0 || f > 100) throw new Error('门槛值须在 0~100 之间');
     return f;
   }
-  private gsMergeTeam(cfg: any, dflt: { order: number[]; duration_h: number[] }) {
-    const c = cfg || {};
-    return {
-      order: this.gsValList(c.order || dflt.order, 5, 'int'),
-      duration_h: this.gsValList(c.duration_h || dflt.duration_h, 5, 'float'),
-      enabled: c.enabled !== false,
-      threshold_pct: this.gsNormPct(c.threshold_pct),
-      cap_pct: this.gsNormPct(c.cap_pct),
-    };
+  private sgNormCap(v: unknown): number | null {
+    if (v === null || v === undefined || v === '') return null;
+    const f = parseFloat(String(v));
+    if (isNaN(f) || f < 0) throw new Error('封顶值不能为负数');
+    return f;
   }
-  private gsGetAll(month: string) {
-    month = month || currentMonth();
-    const data = this.gsRead();
-    const months = data.months || {};
-    const configured = months[month] || {};
-    const dflt = this.gsDefaults();
-    const merged: Record<string, any> = {};
-    for (const [tid, d] of Object.entries(dflt)) {
-      merged[tid] = this.gsMergeTeam(configured[tid], d);
-    }
-    for (const [tid, cfg] of Object.entries(configured as Record<string, any>)) {
-      if (!(tid in merged)) {
-        merged[tid] = this.gsMergeTeam(cfg, this.GS_DEFAULT_BY_TEAM[tid] || { order: [0, 0, 0, 0, 0], duration_h: [0, 0, 0, 0, 0] });
-      }
-    }
-    const configuredIds = Object.keys(configured);
-    // 参与考核：有配置记录则该月取 enabled≠false 的站点；
-    // 月份记录存在但已清空（用户移除全部）→ 返回空（由前端提示无参与站，不再回落默认三站）；
-    // 仅当该月从未配置过（无月份记录）才回落默认三站，保证首运行看板非空。
-    const participating = configuredIds.length
-      ? configuredIds.filter((t) => (configured[t]?.enabled) !== false)
-      : (month in months ? [] : Object.keys(dflt));
-    return {
-      month,
-      schema_version: data.schema_version || 1,
-      updated_at: data.updated_at,
-      configured_ids: configuredIds,
-      participating,
-      teams: merged,
-      defaults: dflt,
-    };
-  }
-  private gsGet(tid: string, month: string) {
-    const all = this.gsGetAll(month);
-    const rec = all.teams[tid];
-    if (rec) {
+  private sgTemplate(d: any): { levels: any[]; threshold_pct: number | null; cap_pct: number | null } {
+    // 优先用新 schema 的 default 模板；兼容旧单套 schema（levels/threshold/cap 在顶层）；
+    // 都没有 → 回落代码内置默认。
+    const tmpl = d && d.default;
+    if (tmpl && typeof tmpl === 'object' &&
+        (Array.isArray(tmpl.levels) || tmpl.threshold_pct != null || tmpl.cap_pct != null)) {
       return {
-        team_id: tid, month: all.month,
-        order: rec.order, duration_h: rec.duration_h,
-        enabled: rec.enabled,
-        threshold_pct: rec.threshold_pct, cap_pct: rec.cap_pct,
+        levels: this.sgNormLevels(tmpl),
+        threshold_pct: this.sgNormThreshold(tmpl.threshold_pct),
+        cap_pct: this.sgNormCap(tmpl.cap_pct),
       };
     }
-    const d = this.GS_DEFAULT_BY_TEAM[tid] || Object.values(this.GS_DEFAULT_BY_TEAM)[0];
+    if (d && (Array.isArray(d.levels) || d.threshold_pct != null || d.cap_pct != null)) {
+      return {
+        levels: this.sgNormLevels(d),
+        threshold_pct: this.sgNormThreshold(d.threshold_pct),
+        cap_pct: this.sgNormCap(d.cap_pct),
+      };
+    }
     return {
-      team_id: tid, month: all.month,
-      order: [...d.order], duration_h: [...d.duration_h],
-      enabled: true, threshold_pct: null, cap_pct: null,
+      levels: this.SG_DEFAULT_LEVELS.map((l) => ({ ...l })),
+      threshold_pct: this.SG_DEFAULT_THRESHOLD,
+      cap_pct: this.SG_DEFAULT_CAP,
     };
   }
-  private gsBuildLevels(tid: string, month: string) {
-    const rec = this.gsGet(tid, month);
-    const orders = rec.order;
-    const dursH = rec.duration_h;
-    const levels = [{ level: 0, name: '未定级', min_valid_orders: 0, min_valid_minutes: 0 }];
-    for (let i = 0; i < 5; i++) {
-      levels.push({
-        level: i + 1,
-        name: `标准${i + 1}`,
-        min_valid_orders: parseInt(String(orders[i] || 0), 10),
-        min_valid_minutes: parseFloat(String(dursH[i] || 0)) * 60,
-      });
+  private sgNormSite(cfg: any, dflt: any): any {
+    if (cfg && cfg.use_default) {
+      return {
+        levels: dflt.levels.map((l: any) => ({ ...l })),
+        threshold_pct: dflt.threshold_pct,
+        cap_pct: dflt.cap_pct,
+        use_default: true,
+      };
     }
-    return levels;
-  }
-  private gsSave(tid: string, mo: string, order: unknown, durH: unknown,
-                 opts?: { enabled?: boolean; threshold_pct?: unknown; cap_pct?: unknown }) {
-    tid = String(tid).trim();
-    mo = String(mo).trim();
-    if (!tid || !mo) throw new Error('team_id 与 month 不能为空');
-    if (mo.length !== 7 || mo[4] !== '-') throw new Error('month 须为 YYYY-MM 格式');
-    let o = this.gsValList(order, 5, 'int');
-    let d = this.gsValList(durH, 5, 'float');
-    o = o.map((x) => Math.max(0, x));
-    d = d.map((x) => Math.max(0, Math.min(24, x)));
-    const enabled = opts?.enabled !== false;
-    const threshold_pct = this.gsNormPct(opts?.threshold_pct);
-    const cap_pct = this.gsNormPct(opts?.cap_pct);
-    const data = this.gsRead();
-    data.months = data.months || {};
-    data.months[mo] = data.months[mo] || {};
-    data.months[mo][tid] = { order: o, duration_h: d, enabled, threshold_pct, cap_pct };
-    data.updated_at = nowIso();
-    this.atomicWrite(this.stdPath('grade_standards.json'), data);
-    return { team_id: tid, month: mo, order: o, duration_h: d, enabled, threshold_pct, cap_pct };
-  }
-  private gsDelete(tid: string, mo: string) {
-    tid = String(tid).trim();
-    mo = String(mo).trim();
-    if (!tid || !mo) throw new Error('team_id 与 month 不能为空');
-    if (mo.length !== 7 || mo[4] !== '-') throw new Error('month 须为 YYYY-MM 格式');
-    const data = this.gsRead();
-    const months = data.months || {};
-    const m = months[mo] || {};
-    const existed = tid in m;
-    if (existed) {
-      delete m[tid];
-      months[mo] = m;
-      data.updated_at = nowIso();
-      this.atomicWrite(this.stdPath('grade_standards.json'), data);
-    }
-    return { team_id: tid, month: mo, existed };
-  }
-
-  // =============================================================== threshold_config
-  private tcRead(): { schema_version: number; months?: Record<string, any> } {
-    const d = this.readJson(this.stdPath('threshold_config.json'));
-    if (!d || typeof d !== 'object' || !d.months || typeof d.months !== 'object') {
-      return { schema_version: 2, months: {} };
-    }
-    return d;
-  }
-  private tcNormThreshold(v: unknown): number | null {
-    if (v === null || v === undefined || v === '') return null;
-    const f = parseFloat(String(v));
-    if (isNaN(f)) throw new Error('门槛值须为数字');
-    if (f < 0 || f > 100) throw new Error('门槛值须在 0~100 之间');
-    return f;
-  }
-  private tcNormCap(v: unknown): number | null {
-    if (v === null || v === undefined || v === '') return null;
-    const f = parseFloat(String(v));
-    if (isNaN(f)) throw new Error('封顶值须为数字');
-    if (f < 0) throw new Error('封顶值不能为负数');
-    return f;
-  }
-  private tcGet(month?: string) {
-    month = month || currentMonth();
-    const m = (this.tcRead().months || {})[month] || {};
+    const c = cfg || {};
     return {
+      levels: this.sgNormLevels(c),
+      threshold_pct: this.sgNormThreshold(c.threshold_pct),
+      cap_pct: this.sgNormCap(c.cap_pct),
+      use_default: false,
+    };
+  }
+  /** 指标权重（仅「权重项」有意义）：百分比，0~100；空 → null（未设置）。 */
+  private sqNormWeight(v: unknown): number | null {
+    // 兼容早期按 { weekday, weekend } 分开存的形态：取周中优先，其次周末
+    if (v && typeof v === 'object' && !Array.isArray(v)) {
+      const o = v as Record<string, unknown>;
+      return this.sqNormWeight(o.weekday ?? o.weekend);
+    }
+    if (v === null || v === undefined || v === '') return null;
+    const f = parseFloat(String(v));
+    if (isNaN(f) || f < 0 || f > 100) return null;
+    return Math.round(f * 100) / 100;
+  }
+  /** 调分项「得分区间」：{ min, max }，允许负数（如 -5 ~ +5）；空 → null。 */
+  private sqNormRangeNum(v: unknown): number | null {
+    if (v === null || v === undefined || v === '') return null;
+    const f = parseFloat(String(v));
+    if (isNaN(f) || !isFinite(f)) return null;
+    return Math.round(f * 100) / 100;
+  }
+  private sqNormRange(v: unknown): { min: number | null; max: number | null } {
+    const o = v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
+    return { min: this.sqNormRangeNum(o.min), max: this.sqNormRangeNum(o.max) };
+  }
+  private sqMonthRanges(month: string): Record<string, { min: number | null; max: number | null }> {
+    const out: Record<string, { min: number | null; max: number | null }> = {};
+    const all = this.sqLoadAll();
+    const months = all.months && typeof all.months === 'object' ? all.months : {};
+    const entry = months[month] && typeof months[month] === 'object' ? months[month] : {};
+    const rs = entry.ranges && typeof entry.ranges === 'object' ? entry.ranges : {};
+    for (const m of RT_METRICS) out[m.key] = this.sqNormRange(rs[m.key]);
+    return out;
+  }
+  private sqMonthWeights(month: string): Record<string, number | null> {
+    const out: Record<string, number | null> = {};
+    const all = this.sqLoadAll();
+    const months = all.months && typeof all.months === 'object' ? all.months : {};
+    const entry = months[month] && typeof months[month] === 'object' ? months[month] : {};
+    const ws = entry.weights && typeof entry.weights === 'object' ? entry.weights : {};
+    for (const m of RT_METRICS) out[m.key] = this.sqNormWeight(ws[m.key]);
+    return out;
+  }
+  /** 计分方式：weight=权重项 / adjust=调分项；缺省 null（未设置，页面提示需选择）。 */
+  private sqNormKind(v: unknown): 'weight' | 'adjust' | null {
+    const s = v === null || v === undefined ? '' : String(v);
+    return SQ_KIND_KEYS.has(s) ? (s as 'weight' | 'adjust') : null;
+  }
+  private sqMonthKinds(month: string): Record<string, 'weight' | 'adjust' | null> {
+    const out: Record<string, 'weight' | 'adjust' | null> = {};
+    const all = this.sqLoadAll();
+    const months = all.months && typeof all.months === 'object' ? all.months : {};
+    const entry = months[month] && typeof months[month] === 'object' ? months[month] : {};
+    const ks = entry.kinds && typeof entry.kinds === 'object' ? entry.kinds : {};
+    for (const m of RT_METRICS) out[m.key] = this.sqNormKind(ks[m.key]);
+    return out;
+  }
+  /** 是否分层；缺省 'date_weather'（最细粒度，与历史行为一致）。 */
+  private sqNormLayering(v: unknown): string {
+    const s = v === null || v === undefined ? '' : String(v);
+    return SQ_LAYERING_KEYS.has(s) ? s : 'date_weather';
+  }
+  private sqMonthLayering(month: string): Record<string, string> {
+    const out: Record<string, string> = {};
+    const all = this.sqLoadAll();
+    const months = all.months && typeof all.months === 'object' ? all.months : {};
+    const entry = months[month] && typeof months[month] === 'object' ? months[month] : {};
+    const ls = entry.layering && typeof entry.layering === 'object' ? entry.layering : {};
+    for (const m of RT_METRICS) out[m.key] = this.sqNormLayering(ls[m.key]);
+    return out;
+  }
+  /** 读取某月「标准达成设置」；参与考核站点 = 该月下配置了记录的站点。
+   *
+   * 该月从未配置时：
+   *  - 旧单套 schema（有顶层 participating_teams）→ 套用旧名单（迁移，不丢旧数据）；
+   *  - 否则 → 返回空（前端据此提示「尚未配置」，不再回落默认三站）。
+   */
+  getStandardGradeSettings(month?: string): unknown {
+    month = month || currentMonth();
+    const raw = this.sgRead();
+    const empty = !raw || typeof raw !== 'object';
+    const dflt = this.sgTemplate(empty ? null : raw);
+    const months = empty ? {} : (raw.months && typeof raw.months === 'object' ? raw.months : {});
+    const entry = months[month] && typeof months[month] === 'object' ? months[month] : null;
+    const teams: Record<string, any> = {};
+    if (entry) {
+      for (const [tid, cfg] of Object.entries(entry)) {
+        teams[String(tid)] = this.sgNormSite(cfg, dflt);
+      }
+    } else {
+      for (const tid of empty ? [] : this.sgLegacyTeams(raw)) {
+        teams[tid] = { levels: dflt.levels.map((l) => ({ ...l })), threshold_pct: dflt.threshold_pct, cap_pct: dflt.cap_pct, use_default: true };
+      }
+    }
+    return {
+      ok: true,
+      schema_version: empty ? 2 : raw.schema_version || 2,
+      updated_at: empty ? null : (raw.updated_at ?? null),
+      updated_by: empty ? null : (raw.updated_by ?? null),
       month,
-      threshold_pct: m.threshold_pct ?? null,
-      cap_pct: m.cap_pct ?? null,
-      updated_at: m.updated_at ?? null,
+      /** 该月是否已有显式配置（false = 从未保存过，前端应提示去配置）。 */
+      configured: !!entry,
+      default: dflt,
+      teams,
     };
   }
-  private tcSave(thresholdPct: unknown, capPct: unknown, month?: string) {
+  /** 机器人运力达成专用：返回某 (月,站) 归一化 5 档（单量+时长，小时）。teamId 缺失/未配置 → 回落默认模板。 */
+  getStandardGradeLevels(month?: string, teamId?: string | number | null): { level: number; orders: number; hours: number }[] {
     month = month || currentMonth();
-    const t = this.tcNormThreshold(thresholdPct);
-    const c = this.tcNormCap(capPct);
-    const data = this.tcRead();
-    data.months = data.months || {};
-    data.months[month] = { threshold_pct: t, cap_pct: c, updated_at: nowIso() };
+    const s = this.getStandardGradeSettings(month) as any;
+    const t = teamId != null ? s.teams[String(teamId)] : null;
+    return this.sgNormLevels(t || s.default);
+  }
+  /** 某月参与考核站点 id 列表（有配置记录即参与；该月从未配置 → 空列表，由前端提示去配置）。 */
+  getStandardGradeParticipating(month?: string): string[] {
+    const s = this.getStandardGradeSettings(month) as any;
+    return Object.keys(s.teams);
+  }
+  async saveStandardGradeSettings(body: any, user: string): Promise<unknown> {
+    let data: any = this.sgRead();
+    if (!data || typeof data !== 'object' || Array.isArray(data)) {
+      data = { schema_version: 2, months: {} };
+    }
     data.schema_version = 2;
-    this.atomicWrite(this.stdPath('threshold_config.json'), data);
-    const updatedAt = (data.months[month] as any).updated_at;
-    return { month, threshold_pct: t, cap_pct: c, updated_at: updatedAt };
+    // 可选：更新默认模板（新站点 / 首运行沿用）。
+    if (body && typeof body.default === 'object' && body.default !== null) {
+      data.default = {
+        levels: this.sgNormLevels(body.default),
+        threshold_pct: this.sgNormThreshold(body.default.threshold_pct),
+        cap_pct: this.sgNormCap(body.default.cap_pct),
+      };
+    }
+    // 必填：某月站点设置（全量覆盖该月）。
+    const month = String((body && body.month) || currentMonth());
+    if (!/^\d{4}-\d{2}$/.test(month)) return { ok: false, error: 'month 须为 YYYY-MM 格式' };
+    const teamsIn = (body && body.teams) || {};
+    const outTeams: Record<string, any> = {};
+    if (teamsIn && typeof teamsIn === 'object') {
+      for (const [tid, cfg] of Object.entries(teamsIn)) {
+        const id = String(tid).trim();
+        if (!id) continue;
+        const c = cfg as any;
+        if (c && c.use_default) {
+          outTeams[id] = { use_default: true };
+        } else {
+          outTeams[id] = {
+            levels: this.sgNormLevels(c || {}),
+            threshold_pct: this.sgNormThreshold(c && c.threshold_pct),
+            cap_pct: this.sgNormCap(c && c.cap_pct),
+          };
+        }
+      }
+    }
+    data.months = data.months && typeof data.months === 'object' ? data.months : {};
+    data.months[month] = outTeams;
+    data.updated_at = nowIso();
+    data.updated_by = user || '';
+    try {
+      this.atomicWrite(this.stdGradeGlobalPath(), data);
+      await this.rawCache.invalidateAll();
+      return { ok: true, ...(this.getStandardGradeSettings(month) as Record<string, unknown>) };
+    } catch (e) {
+      return { ok: false, error: `写入失败：${(e as Error).message}` };
+    }
   }
 
   // ================================================================== period_config
@@ -521,126 +570,15 @@ export class ConfigService {
   private rtSaveSel(obj: unknown): void {
     this.atomicWrite(this.realtimePath('.realtime_selection.json'), obj);
   }
-  private rtLoadTargets(): any {
-    const obj = this.readJson(this.realtimePath('.realtime_targets.json'));
-    if (obj && typeof obj === 'object' && Array.isArray(obj.rows) && obj.rows.length) return obj;
-    const seed = this.rtSeedTargets();
-    this.rtSaveTargets(seed);
-    return seed;
-  }
-  private rtSaveTargets(obj: unknown): void {
-    this.atomicWrite(this.realtimePath('.realtime_targets.json'), obj);
-  }
-  private rtSeedTargets() {
-    const posDef = { t0: 90.0, t60: 95.0, t100: 99.0 };
-    const negPct = { t0: 5.0, t60: 3.0, t100: 1.0 };
-    const negMin = { t0: 30.0, t60: 15.0, t100: 5.0 };
-    const rows: any[] = [];
-    for (const dt of RT_DATE_TYPES) {
-      for (const wx of RT_WEATHER) {
-        for (const m of RT_METRICS) {
-          let th: { t0: number; t60: number; t100: number };
-          if (m.direction === 'pos') th = { ...posDef };
-          else if (m.unit === '%') th = { ...negPct };
-          else th = { ...negMin };
-          rows.push({
-            date_type: dt.key,
-            weather: wx.key,
-            metric: m.key,
-            direction: m.direction,
-            t0: th.t0,
-            t60: th.t60,
-            t100: th.t100,
-            weight: RT_DEFAULT_WEIGHT[m.key],
-          });
-        }
-      }
-    }
-    return { version: 1, updated_at: '', updated_by: '', rows };
-  }
-  private rtValidate(rows: any[]): string[] {
-    const errors: string[] = [];
-    const seen = new Set<string>();
-    const perDtMetric: Record<string, number> = {};
-    for (let i = 0; i < rows.length; i++) {
-      const r = rows[i];
-      if (!r || typeof r !== 'object') {
-        errors.push(`第 ${i + 1} 行不是有效对象`);
-        continue;
-      }
-      const dt = r.date_type;
-      const wx = r.weather;
-      const mk = r.metric;
-      if (!RT_DT_KEYS.has(dt)) {
-        errors.push(`第 ${i + 1} 行：未知日期类型 ${JSON.stringify(dt)}`);
-        continue;
-      }
-      if (!RT_WX_KEYS.has(wx)) {
-        errors.push(`第 ${i + 1} 行：未知天气等级 ${JSON.stringify(wx)}`);
-        continue;
-      }
-      if (!RT_METRIC_KEYS.has(mk)) {
-        errors.push(`第 ${i + 1} 行：未知指标 ${JSON.stringify(mk)}`);
-        continue;
-      }
-      const key = `${dt}|${wx}|${mk}`;
-      if (seen.has(key)) {
-        errors.push(`重复配置：${dt}/${wx}/${mk}`);
-        continue;
-      }
-      seen.add(key);
-      const direction = RT_METRIC_DIR.get(mk);
-      const t0 = parseFloat(r.t0);
-      const t60 = parseFloat(r.t60);
-      const t100 = parseFloat(r.t100);
-      if ([t0, t60, t100].some(isNaN)) {
-        errors.push(`${dt}/${wx}/${mk}：阈值必须为数字`);
-        continue;
-      }
-      const w = parseFloat(r.weight);
-      if (isNaN(w)) {
-        errors.push(`${dt}/${wx}/${mk}：权重必须为数字`);
-        continue;
-      }
-      if (w < 0) errors.push(`${dt}/${wx}/${mk}：权重不能为负`);
-      if (direction === 'pos') {
-        if (!(t0 < t60 && t60 < t100)) {
-          errors.push(`${dt}/${wx}/${mk}：正向指标需 0分<60分<100分阈值`);
-        }
-      } else {
-        if (!(t0 > t60 && t60 > t100)) {
-          errors.push(`${dt}/${wx}/${mk}：负向指标需 0分>60分>100分阈值`);
-        }
-      }
-      perDtMetric[`${dt}|${mk}`] = w;
-    }
-    const expect = RT_DT_KEYS.size * RT_WX_KEYS.size * RT_METRIC_KEYS.size;
-    if (seen.size !== expect) {
-      errors.push(`配置行数不完整（应为 ${expect} 行，实得 ${seen.size} 行）`);
-    }
-    for (const dt of RT_DT_KEYS) {
-      let tot = 0;
-      for (const k of Object.keys(perDtMetric)) {
-        if (k.startsWith(`${dt}|`)) tot += perDtMetric[k];
-      }
-      if (Math.abs(tot - 100) > 0.1) {
-        errors.push(`日期类型 ${dt} 权重合计 ${tot.toFixed(1)}%，应为 100%`);
-      }
-    }
-    return errors;
-  }
-
   // ===================================================================== 对外分发
   /** 是否为「配置端点」（应归 Nest 处理，而非转发 Python）。 */
   isConfigPath(urlPath: string): boolean {
     return [
-      '/api/standard/teams-config',
-      '/api/standard/grade-standards',
-      '/api/standard/thresholds',
+      '/api/standard/grade-global',
+      '/api/service-quality/targets',
       '/api/attend-period/config',
       '/api/attend-period/teams',
       '/api/realtime/selection',
-      '/api/realtime/targets',
     ].includes(urlPath);
   }
 
@@ -659,14 +597,10 @@ export class ConfigService {
       return v === undefined || v === null ? undefined : String(v);
     };
     switch (urlPath) {
-      case '/api/standard/teams-config':
-        return method === 'GET' ? this.teamsConfigGet() : this.teamsConfigPost(body);
-      case '/api/standard/grade-standards':
+      case '/api/standard/grade-global':
         return method === 'GET'
-          ? this.gradeStandardsGet(q('month'), q('team'))
-          : this.gradeStandardsPost(body);
-      case '/api/standard/thresholds':
-        return method === 'GET' ? this.thresholdsGet(q('month')) : this.thresholdsPost(body);
+          ? this.getStandardGradeSettings(q('month'))
+          : this.saveStandardGradeSettings(body, user);
       case '/api/attend-period/config':
         return method === 'GET' ? this.periodConfigGet(q('month')) : this.periodConfigPost(body);
       case '/api/attend-period/teams':
@@ -675,80 +609,16 @@ export class ConfigService {
         return method === 'GET'
           ? this.realtimeSelectionGet(user, allowed)
           : this.realtimeSelectionPost(user, allowed, body);
-      case '/api/realtime/targets':
-        return method === 'GET' ? this.realtimeTargetsGet() : this.realtimeTargetsPost(user, body);
+      case '/api/service-quality/targets':
+        return method === 'GET'
+          ? this.serviceQualityTargetsGet(q('month'))
+          : this.serviceQualityTargetsPost(user, body);
       default:
         return { ok: false, error: '未知配置端点' };
     }
   }
 
   // -------------------------------------------------------------- 各端点实现
-  async teamsConfigGet(): Promise<unknown> {
-    const all = await this.allTeamRefs();
-    return { ok: true, teams: this.tcGetTeams(), default: [...DEFAULT_TEAMS], all };
-  }
-  teamsConfigPost(body: any): unknown {
-    const r = this.tcSetTeams(body && body.teams);
-    return { ok: r.ok, teams: r.teams, error: r.error };
-  }
-
-  async gradeStandardsGet(month?: string, teamOnly?: string): Promise<unknown> {
-    if (teamOnly) {
-      const rec = this.gsGet(teamOnly, month || '');
-      return {
-        ok: true,
-        record: rec,
-        month: rec.month,
-        team_id: rec.team_id,
-        thresholds: this.gsBuildLevels(teamOnly, month || '').slice(1, 6),
-      };
-    }
-    return { ok: true, ...this.gsGetAll(month || '') };
-  }
-  async gradeStandardsPost(body: any): Promise<unknown> {
-    const tid = String(body && body.team_id != null ? body.team_id : '').trim();
-    const mo = String(body && body.month != null ? body.month : '').trim();
-    const action = String((body && body.action) != null ? body.action : 'save').trim();
-    if (!tid || !mo) return { ok: false, error: 'team_id 与 month 都必填' };
-    try {
-      if (action === 'delete') {
-        const deleted = this.gsDelete(tid, mo);
-        await this.rawCache.invalidateAll();
-        return { ok: true, deleted };
-      }
-      const order = body && body.order;
-      const durH = body && (body.duration_h !== undefined ? body.duration_h : body.duration);
-      if (!Array.isArray(order) || order.length !== 5) {
-        return { ok: false, error: 'order 须是长度为 5 的数组' };
-      }
-      if (!Array.isArray(durH) || durH.length !== 5) {
-        return { ok: false, error: 'duration_h 须是长度为 5 的数组' };
-      }
-      const saved = this.gsSave(tid, mo, order, durH, {
-        enabled: body.enabled,
-        threshold_pct: body.threshold_pct,
-        cap_pct: body.cap_pct,
-      });
-      await this.rawCache.invalidateAll();
-      return { ok: true, saved };
-    } catch (e) {
-      return { ok: false, error: `${(e as Error).name}: ${(e as Error).message}` };
-    }
-  }
-
-  thresholdsGet(month?: string): unknown {
-    return { ok: true, ...this.tcGet(month) };
-  }
-  async thresholdsPost(body: any): Promise<unknown> {
-    try {
-      const saved = this.tcSave(body && body.threshold_pct, body && body.cap_pct, body && body.month);
-      await this.rawCache.invalidateAll();
-      return { ok: true, ...saved };
-    } catch (e) {
-      return { ok: false, error: `${(e as Error).name}: ${(e as Error).message}` };
-    }
-  }
-
   periodConfigGet(month?: string): unknown {
     return this.periodLoad(month);
   }
@@ -802,25 +672,190 @@ export class ConfigService {
     return { ok: true, teams: clean };
   }
 
-  realtimeTargetsGet(): unknown {
-    const obj = this.rtLoadTargets();
+  // ============================================================ 服务质量考核设置
+  // 考核项 / 日期类型 / 天气 三维与 realtime 口径一致（同一批 RT_METRICS 等常量），
+  // 差别只有两点：① 按月份独立；② 每格是 t0/t60/t100 三档阈值（0分/60分/100分）而非单值。
+  //
+  // 落盘：{ version, updated_at, updated_by, months: { "<YYYY-MM>": {
+  //     weights: { "<metric>": number|null },        // 权重项：百分比 0~100
+  //     ranges:  { "<metric>": { min, max } },      // 调分项：得分区间（可负）
+  //     kinds:   { "<metric>": "weight"|"adjust"|null },
+  //     layering:     { "<metric>": "none"|"date"|"weather"|"date_weather" }, // 按考核项
+  //     "<metric>": { "<date_type>": { "<weather>": { t0, t60, t100 } } } } } }
+  private sqPath(): string {
+    return this.realtimePath('.service_quality_targets.json');
+  }
+  private sqLoadAll(): any {
+    const d = this.readJson(this.sqPath());
+    return d && typeof d === 'object' ? d : {};
+  }
+  private static readonly SQ_TIERS = ['t0', 't60', 't100'] as const;
+  /** 单个阈值归一化：空 → null（未设置）；负数/超范围（%）→ null（丢弃脏值）。 */
+  private sqNormNum(v: unknown, metric: string): number | null {
+    if (v === null || v === undefined || v === '') return null;
+    const f = parseFloat(String(v));
+    if (isNaN(f) || f < 0) return null;
+    const m = RT_METRICS.find((x) => x.key === metric);
+    if (m && m.unit === '%' && f > 100) return null;
+    return Math.round(f * 100) / 100;
+  }
+  private sqNormTiers(src: any, metric: string): { t0: number | null; t60: number | null; t100: number | null } {
+    const s = src && typeof src === 'object' ? src : {};
+    const out: { t0: number | null; t60: number | null; t100: number | null } = {
+      t0: null, t60: null, t100: null,
+    };
+    for (const k of ConfigService.SQ_TIERS) out[k] = this.sqNormNum(s[k], metric);
+    return out;
+  }
+  /**
+   * 校验三档顺序（正向 t0<t60<t100、负向反之；与服务质量页面的口径一致）：
+   * 正向指标需 t0 < t60 < t100，负向指标需 t0 > t60 > t100。
+   * 仅当三档都填了才校验（允许只填部分档位）。
+   */
+  private sqValidateTiers(
+    tiers: { t0: number | null; t60: number | null; t100: number | null },
+    direction: string,
+  ): string | null {
+    const { t0, t60, t100 } = tiers;
+    if (t0 === null || t60 === null || t100 === null) return null; // 部分档位不校验顺序
+    if (direction === 'pos') {
+      return t0 < t60 && t60 < t100 ? null : `需 0分<60分<100分（当前 ${t0}/${t60}/${t100}）`;
+    }
+    return t0 > t60 && t60 > t100 ? null : `需 0分>60分>100分（当前 ${t0}/${t60}/${t100}）`;
+  }
+  /** 某月各考核项的 8 个格子（2 日期类型 × 4 天气），每格三档；缺省全 null（未设置）。 */
+  private sqMonthCells(month: string): Record<string, Record<string, Record<string, { t0: number | null; t60: number | null; t100: number | null }>>> {
+    const out: Record<string, Record<string, Record<string, { t0: number | null; t60: number | null; t100: number | null }>>> = {};
+    const all = this.sqLoadAll();
+    const months = all.months && typeof all.months === 'object' ? all.months : {};
+    const entry = months[month] && typeof months[month] === 'object' ? months[month] : {};
+    for (const m of RT_METRICS) {
+      const perMetric: Record<string, Record<string, { t0: number | null; t60: number | null; t100: number | null }>> = {};
+      for (const dt of RT_DATE_TYPES) {
+        const perWx: Record<string, { t0: number | null; t60: number | null; t100: number | null }> = {};
+        for (const wx of RT_WEATHER) {
+          const cell = entry[m.key] && entry[m.key][dt.key] ? entry[m.key][dt.key] : {};
+          perWx[wx.key] = this.sqNormTiers(cell[wx.key], m.key);
+        }
+        perMetric[dt.key] = perWx;
+      }
+      out[m.key] = perMetric;
+    }
+    return out;
+  }
+  serviceQualityTargetsGet(month?: string): unknown {
+    month = month || currentMonth();
+    const all = this.sqLoadAll();
+    const months = all.months && typeof all.months === 'object' ? all.months : {};
     return {
       ok: true,
+      month,
+      /** 该月是否已保存过（false = 从未配置，前端据此提示）。 */
+      configured: !!months[month],
       metrics: RT_METRICS,
       date_types: RT_DATE_TYPES,
       weather: RT_WEATHER,
-      rows: obj.rows,
-      updated_at: obj.updated_at || '',
-      updated_by: obj.updated_by || '',
+      targets: this.sqMonthCells(month),
+      weights: this.sqMonthWeights(month),
+      ranges: this.sqMonthRanges(month),
+      kinds: this.sqMonthKinds(month),
+      kinds_meta: SQ_KINDS,
+      layering: this.sqMonthLayering(month),
+      layering_meta: SQ_LAYERING,
+      updated_at: all.updated_at || '',
+      updated_by: all.updated_by || '',
     };
   }
-  async realtimeTargetsPost(user: string, body: any): Promise<unknown> {
-    const rows = Array.isArray(body && body.rows) ? body.rows : null;
-    if (!Array.isArray(rows)) return { ok: false, error: 'rows 必须为数组' };
-    const errors = this.rtValidate(rows);
-    if (errors.length) return { ok: false, errors };
-    const obj = { version: 1, updated_at: nowStamp(), updated_by: user, rows };
-    this.rtSaveTargets(obj);
-    return { ok: true, updated_at: obj.updated_at, updated_by: obj.updated_by };
+  async serviceQualityTargetsPost(user: string, body: any): Promise<unknown> {
+    const month = String((body && body.month) || '').trim();
+    if (!/^\d{4}-\d{2}$/.test(month)) return { ok: false, error: 'month 须为 YYYY-MM 格式' };
+    const incoming = (body && body.targets) || {};
+    const errors: string[] = [];
+    const out: Record<string, Record<string, Record<string, { t0: number | null; t60: number | null; t100: number | null }>>> = {};
+    for (const m of RT_METRICS) {
+      const perMetric: Record<string, Record<string, { t0: number | null; t60: number | null; t100: number | null }>> = {};
+      const src = incoming[m.key] && typeof incoming[m.key] === 'object' ? incoming[m.key] : {};
+      for (const dt of RT_DATE_TYPES) {
+        const perWx: Record<string, { t0: number | null; t60: number | null; t100: number | null }> = {};
+        const srcDt = src[dt.key] && typeof src[dt.key] === 'object' ? src[dt.key] : {};
+        for (const wx of RT_WEATHER) {
+          const tiers = this.sqNormTiers(srcDt[wx.key], m.key);
+          const bad = this.sqValidateTiers(tiers, m.direction);
+          if (bad) errors.push(`${m.name} / ${dt.name} / ${wx.name}：${bad}`);
+          perWx[wx.key] = tiers;
+        }
+        perMetric[dt.key] = perWx;
+      }
+      out[m.key] = perMetric;
+    }
+    if (errors.length) return { ok: false, error: errors[0], errors };
+    // 权重（权重项=百分比 0~100；调分项用得分区间，权重置空）
+    const kIn0 = (body && body.kinds) || {};
+    const kindsIn: Record<string, 'weight' | 'adjust' | null> = {};
+    for (const m of RT_METRICS) kindsIn[m.key] = this.sqNormKind(kIn0[m.key]);
+    const wIn = (body && body.weights) || {};
+    const weights: Record<string, number | null> = {};
+    let weightFilled = 0;
+    let weightSum = 0;
+    for (const m of RT_METRICS) {
+      // 仅「权重项」的百分比参与合计校验（调分项用得分区间，不计入）
+      const w = kindsIn[m.key] === 'adjust' ? null : this.sqNormWeight(wIn[m.key]);
+      weights[m.key] = w;
+      if (kindsIn[m.key] === 'weight' && w !== null) {
+        weightFilled += 1;
+        weightSum += w;
+      }
+    }
+    // 权重合计校验：有填写才校验，全未填写放行（交由页面提示「未设置」）
+    if (weightFilled > 0 && Math.abs(weightSum - SQ_WEIGHT_SUM) > SQ_WEIGHT_SUM_TOL) {
+      errors.push(`权重项合计 ${weightSum.toFixed(2)}%，应为 ${SQ_WEIGHT_SUM}%`);
+    }
+    // 调分项得分区间：允许负数；两端都填时下限须 ≤ 上限
+    const rIn = (body && body.ranges) || {};
+    const ranges: Record<string, { min: number | null; max: number | null }> = {};
+    for (const m of RT_METRICS) {
+      const r = this.sqNormRange(rIn[m.key]);
+      if (r.min !== null && r.max !== null && r.min > r.max) {
+        errors.push(`${m.name}：得分区间下限不能大于上限（当前 ${r.min}~${r.max}）`);
+      }
+      ranges[m.key] = r;
+    }
+    if (errors.length) return { ok: false, error: errors[0], errors };
+    // 计分方式：weight=权重项 / adjust=调分项
+    const kinds: Record<string, 'weight' | 'adjust' | null> = { ...kindsIn };
+    // 分层方式：**按考核项**（有的项分层、有的不分层）；页面按此合并该行的值单元格。
+    const lIn = (body && body.layering) || {};
+    const layering: Record<string, string> = {};
+    for (const m of RT_METRICS) layering[m.key] = this.sqNormLayering(lIn[m.key]);
+    // 逐考核项按**自身**分层方式把矩阵补全成 8 格（未分层维度用代表格回填，避免空洞）
+    for (const m of RT_METRICS) {
+      const L = layering[m.key];
+      const rep = (dt: string, wx: string): [string, string] => {
+        if (L === 'none') return ['weekday', 'normal'];
+        if (L === 'date') return [dt, 'normal'];
+        if (L === 'weather') return ['weekday', wx];
+        return [dt, wx];
+      };
+      for (const dt of RT_DATE_TYPES) {
+        for (const wx of RT_WEATHER) {
+          const [rDt, rWx] = rep(dt.key, wx.key);
+          if (rDt === dt.key && rWx === wx.key) continue;
+          out[m.key][dt.key][wx.key] = { ...out[m.key][rDt][rWx] };
+        }
+      }
+    }
+    const all = this.sqLoadAll();
+    all.version = 1;
+    all.months = all.months && typeof all.months === 'object' ? all.months : {};
+    all.months[month] = { ...out, weights, ranges, kinds, layering };
+    all.updated_at = nowStamp();
+    all.updated_by = user || '';
+    try {
+      this.atomicWrite(this.sqPath(), all);
+      await this.rawCache.invalidateAll();
+      return { ok: true, ...(this.serviceQualityTargetsGet(month) as Record<string, unknown>) };
+    } catch (e) {
+      return { ok: false, error: `写入失败：${(e as Error).message}` };
+    }
   }
 }

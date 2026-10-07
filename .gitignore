@@ -103,6 +103,10 @@ python/dashboard/standard/teams_config.json
 # 旧版孤立副本（迁移后计算侧已改读 dashboard/standard/ 下的共享文件，此处不再使用）
 python/analytics/threshold_config.json
 python/analytics/teams_config.json
+# 「标准达成设置」活数据（2026-10 起改为按月份 × 站点，替代上面的单套文件）
+python/dashboard/standard/standard_grade_settings.json
+# 「服务质量设置」活数据（考核项 × 周中/周末 × 天气 × t0/t60/t100 × 权重 × 分层方式）
+.service_quality_targets.json
 
 # 调试/嗅探产物（逆向导出链路捕获，非源码；本地可保留，不进版本控制）
 sniff_delivery_*.json

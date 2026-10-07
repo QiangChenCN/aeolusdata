@@ -57,8 +57,8 @@ export class ProxyController {
   }
 
   /**
-   * 看板配置端点（teams-config / grade-standards / thresholds / attend-period/config /
-   * attend-period/teams / realtime/selection / realtime/targets）已迁 Nest 原生
+   * 看板配置端点（grade-global / service-quality/targets / attend-period/config /
+   * attend-period/teams / realtime/selection）已迁 Nest 原生
    * （config.service.ts），不再转发 Python。这里在通配前拦截并改派，避免依赖注册顺序。
    */
   private configSession(
@@ -113,7 +113,7 @@ export class ProxyController {
   // server.py 的 GET_ROUTES/POST_ROUTES 派发表，按 x-scope 做数据权限裁决。
   @Get('standard/{*path}')
   proxyStandardGet(@Req() req: Request) {
-    // 配置端点（teams-config / grade-standards / thresholds）已迁 Nest 原生，优先拦截。
+    // 配置端点（grade-global）已迁 Nest 原生，优先拦截。
     if (this.config.isConfigPath(req.path)) return this.handleConfig('GET', req);
     // refresh-all-status 已原生化（RefreshController → RefreshRunnerService）。通配会把它一起
     // 吞掉（path-to-regexp 不支持负向断言，靠模块注册顺序又易碎），故在此显式改派 ——
@@ -153,7 +153,8 @@ export class ProxyController {
   proxyOverviewPost(@Req() req: Request, @Body() body: unknown) {
     return this.unwrap(this.proxyReq(req, 'POST', body));
   }
-  // 实时在线播报：realtime/selection / realtime/targets 已迁 Nest 原生（配置端点），
+  // 实时在线播报：realtime/selection 已迁Nest 原生（配置端点），
+  // realtime/targets 的考核目标已并入「服务质量设置」（service-quality/targets）；
   // 仅 realtime/station（实时聚合计算）仍转发 Python。
   @Get('realtime/{*path}')
   proxyRealtimeGet(@Req() req: Request) {
@@ -164,6 +165,16 @@ export class ProxyController {
   proxyRealtimePost(@Req() req: Request, @Body() body: unknown) {
     if (this.config.isConfigPath(req.path)) return this.handleConfig('POST', req, body);
     return this.unwrap(this.proxyReq(req, 'POST', body));
+  }
+
+  // 服务质量考核设置（service-quality/targets）：纯配置端点，已迁 Nest 原生，不转发 Python。
+  @Get('service-quality/{*path}')
+  proxyServiceQualityGet(@Req() req: Request) {
+    return this.handleConfig('GET', req);
+  }
+  @Post('service-quality/{*path}')
+  proxyServiceQualityPost(@Req() req: Request, @Body() body: unknown) {
+    return this.handleConfig('POST', req, body);
   }
 
   // 注意：以下三个端点已原生化，必须从这里**移除**路由：

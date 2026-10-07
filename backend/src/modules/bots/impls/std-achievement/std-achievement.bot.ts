@@ -4,6 +4,14 @@ import { Bot, BotReply, BotCheckResult, IncomingMessage } from '../../bot.interf
 import { parseQuery } from './parse';
 import { formatReply } from './format-reply';
 import { RiderQueryService, RiderQueryResult, StdAchievementConfig } from './rider-query.service';
+import { ConfigService as AppConfigService } from '../../../config/config.service';
+
+/** 北京时间当前月份 YYYY-MM（运力达成按「月 × 站」取档位）。 */
+function bjMonth(): string {
+  const d = new Date(Date.now() + 8 * 3600 * 1000);
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}`;
+}
 
 type Candidate = NonNullable<RiderQueryResult['candidates']>[number];
 
@@ -25,6 +33,7 @@ export class StdAchievementBot implements Bot {
   constructor(
     private readonly config: ConfigService,
     private readonly riderQuery: RiderQueryService,
+    private readonly appConfig: AppConfigService,
   ) {
     this.cfg = this.loadConfig();
   }
@@ -100,9 +109,10 @@ export class StdAchievementBot implements Bot {
         this.pending.set(key, { candidates: data.candidates, ts: Date.now() });
       }
       const isAmbiguous = data.status === 'ambiguous';
+      const levels = this.appConfig.getStandardGradeLevels(bjMonth(), data.team_id);
       return {
         kind: 'markdown',
-        content: formatReply(query, data),
+        content: formatReply(query, data, true, levels),
         title: isAmbiguous ? '请选择骑手' : '查询结果',
         state: isAmbiguous ? 'ambiguous' : 'ok',
       };
@@ -122,9 +132,10 @@ export class StdAchievementBot implements Bot {
   private async runQuery(riderId: string): Promise<BotReply> {
     try {
       const data = await this.riderQuery.query(riderId, this.cfg);
+      const levels = this.appConfig.getStandardGradeLevels(bjMonth(), data.team_id);
       return {
         kind: 'markdown',
-        content: formatReply(riderId, data),
+        content: formatReply(riderId, data, true, levels),
         title: data.status === 'error' ? '查询失败' : '查询结果',
         state: data.status === 'error' ? 'error' : 'ok',
       };
