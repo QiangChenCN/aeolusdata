@@ -1,6 +1,7 @@
 import { createApp } from 'vue';
 import { createPinia } from 'pinia';
 import ElementPlus from 'element-plus';
+import zhCn from 'element-plus/es/locale/lang/zh-cn';
 import 'element-plus/dist/index.css';
 import * as ElementPlusIconsVue from '@element-plus/icons-vue';
 
@@ -18,7 +19,8 @@ for (const [key, comp] of Object.entries(ElementPlusIconsVue)) {
 
 app.use(createPinia());
 app.use(router);
-app.use(ElementPlus);
+// 中文语言包：月份选择器等组件显示中文（Jan → 1月）
+app.use(ElementPlus, { locale: zhCn });
 
 // 全局错误兜底：让失败可见（原 main.js 同款处理）
 window.addEventListener('error', (e) => {

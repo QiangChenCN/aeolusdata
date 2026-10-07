@@ -9,7 +9,7 @@ import { AeolusCookieService } from './aeolus-cookie.service';
 export const VIOLATION_API_URL =
   'https://httpizza.ele.me/xtop/xtop.lpd.quality.control.violation.violationOrderAeolusCenterApi.download/1.0';
 
-const STATIC_HEADERS: Record<string, string> = {
+export const STATIC_HEADERS: Record<string, string> = {
   'accept-language': 'zh-CN,zh;q=0.9,en;q=0.8,en-US;q=0.7',
   'content-type': 'application/json',
   origin: 'https://penalty.faas.ele.me',

@@ -10,6 +10,7 @@ import AssessStandardView from '../views/AssessStandardView.vue';
 import AttendPeriodView from '../views/AttendPeriodView.vue';
 import OverviewView from '../views/OverviewView.vue';
 import RealtimeView from '../views/RealtimeView.vue';
+import UnsatisfiedView from '../views/UnsatisfiedView.vue';
 import GroupsView from '../views/GroupsView.vue';
 import AdminView from '../views/AdminView.vue';
 import BotGlobalView from '../views/BotGlobalView.vue';
@@ -35,6 +36,7 @@ const routes = [
   { path: '/attend-period', name: 'attend-period', component: AttendPeriodView, meta: { title: '时段出勤', kind: 'attendPeriod', id: '' } },
   { path: '/overview', name: 'overview', component: OverviewView, meta: { title: '总览' } },
   { path: '/realtime', name: 'realtime', component: RealtimeView, meta: { title: '实时数据', kind: 'realtime', id: '' } },
+  { path: '/unsatisfied', name: 'unsatisfied', component: UnsatisfiedView, meta: { title: '不满意单', kind: 'unsatisfied', id: '' } },
   { path: '/groups', name: 'groups', component: GroupsView, meta: { title: '群组' } },
   { path: '/admin', name: 'admin', component: AdminView, meta: { title: '系统设置' } },
   { path: '/bot/global', name: 'bot-global', component: BotGlobalView, meta: { title: '全局配置', kind: 'botcfg', id: 'global' } },

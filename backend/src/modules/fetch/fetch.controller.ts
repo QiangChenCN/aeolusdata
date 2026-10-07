@@ -9,6 +9,10 @@ import { AttendanceFetchService } from './attendance-fetch.service';
 import { AeolusCookieService } from './aeolus-cookie.service';
 import { ScheduleFetchService } from './schedule-fetch.service';
 import { ViolationFetchService } from './violation-fetch.service';
+import { ViolationListFetchService } from './violation-list-fetch.service';
+import { ViolationStoreService } from './violation-store.service';
+import { RealtimeStoreService } from './realtime-store.service';
+import { ViolationSchedulerService } from './violation-scheduler.service';
 
 /** 北京时间（UTC+8）某天的 [00:00:00.000, 23:59:59.999] 毫秒区间。 */
 function dayRangeMs(date: string): [number, number] {
@@ -29,6 +33,10 @@ export class FetchController {
     private readonly aeolusCookie: AeolusCookieService,
     private readonly schedule: ScheduleFetchService,
     private readonly violation: ViolationFetchService,
+    private readonly violationListSvc: ViolationListFetchService,
+    private readonly violationStore: ViolationStoreService,
+    private readonly realtimeStore: RealtimeStoreService,
+    private readonly violationScheduler: ViolationSchedulerService,
   ) {}
 
   /**
@@ -188,6 +196,33 @@ export class FetchController {
   }
 
   /**
+   * 违规处罚明细列表（风神 queryList，分页 JSON；区别于 violation-csv 的 CSV 导出）。
+   * 入参：start_ms / end_ms（毫秒区间，必填）、page_no（默认1）、page_size（默认10）、cookie（可选）。
+   * 返回上游 result（含 data 列表与分页信息），由调用方解析具体字段。
+   */
+  @Post('violation-list')
+  async violationList(
+    @Body()
+    b: { start_ms?: number; end_ms?: number; page_no?: number; page_size?: number; cookie?: string },
+  ) {
+    if (b?.start_ms == null || b?.end_ms == null) {
+      return { ok: false, error: 'start_ms / end_ms 必填' };
+    }
+    try {
+      const result = await this.violationListSvc.queryList(
+        Number(b.start_ms),
+        Number(b.end_ms),
+        Number(b.page_no ?? 1),
+        Number(b.page_size ?? 10),
+        b.cookie,
+      );
+      return { ok: true, result };
+    } catch (e) {
+      return this.fail(e);
+    }
+  }
+
+  /**
    * 强制重新登录风神 SSO（原 Python `aeolus_sdk.login.refresh_shared_cookies`）。
    *
    * 两个用途：① Python 计算侧 `get_data.auth.call_with_relogin` 收到会话失效后触发重登；
@@ -202,6 +237,80 @@ export class FetchController {
     } catch (e) {
       return this.fail(e);
     }
+  }
+
+  /**
+   * 违规处罚明细·整段区间全量（自动翻页）。入参：start_ms / end_ms（必填）、page_size（默认200）。
+   * 返回 `{total, rows}`，rows 为上游列表项的拼接（不做字段约定，前端按实际字段渲染）。
+   */
+  @Post('violation-range')
+  async violationRange(
+    @Body()
+    b: { start_ms?: number; end_ms?: number; page_size?: number; cookie?: string },
+  ) {
+    if (b?.start_ms == null || b?.end_ms == null) {
+      return { ok: false, error: 'start_ms / end_ms 必填' };
+    }
+    try {
+      const r = await this.violationListSvc.queryRange(
+        Number(b.start_ms),
+        Number(b.end_ms),
+        Number(b.page_size ?? 200),
+        b.cookie,
+      );
+      return { ok: true, total: r.total, rows: r.rows };
+    } catch (e) {
+      return this.fail(e);
+    }
+  }
+
+  /**
+   * 实时看板"刷新"落盘：将一批违规明细写入独立的 realtime.db（按违规时间日期分桶、按 violationOrderId 去重覆盖）。
+   * 与月累计的 violation.db 完全分离，互不影响。
+   */
+  @Post('violation-save')
+  async violationSave(@Body() b: { rows?: Record<string, any>[] }) {
+    try {
+      const n = this.realtimeStore.upsertRows(b?.rows || []);
+      return { ok: true, saved: n };
+    } catch (e) {
+      return this.fail(e);
+    }
+  }
+
+  /**
+   * 实时看板读取本地缓存：按日期区间 [start, end]（YYYY-MM-DD）从 realtime.db 取已落盘数据，不再请求风神。
+   */
+  @Post('violation-range-db')
+  async violationRangeDb(@Body() b: { start?: string; end?: string }) {
+    if (!b?.start || !b?.end) return { ok: false, error: 'start / end 必填（YYYY-MM-DD）' };
+    try {
+      const rows = this.realtimeStore.getRange(b.start, b.end);
+      return {
+        ok: true,
+        total: rows.length,
+        rows,
+        fetchedAt: this.realtimeStore.lastFetchedAt(b.start, b.end),
+      };
+    } catch (e) {
+      return this.fail(e);
+    }
+  }
+
+  /** 按月（YYYY-MM）读取已落库的违规明细（月累计看板数据源）。 */
+  @Get('violation-month')
+  violationMonth(@Query('month') month: string) {
+    if (!month) return { ok: false, error: 'month 必填（YYYY-MM）' };
+    const rows = this.violationStore.getMonth(month);
+    return { ok: true, month, total: rows.length, rows };
+  }
+
+  /** 按天（YYYY-MM-DD）读取已落库的违规明细。 */
+  @Get('violation-day')
+  violationDay(@Query('date') date: string) {
+    if (!date) return { ok: false, error: 'date 必填（YYYY-MM-DD）' };
+    const rows = this.violationStore.getDay(date);
+    return { ok: true, date, total: rows.length, rows };
   }
 
   /** 统一失败包装：把异常的 `code` 透出，供 Python 判定会话失效（401/UNAUTHORIZED）。 */

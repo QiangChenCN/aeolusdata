@@ -138,3 +138,11 @@ python/jobs/**/out/
 # 仓库根的 Nest 启动重定向日志（run<port>.out/.err；上面 backend/*.out 只覆盖 backend/ 目录）
 /run*.out
 /run*.err
+
+# 不满意单看板运行期数据库（violation.db=月累计 / realtime.db=实时）
+# 各环境自行生成（每日 03:00 回补 / 点刷新写入），绝不提交；
+# 否则服务器 git pull 会因本地库与仓库版本不同而起冲突。
+/data/
+*.db
+*.db-wal
+*.db-shm

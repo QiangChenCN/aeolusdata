@@ -19,6 +19,10 @@ import { DeliveryDbService } from './delivery-db.service';
 import { DeliveryCsvService } from './delivery-csv.service';
 import { BoardFetchService } from './board-fetch.service';
 import { ViolationFetchService } from './violation-fetch.service';
+import { ViolationListFetchService } from './violation-list-fetch.service';
+import { ViolationStoreService } from './violation-store.service';
+import { RealtimeStoreService } from './realtime-store.service';
+import { ViolationSchedulerService } from './violation-scheduler.service';
 import { AttendanceFetchService } from './attendance-fetch.service';
 import { QuarkCredsService } from './quark-creds.service';
 import { EquipmentFetchService } from './equipment-fetch.service';
@@ -74,6 +78,10 @@ import { CacheController } from './cache.controller';
     ScheduleFetchService,
     RefreshRunnerService,
     RawCacheService,
+    ViolationListFetchService,
+    ViolationStoreService,
+    RealtimeStoreService,
+    ViolationSchedulerService,
   ],
   exports: [
     FetchPaceService,
@@ -100,6 +108,10 @@ import { CacheController } from './cache.controller';
     ScheduleFetchService,
     RefreshRunnerService,
     RawCacheService,
+    ViolationListFetchService,
+    ViolationStoreService,
+    RealtimeStoreService,
+    ViolationSchedulerService,
   ],
 })
 export class FetchModule {}
