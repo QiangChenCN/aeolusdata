@@ -19,10 +19,11 @@ git clone git@github.com:QiangChenCN/aeolusdata.git
 cd /opt/aeolusdata
 
 # 4) Python 虚拟环境 + 依赖
-python3 -m venv .venv
-.venv/bin/python -m pip install -r python/requirements.txt
+# venv 必须建在 python/ 下：venv_guard / run.sh / compute_api 都按此路径查找
+python3 -m venv python/.venv
+python/.venv/bin/python -m pip install -r python/requirements.txt
 # 可选（按你实际跑的模块）：delivery 入库 / 表格解析
-# .venv/bin/python -m pip install psycopg2-binary openpyxl xlrd
+# python/.venv/bin/python -m pip install psycopg2-binary openpyxl xlrd
 
 # 5) 前端构建（dist 被 .gitignore 忽略，需每次构建；构建在 ECS 上完成）
 cd web && npm install && npm run build && cd ..
@@ -43,5 +44,5 @@ echo "  3) sudo cp deploy/nginx-aeolus.conf /etc/nginx/sites-available/aeolus &&
 
 # ---- Alibaba Cloud Linux 3 替代步骤（默认 python3 是 3.8，Pillow 12.3 需 >=3.9）----
 # dnf install -y python3.11 python3.11-pip nginx git curl fonts-noto-cjk
-# 然后用 python3.11 -m venv .venv 代替上面的 python3 -m venv .venv
+# 然后用 python3.11 -m venv python/.venv 代替上面的 python3 -m venv python/.venv
 # Node 用 dnf 或 nvm 装 18+ 即可

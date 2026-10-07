@@ -8,7 +8,7 @@ echo "== 拉取最新代码 =="
 git pull --ff-only
 
 echo "== 同步 Python 依赖 =="
-.venv/bin/python -m pip install -r python/requirements.txt
+python/.venv/bin/python -m pip install -r python/requirements.txt
 
 echo "== 重建后端（NestJS）=="
 cd backend && npm ci && npm run build && cd ..

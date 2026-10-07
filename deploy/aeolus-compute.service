@@ -6,7 +6,7 @@ After=network.target aeolus-backend.service
 Type=simple
 # 启动方式见 compute_api/main.py 顶部注释：在 python/ 目录下 `uvicorn compute_api.main:app`
 WorkingDirectory=/opt/aeolusdata/python
-ExecStart=/opt/aeolusdata/.venv/bin/python -m uvicorn compute_api.main:app --host 127.0.0.1 --port 8900
+ExecStart=/opt/aeolusdata/python/.venv/bin/python -m uvicorn compute_api.main:app --host 127.0.0.1 --port 8900
 EnvironmentFile=/opt/aeolusdata/.env
 # 取数已迁到 NestJS（ADR 修订 1）：分页请求 / 反爬节奏 / 限流退避 / 会话重登
 # 都在 aeolus-backend 侧完成，本服务只负责落盘与大数据聚合计算。
