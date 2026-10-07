@@ -6,7 +6,16 @@ After=network.target aeolus-backend.service
 Type=simple
 # 启动方式见 compute_api/main.py 顶部注释：在 python/ 目录下 `uvicorn compute_api.main:app`
 WorkingDirectory=/opt/aeolusdata/python
+# 自愈：启动前先清掉可能残留的同端口旧进程，保证 8900 一定可绑定。
+# 背景（历史故障）：单元文件变更但未 daemon-reload 时，旧进程会脱离 systemd 管控成为孤儿
+# （PPID=1）继续占着 8900，新实例 bind 报 EADDRINUSE 失败 → Restart=always 每 5 秒重试，
+# 曾空转 6700+ 次，且线上跑的一直是旧代码。
+# 正则里的 [.] 是刻意写法：避免本条 ExecStartPre 自身的命令行被 pkill -f 匹配到而自杀。
+ExecStartPre=/bin/sh -c 'pkill -f "uvicorn compute_api[.]main:app" || true'
 ExecStart=/opt/aeolusdata/python/.venv/bin/python -m uvicorn compute_api.main:app --host 127.0.0.1 --port 8900
+# 优雅停止：先 TERM 给主进程，最多等 15s，避免停服时进程残留
+ExecStop=/bin/kill -TERM $MAINPID
+TimeoutStopSec=15
 EnvironmentFile=/opt/aeolusdata/.env
 # 取数已迁到 NestJS（ADR 修订 1）：分页请求 / 反爬节奏 / 限流退避 / 会话重登
 # 都在 aeolus-backend 侧完成，本服务只负责落盘与大数据聚合计算。

@@ -7,6 +7,9 @@ Type=simple
 WorkingDirectory=/opt/aeolusdata/backend
 # 构建产物由 setup.sh / update.sh 生成：cd backend && npm ci && npm run build
 ExecStart=/usr/bin/node dist/main
+# 优雅停止：先 TERM 给主进程，最多等 15s，避免停服时进程残留占住 8787
+ExecStop=/bin/kill -TERM $MAINPID
+TimeoutStopSec=15
 Environment=NODE_ENV=production
 # 端口 / AUTH_TOKEN / COMPUTE_PROVIDER / PYTHON_COMPUTE_URL 等见 backend/.env
 # （Nest 的 ConfigModule 会自己读 backend/.env；这里再挂一份仅作兜底）
