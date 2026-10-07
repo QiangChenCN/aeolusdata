@@ -138,16 +138,17 @@ function busy(it) {
 }
 
 /**
- * 深链/刷新进入某子页时，自动展开其所属父级导航（避免父项折叠导致子项不可见）。
- * 手风琴互斥：同一时刻最多一个分组展开——这里也会把历史遗留的多开状态收敛掉。
+ * 深链/刷新进入某子页时，自动**展开**其所属父级导航（避免子项不可见）。
+ *
+ * 只展开、不收起：互斥是用户主动点击父项时（onParent）才发生的语义，
+ * 路由变化不应把用户手动展开的分组收起来（例如在首页展开「数据看板」后
+ * 点进「标准达成」，该分组必须保持展开）。
  */
 function ensureActiveParents() {
-  const parents = navItems.value.filter((it) => it.type === 'parent');
-  const active = parents.filter((it) => parentOn(it));
-  const keep = new Set(active.map((it) => it.key));
-  parents.forEach((it) => {
-    const want = keep.has(it.key);
-    if (open(it) !== want) app.setNavOpen(it.key, want);
+  navItems.value.forEach((it) => {
+    if (it.type === 'parent' && parentOn(it) && !open(it)) {
+      app.setNavOpen(it.key, true);
+    }
   });
 }
 watch(() => route.fullPath, ensureActiveParents, { immediate: true });
