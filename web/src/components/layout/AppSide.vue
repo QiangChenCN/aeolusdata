@@ -82,7 +82,7 @@ const navItems = computed(() => {
     { type: 'leaf', kind: 'standard', id: '', name: '标准达成', icon: 'Aim' },
     { type: 'leaf', kind: 'attendPeriod', id: '', name: '时段出勤', icon: 'Calendar' },
     { type: 'leaf', kind: 'realtime', id: '', name: '实时数据', icon: 'DataLine' },
-    { type: 'leaf', kind: 'unsatisfied', id: '', name: '不满意单', icon: 'Warning' },
+    { type: 'leaf', kind: 'unsatisfied', id: '', name: '违规处罚', icon: 'Warning' },
   ];
   items.push({ type: 'parent', key: 'dash', name: '数据看板', icon: 'DataLine', children: dashSubs });
 

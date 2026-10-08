@@ -1,7 +1,7 @@
 <template>
   <div class="dv">
     <div class="dv-bar">
-      <span class="dv-title">不满意单（违规处罚明细）</span>
+      <span class="dv-title">违规处罚</span>
     </div>
 
     <el-menu mode="horizontal" :default-active="tab" class="dv-menu" @select="(k) => (tab = k)">
@@ -477,7 +477,11 @@ watch(tab, async () => {
 });
 
 onMounted(() => {
-  loadMonthly();
+  // 必须按**当前标签**主动加载一次：watch(tab) 只在标签切换时触发，
+  // 首次进入（默认停在「实时」）不会触发 —— 否则即使 violation.db/realtime.db
+  // 已有落盘数据，实时表格也会一直空白，必须切到月累计再切回来才显示。
+  if (tab.value === 'monthly') loadMonthly();
+  else loadRealtimeCache();
 });
 </script>
 
