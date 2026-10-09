@@ -786,6 +786,37 @@ def _get_realtime_station(self, qs):
                     "data_status": "error", "need_refresh": False})
 
 
+# ---------------- 配送超时看板（站点超时汇总 + 订单明细）----------------
+# 计算逻辑已迁至 analytics/realtime/timeout.py；此处仅做站点权限闸门 + 转发。
+def _get_realtime_timeout(self, qs):
+    from analytics.realtime import timeout as RTO
+    from analytics import cache as CACHE
+    team = (qs.get("team") or [None])[0]
+    if not team:
+        self._json({"ok": False, "error": "缺少 team 参数"}, 400); return
+    mode, val = self._enforce_team_scope(team)
+    if mode == "deny":
+        return
+    try:
+        date = CACHE.today_ymd()
+        row = RTO.build_one(team, date)
+        miss = bool(row.get("need_refresh"))
+        self._json({
+            "ok": True,
+            "team": team,
+            "teamName": row.get("team_name"),
+            "start": date, "end": date, "basis": "day",
+            "rows": [] if miss else [row],
+            "data_status": "no_data" if miss else (row.get("data_status") or "ok"),
+            "data_note": row.get("data_note"),
+            "need_refresh": miss,
+        })
+    except Exception as e:
+        self._json({"ok": False, "error": "%s: %s" % (type(e).__name__, e),
+                    "team": team, "start": CACHE.today_ymd(), "end": CACHE.today_ymd(),
+                    "data_status": "error", "need_refresh": False})
+
+
 def _get_ov_site_orders(self, qs):
     """数据大屏 —— 站点维度「接单量 / 配送完成量」。
 
@@ -863,6 +894,7 @@ GET_ROUTES = {
     "/api/overview/standard": _get_ov_standard,
     "/api/overview/assessment": _get_ov_assessment,
     "/api/realtime/station":    _get_realtime_station,
+    "/api/realtime/timeout":    _get_realtime_timeout,
 }
 
 POST_ROUTES = {

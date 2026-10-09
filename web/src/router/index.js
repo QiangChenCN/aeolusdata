@@ -10,6 +10,7 @@ import AssessStandardView from '../views/AssessStandardView.vue';
 import AttendPeriodView from '../views/AttendPeriodView.vue';
 import OverviewView from '../views/OverviewView.vue';
 import RealtimeView from '../views/RealtimeView.vue';
+import DeliveryTimeoutView from '../views/DeliveryTimeoutView.vue';
 import UnsatisfiedView from '../views/UnsatisfiedView.vue';
 import GroupsView from '../views/GroupsView.vue';
 import UsersView from '../views/UsersView.vue';
@@ -41,6 +42,7 @@ const routes = [
   { path: '/attend-period', name: 'attend-period', component: AttendPeriodView, meta: { title: '时段出勤', kind: 'attendPeriod', id: '' } },
   { path: '/overview', name: 'overview', component: OverviewView, meta: { title: '总览' } },
   { path: '/realtime', name: 'realtime', component: RealtimeView, meta: { title: '实时数据', kind: 'realtime', id: '' } },
+  { path: '/timeout', name: 'timeout', component: DeliveryTimeoutView, meta: { title: '配送超时', kind: 'timeout', id: '' } },
   { path: '/unsatisfied', name: 'unsatisfied', component: UnsatisfiedView, meta: { title: '违规处罚', kind: 'unsatisfied', id: '' } },
   { path: '/groups', name: 'groups', component: GroupsView, meta: { title: '群组' } },
   { path: '/rbac', redirect: '/rbac/users' },

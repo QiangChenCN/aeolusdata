@@ -151,6 +151,13 @@ export function fetchRealtimeStation({ team, start, end } = {}) {
   return request('/realtime/station' + (p.length ? '?' + p.join('&') : ''));
 }
 
+/* ============ 配送超时看板 ============ */
+export function fetchRealtimeTimeout({ team } = {}) {
+  const p = [];
+  if (team) p.push('team=' + enc(team));
+  return request('/realtime/timeout' + (p.length ? '?' + p.join('&') : ''));
+}
+
 /* ============ 系统设置（Admin） ============ */
 export function fetchUsers() { return request('/admin/users'); }
 export function createUser({ username, password, role }) {

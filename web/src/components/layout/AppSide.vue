@@ -58,6 +58,7 @@ function to(it) {
     case 'standard': return '/standard';
     case 'attendPeriod': return '/attend-period';
     case 'realtime': return '/realtime';
+    case 'timeout': return '/timeout';
     case 'unsatisfied': return '/unsatisfied';
     case 'todo': return '/todo';
     case 'assessService': return '/assess/service';
@@ -79,6 +80,7 @@ const navItems = computed(() => {
 
   const dashSubs = [
     { type: 'leaf', kind: 'realtime', id: '', name: '实时数据', icon: 'DataLine' },
+    { type: 'leaf', kind: 'timeout', id: '', name: '配送超时', icon: 'Timer' },
     { type: 'leaf', kind: 'standard', id: '', name: '标准达成', icon: 'Aim' },
     { type: 'leaf', kind: 'attendPeriod', id: '', name: '时段出勤', icon: 'Calendar' },
     { type: 'leaf', kind: 'unsatisfied', id: '', name: '违规处罚', icon: 'Warning' },
