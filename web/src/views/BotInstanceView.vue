@@ -66,14 +66,14 @@ onUnmounted(deactivate);
 
 <style scoped>
 .bc { padding: var(--sp-20); }
-.v-title { margin: 0 0 var(--sp-8); font-size: var(--fs-title); }
+.v-title { margin: 0 0 var(--sp-8); font-size: var(--el-font-size-extra-large); }
 .bc-lead { margin: 0 0 var(--sp-16); }
 .bc-lead b { color: var(--text); }
 .bc-empty { display: flex; align-items: center; gap: var(--sp-8); padding: var(--sp-24); }
 .bc-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: var(--sp-16); }
 .inst-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg); padding: var(--sp-16) var(--sp-18); display: flex; flex-direction: column; }
 .inst-head { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-8); margin-bottom: var(--sp-12); }
-.inst-name { font-size: var(--fs-subtitle); font-weight: var(--fw-semibold); color: var(--text); }
+.inst-name { font-size: var(--el-font-size-medium); font-weight: var(--fw-semibold); color: var(--text); }
 .inst-form { flex: 1; }
 .inst-form :deep(.el-form-item) { margin-bottom: var(--sp-12); }
 .inst-foot { border-top: 1px solid var(--border-soft); padding-top: var(--sp-10); margin-top: var(--sp-4); font-size: 12px; }

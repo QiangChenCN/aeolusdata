@@ -11,7 +11,7 @@ import * as path from 'path';
  * Python 只保留**读**（`cache.load_raw`，计算的输入端口）。
  *
  * 格式必须与迁移前逐字节兼容（下游 Python 计算直接读这些文件）：
- *   `dashboard/data/{kind}_{team}_{date}.json`，`JSON.stringify(payload)`（无缩进、UTF-8 原样），
+ *   `backend/data/raw/{kind}_{team}_{date}.json`，`JSON.stringify(payload)`（无缩进、UTF-8 原样），
  *   非空才写（避免把已有数据冲成空）。
  *
  * kind 语义（与 Python `cache.RAW_KINDS` 一致）：
@@ -83,7 +83,7 @@ export class RawCacheService {
     const root = path.resolve(
       this.config.get<string>('PROJECT_ROOT') || path.resolve(process.cwd(), '..'),
     );
-    this.dataDir = path.join(root, 'dashboard', 'data');
+    this.dataDir = path.join(root, 'backend', 'data', 'raw');
     this.cacheDir = path.join(root, 'dashboard', 'standard', 'cache');
   }
 

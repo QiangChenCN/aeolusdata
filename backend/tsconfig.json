@@ -11,6 +11,7 @@
     "outDir": "./dist",
     "baseUrl": "./",
     "incremental": true,
+    "types": ["node"],
     "skipLibCheck": true,
     "strictNullChecks": true,
     "noImplicitAny": true,

@@ -11,7 +11,7 @@ const DEFAULT_QUERY_TIMEOUT = 60;
  * bot 清单的运行时覆盖（实例在线启停 + 凭据分组绑定）。
  *
  * 编译期清单 `bots.manifest.ts` 定义静态基线；本服务把「是否启用」「凭据分组绑定」
- * 的可写状态落盘到 `<PROJECT_ROOT>/bot_manifest.json`
+ * 的可写状态落盘到 `<PROJECT_ROOT>/backend/data/bot_manifest.json`
  * （{ overrides: { [botId]: { enabled?, credentialsRef? } } }），使前端操作在重启后保留。
  *
  *  - getEnabled / getCredentialsRef：覆盖优先，否则回落编译默认值。
@@ -28,7 +28,7 @@ export class BotManifestService {
     const root = path.resolve(
       this.nest.get<string>('PROJECT_ROOT') || path.resolve(process.cwd(), '..'),
     );
-    this.file = path.join(root, 'bot_manifest.json');
+    this.file = path.join(root, 'backend', 'data', 'bot_manifest.json');
     this.overrides = this.readFile();
   }
 

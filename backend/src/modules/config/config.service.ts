@@ -15,7 +15,7 @@ import { RawCacheService } from '../fetch/raw-cache.service';
  *
  * 落盘路径刻意与 Python 一致（不搬文件，避免改动 Python 计算侧的读取路径）：
  *   · 标准类配置 → `<root>/python/dashboard/standard/*.json`
- *   · 实时类配置 → `<root>/.realtime_selection.json`、`<root>/.service_quality_targets.json`
+ *   · 服务质量考核目标 → `<root>/backend/data/.service_quality_targets.json`
  * 其中 `<root>` = PROJECT_ROOT（默认仓库根，与 Python 的 `_ROOT` 同源）。
  *
  * 接口形状逐条对齐 `compute_service/handlers.py` 的 `_get/_post_*` 处理函数，保证前端零改动。
@@ -122,9 +122,6 @@ export class ConfigService {
   // ------------------------------------------------------------------ 路径/IO
   private stdPath(name: string): string {
     return path.join(this.stdDir, name);
-  }
-  private realtimePath(name: string): string {
-    return path.join(this.root, name);
   }
   private atomicWrite(file: string, obj: unknown): void {
     const tmp = `${file}.tmp`;
@@ -563,13 +560,6 @@ export class ConfigService {
     }
   }
 
-  // ==================================================================== realtime
-  private rtLoadSel(): Record<string, string[]> {
-    return this.readJson(this.realtimePath('.realtime_selection.json')) || {};
-  }
-  private rtSaveSel(obj: unknown): void {
-    this.atomicWrite(this.realtimePath('.realtime_selection.json'), obj);
-  }
   // ===================================================================== 对外分发
   /** 是否为「配置端点」（应归 Nest 处理，而非转发 Python）。 */
   isConfigPath(urlPath: string): boolean {
@@ -578,7 +568,6 @@ export class ConfigService {
       '/api/service-quality/targets',
       '/api/attend-period/config',
       '/api/attend-period/teams',
-      '/api/realtime/selection',
     ].includes(urlPath);
   }
 
@@ -605,10 +594,6 @@ export class ConfigService {
         return method === 'GET' ? this.periodConfigGet(q('month')) : this.periodConfigPost(body);
       case '/api/attend-period/teams':
         return method === 'GET' ? this.apTeamsGet(allowed) : this.apTeamsPost(body);
-      case '/api/realtime/selection':
-        return method === 'GET'
-          ? this.realtimeSelectionGet(user, allowed)
-          : this.realtimeSelectionPost(user, allowed, body);
       case '/api/service-quality/targets':
         return method === 'GET'
           ? this.serviceQualityTargetsGet(q('month'))
@@ -650,28 +635,6 @@ export class ConfigService {
     return { ok: r.ok, teams: r.teams, error: r.error };
   }
 
-  realtimeSelectionGet(user: string, allowed: Allowed): unknown {
-    const obj = this.rtLoadSel();
-    const sel = filterIds(obj[user] || [], allowed);
-    return { ok: true, teams: sel };
-  }
-  realtimeSelectionPost(user: string, allowed: Allowed, body: any): unknown {
-    const incoming: unknown[] = Array.isArray(body && body.teams) ? body.teams : [];
-    const clean: string[] = [];
-    const seen = new Set<string>();
-    for (const t of incoming) {
-      const s = String(t).trim();
-      if (!s || seen.has(s)) continue;
-      if (allowed !== null && !allowed.has(s)) continue; // 越权站点不落库（纵深防御）
-      seen.add(s);
-      clean.push(s);
-    }
-    const obj = this.rtLoadSel();
-    obj[user] = clean;
-    this.rtSaveSel(obj);
-    return { ok: true, teams: clean };
-  }
-
   // ============================================================ 服务质量考核设置
   // 考核项 / 日期类型 / 天气 三维与 realtime 口径一致（同一批 RT_METRICS 等常量），
   // 差别只有两点：① 按月份独立；② 每格是 t0/t60/t100 三档阈值（0分/60分/100分）而非单值。
@@ -683,7 +646,8 @@ export class ConfigService {
   //     layering:     { "<metric>": "none"|"date"|"weather"|"date_weather" }, // 按考核项
   //     "<metric>": { "<date_type>": { "<weather>": { t0, t60, t100 } } } } } }
   private sqPath(): string {
-    return this.realtimePath('.service_quality_targets.json');
+    // 后端本地状态统一落 backend/data/（带点前缀，与 .users.json / todo.db 等同目录）
+    return path.join(this.root, 'backend', 'data', '.service_quality_targets.json');
   }
   private sqLoadAll(): any {
     const d = this.readJson(this.sqPath());

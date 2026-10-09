@@ -73,13 +73,13 @@ onMounted(load);
 <style scoped>
 .dv { padding: var(--sp-20); }
 .dv-bar { display: flex; align-items: center; gap: var(--sp-12); margin-bottom: var(--sp-16); flex-wrap: wrap; }
-.v-title { margin: 0; font-size: var(--fs-title); }
+.v-title { margin: 0; font-size: var(--el-font-size-extra-large); }
 .dv-range { width: 280px; }
 .dv-bar .sp { flex: 1; }
 .dv-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: var(--sp-12); margin-bottom: var(--sp-16); }
 .dv-card { background: var(--white); border: 1px solid var(--border-soft); border-radius: var(--r-md); padding: var(--sp-16); display: flex; flex-direction: column; gap: 4px; }
 .dv-card-num { font-size: 24px; font-weight: var(--fw-bold); color: var(--brand); }
-.dv-card-label { font-size: var(--fs-caption); color: var(--muted); }
+.dv-card-label { font-size: var(--el-font-size-extra-small); color: var(--muted); }
 .dv-table { border-radius: var(--r-md); }
 .dv-state { padding: var(--sp-40); text-align: center; color: var(--muted); display: flex; gap: var(--sp-8); justify-content: center; align-items: center; }
 </style>

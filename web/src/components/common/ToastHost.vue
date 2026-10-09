@@ -32,7 +32,7 @@ const app = useAppStore();
   background: var(--surface-overlay);
   color: var(--text);
   box-shadow: var(--shadow-3);
-  font-size: var(--fs-body);
+  font-size: var(--el-font-size-base);
   max-width: 360px;
 }
 .toast--success { border-bottom: 3px solid var(--ok); }

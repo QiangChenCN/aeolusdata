@@ -1,6 +1,7 @@
 import { Logger } from '@nestjs/common';
 import { execFileSync } from 'child_process';
 import * as fs from 'fs';
+import * as path from 'path';
 import { GlobalFonts } from '@napi-rs/canvas';
 
 /**
@@ -20,7 +21,12 @@ export function resolveFontPath(): string {
   const env = process.env.DING_FONT_PATH;
   if (env && fs.existsSync(env)) return env;
 
+  // 项目内置字体：跟随仓库走，开发/生产都不依赖系统装字体。仅用 Source Han Sans 完整版
+  // （Adobe 发行，= NotoSansCJK 合集，含 SC/TC/JP/KR，TTC index 0 即简体中文）。
+  const bundled = path.resolve(__dirname, '../../../assets/fonts/SourceHanSans.ttc');
+
   const candidates = [
+    bundled,
     'C:/Windows/Fonts/simhei.ttf',
     'C:/Windows/Fonts/msyh.ttc',
     'C:/Windows/Fonts/msyh.ttf',

@@ -8,8 +8,8 @@ import { DatabaseSync } from 'node:sqlite';
  * 实时看板（违规处罚明细）持久层。
  *
  * 与 `violation-store.service.ts`（月累计）**完全分离**：
- *   · 月累计 → `data/violation.db`，唯一写入方是 ViolationSchedulerService（每日 03:00 回补）；
- *   · 实时   → `data/realtime.db`，唯一写入方是前端实时看板「刷新」按钮。
+ *   · 月累计 → `backend/data/db/violation.db`，唯一写入方是 ViolationSchedulerService（每日 03:00 回补）；
+ *   · 实时   → `backend/data/db/realtime.db`，唯一写入方是前端实时看板「刷新」按钮。
  * 两者互不影响，实时刷新不会污染月累计归档，月累计回补也不会覆盖实时快照。
  *
  * 每行原始 JSON 整体落库（raw_json），按 (stat_date, violation_no) 去重，重复刷新覆盖更新。
@@ -36,7 +36,7 @@ export class RealtimeStoreService {
     const root = path.resolve(
       config.get<string>('PROJECT_ROOT') || path.resolve(process.cwd(), '..'),
     );
-    const dataDir = path.join(root, 'data');
+    const dataDir = path.join(root, 'backend', 'data', 'db');
     fs.mkdirSync(dataDir, { recursive: true });
     this.dbPath = path.join(dataDir, 'realtime.db');
   }

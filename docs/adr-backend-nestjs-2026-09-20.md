@@ -65,14 +65,14 @@
    >    不再 spawn Python；手动复位走 `POST /api/fetch/aeolus-relogin`（机器令牌）；
    > ② cookie 文件于 2026-09-24 移入 `backend/aeolus_sdk/cookie.txt`（写入方仍是 Nest）。
    > 本条仍有效的是分工原则：**登录态只有一个写入方**。
-2. **共享原始层 `python/dashboard/data/{kind}_{team}_{date}.json`**：Nest 写、Python 算。Nest 落盘格式必须与 `cache.save_raw` 完全一致（orders = 裸 JSON 数组，非空才写）。
-3. **共享 `python/dashboard/standard/cache/pace_state.json`**：两边学到的节奏下限互通。
+2. **共享原始层 `backend/data/raw/{kind}_{team}_{date}.json`**：Nest 写、Python 算。Nest 落盘格式必须与 `cache.save_raw` 完全一致（orders = 裸 JSON 数组，非空才写）。
+3. **共享 `pace_state.json`（仓库根目录）**：两边学到的节奏下限互通。
 4. **⚠️ 写完必须通知失效**：Python 的进程内结果缓存只在它自己调 `save_raw` 时失效。Nest 直接写文件后**必须**调 `POST {PYTHON_COMPUTE_URL}/api/cache/invalidate`，否则看板会返回旧聚合结果（表现为「刷新了但数字没变」，已实测复现）。
 
 ### 数据流
 
 ```
-Nest 取数（反爬节奏）→ 写 python/dashboard/data → 通知 /api/cache/invalidate → Python 重算 → 前端
+Nest 取数（反爬节奏）→ 写 backend/data/raw → 通知 /api/cache/invalidate → Python 重算 → 前端
 ```
 
 ### 当前状态

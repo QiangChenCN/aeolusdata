@@ -4,7 +4,7 @@
 
 数据来源
 --------
-dashboard/data/orders_<teamId>_<date>.json —— 等价于 cache.load_raw("orders", team, date)，
+backend/data/raw/orders_<teamId>_<date>.json —— 等价于 cache.load_raw("orders", team, date)，
 即 aeolus queryTracking 的运单明细原始行（list[dict]，99+ 个原始键），
 由「标准达成 → 全量刷新」落盘（编排在 Nest：fetch/refresh-runner.service.ts）。
 
@@ -64,7 +64,7 @@ _RAW_KIND = "orders"
 # 项目根下的共享原始数据目录 —— 必须与 Nest RawCacheService 的写入端一致
 # （见 analytics/cache.py 的 _DATA_DIR）。
 # 2026-09-23 修正：原为 PY_HOME/dashboard/data（python 代码目录内），读不到 Nest 刷新的数据。
-_DATA_DIR = os.path.join(ROOT, "dashboard", "data")
+_DATA_DIR = os.path.join(ROOT, "data", "raw")
 _FNAME_RE = re.compile(r"^orders_(?P<team>[^_]+)_(?P<date>\d{4}-\d{2}-\d{2})\.json$")
 NAME_KEYS = ("teamName", "团队/站点名称", "团队名称")
 # 原用途：缓存按生成时间抓时，「接单日在 D」的单生成时间可能落在 D-1，需回读一天。

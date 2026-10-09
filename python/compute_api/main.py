@@ -120,7 +120,7 @@ def sheet(path: str = ""):
 # 数据权限由传入的 x-scope 经以下两处落地：
 #   1) _GatewayHandler._enforce_team_scope / _scoped_universe  —— 用 x-scope 决定 all/scoped/one；
 #   2) _GatewayHandler._visible_ids()                          —— 用 x-scope 给出「本次可见站点
-#      id 集合」，供直接需要集合的处理器（_get_ap_teams / realtime selection）使用。
+#      id 集合」，供直接需要集合的处理器（_get_ap_teams）使用。
 # Nest 是唯一鉴权网关，它已按 RBAC + 数据权限算好 x-scope 下发。
 #
 # 原先这里用猴子补丁把 core.dataperm.allowed_team_ids 在 role=="gateway" 时重定向到 x-scope
@@ -171,7 +171,7 @@ class _GatewayHandler:
     def _visible_ids(self):
         """本次请求可见的站点 id 集合；None 表示不受限（x-scope=*）。
 
-        供需要「可见 id 集合」的处理器使用（_get_ap_teams / realtime selection）。
+        供需要「可见 id 集合」的处理器使用（_get_ap_teams）。
         返回值语义与原先的 dataperm.allowed_team_ids 一致：None = 全可见，否则为 id 集合。
         """
         if self._scope == "*":
@@ -193,7 +193,7 @@ def _parse_scope(header_val):
 async def cache_invalidate(req: Request):
     """NestJS 写原始层后回调：失效本进程的**结果缓存**。
 
-    背景：取数已迁到 NestJS，它会直接写 dashboard/data/{kind}_{team}_{date}.json；
+    背景：取数已迁到 NestJS，它会直接写 backend/data/raw/{kind}_{team}_{date}.json；
     而 Python 的进程内结果缓存（cache._RESULT_CACHE）只在**自己**调 save_raw 时才失效。
     不通知的话，Nest 刷新完 Python 仍返回旧聚合结果 —— 表现为「刷新了但看板数字没变」，
     且全程不报错（2026-09-23 排查过：同类缓存未失效的问题定位成本极高）。

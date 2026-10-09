@@ -47,7 +47,7 @@ from analytics.realtime import violations as RV
 
 @pytest.fixture
 def tmp_data(monkeypatch, tmp_path):
-    """把原始层目录指到临时目录，避免污染 dashboard/data。"""
+    """把原始层目录指到临时目录，避免污染 backend/data/raw。"""
     monkeypatch.setattr(CACHE, "_DATA_DIR", str(tmp_path))
     return tmp_path
 

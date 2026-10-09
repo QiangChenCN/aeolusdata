@@ -63,11 +63,11 @@ function viewLog() {
 <style scoped>
 .rd { display: flex; flex-direction: column; gap: var(--sp-16); }
 .rd-head { display: flex; align-items: center; gap: var(--sp-10); }
-.rd-name { font-weight: var(--fw-bold); font-size: var(--fs-subtitle); }
+.rd-name { font-weight: var(--fw-bold); font-size: var(--el-font-size-medium); }
 .rd-err {
   background: var(--brand-soft); border-radius: var(--r-md); padding: var(--sp-12);
   color: var(--text);
 }
-.rd-err p { margin: var(--sp-6) 0 0; color: var(--muted); font-size: var(--fs-body); }
+.rd-err p { margin: var(--sp-6) 0 0; color: var(--muted); font-size: var(--el-font-size-base); }
 .rd-actions { margin-top: var(--sp-8); }
 </style>

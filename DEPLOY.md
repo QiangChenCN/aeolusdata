@@ -35,8 +35,8 @@
 
 ⚠️ **不要 `git add -A` / `git add .`**。以下文件是**运行时缓存**，已跟踪但会反复变化，提交时必须排除：
 
-- `python/dashboard/data/*.json`（**原始层**：运单 / 考勤 / 排班 / 违规明细；由 NestJS 落盘）
-- `python/dashboard/standard/cache/pace_state.json`（反爬节奏下限，Nest 与 Python 共用）
+- `backend/data/raw/*.json`（**原始层**：运单 / 考勤 / 排班 / 违规明细；由 NestJS 落盘到 `backend/data/raw`）
+- `pace_state.json`（仓库根目录；反爬节奏下限，Nest 与 Python 共用）
 
 > 2026-09-23：原先同目录的**结果层**（`rider_*.json` / `ach_*.json`）已删除 —— 全仓无读取方。
 
@@ -54,7 +54,7 @@ git add .gitignore \
         python/compute_service/ \
         web/src/ \
 
-        backend/data/.data_perms.json org_tree.json
+        backend/data/.data_perms.json backend/data/org_tree.json
 git status --short        # 确认缓存 JSON 仍留在工作区（未暂存）
 git commit -m "feat: ..."
 ```

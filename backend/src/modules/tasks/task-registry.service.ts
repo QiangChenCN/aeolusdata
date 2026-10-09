@@ -25,6 +25,8 @@ export interface TaskDef {
   needs?: string[];
   /** 本任务产出的路径（相对项目根），前端据此反查「该先跑谁」。 */
   outputs?: string[];
+  /** 目录型产物保留个数：列表与磁盘仅保留最近 N 个，超出自动删除（默认不限制）。 */
+  artifact_keep?: number;
   /** 其余原始字段（desc / nodes / color …）原样透传给前端。 */
   [key: string]: unknown;
 }

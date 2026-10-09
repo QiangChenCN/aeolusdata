@@ -33,7 +33,7 @@ export class ViolationStoreService {
     const root = path.resolve(
       config.get<string>('PROJECT_ROOT') || path.resolve(process.cwd(), '..'),
     );
-    const dataDir = path.join(root, 'data');
+    const dataDir = path.join(root, 'backend', 'data', 'db');
     fs.mkdirSync(dataDir, { recursive: true });
     this.dbPath = path.join(dataDir, 'violation.db');
   }

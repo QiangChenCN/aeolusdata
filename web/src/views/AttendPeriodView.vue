@@ -44,9 +44,9 @@
             <h4 class="dv-rate-title">{{ t.title }}</h4>
             <div class="dv-matrix-wrap">
               <el-table :data="t.rows" stripe border class="dv-table" empty-text="暂无站点数据" :max-height="520">
-                <el-table-column prop="team_id" label="站点ID" min-width="120" fixed />
-                <el-table-column prop="team_name" label="站点名称" min-width="160" fixed />
-                <el-table-column label="全天" min-width="150" align="center" fixed>
+                <el-table-column prop="team_id" label="站点ID" min-width="120" show-overflow-tooltip />
+                <el-table-column prop="team_name" label="站点名称" min-width="220" show-overflow-tooltip />
+                <el-table-column label="全天" min-width="150" align="center">
                   <template #default="{ row }">
                     <div class="dv-cell">
                       <span class="dv-cell-rate" :class="rateClass(row.full.rate)">
@@ -157,18 +157,18 @@
             </div>
           </div>
           <el-table :data="tpRowsFiltered" stripe border class="dv-table" height="520" empty-text="暂无时段数据">
-            <el-table-column prop="time_name" label="时段" min-width="120" fixed />
-            <el-table-column prop="start_time" label="开始" width="90" />
-            <el-table-column prop="end_time" label="结束" width="90" />
-            <el-table-column prop="target" label="目标" width="80" />
-            <el-table-column prop="scheduled" label="排班" width="80" />
-            <el-table-column prop="online" label="在线" width="80" />
-            <el-table-column prop="offline" label="离线" width="80" />
-            <el-table-column prop="rest" label="休息" width="80" />
-            <el-table-column prop="absent" label="缺勤" width="80" />
-            <el-table-column prop="rate" label="达成率" width="90" />
-            <el-table-column prop="valid_dur" label="有效时长" width="110" />
-          </el-table>
+              <el-table-column prop="time_name" label="时段" min-width="120" fixed />
+              <el-table-column prop="start_time" label="开始" min-width="90" />
+              <el-table-column prop="end_time" label="结束" min-width="90" />
+              <el-table-column prop="target" label="目标" min-width="80" />
+              <el-table-column prop="scheduled" label="排班" min-width="80" />
+              <el-table-column prop="online" label="在线" min-width="80" />
+              <el-table-column prop="offline" label="离线" min-width="80" />
+              <el-table-column prop="rest" label="休息" min-width="80" />
+              <el-table-column prop="absent" label="缺勤" min-width="80" />
+              <el-table-column prop="rate" label="达成率" min-width="90" />
+              <el-table-column prop="valid_dur" label="有效时长" min-width="110" />
+            </el-table>
         </template>
       </el-tab-pane>
     </el-tabs>
@@ -531,25 +531,26 @@ onMounted(async () => {
   } catch (e) { /* ignore */ }
   await loadCached();   // 进入页面只读缓存（今天若已刷新则直接展示，否则提示点刷新）
 });
+
 </script>
 
 <style scoped>
 .dv { padding: var(--sp-20); }
 .dv-bar { display: flex; align-items: center; gap: var(--sp-12); margin-bottom: var(--sp-16); flex-wrap: wrap; }
-.v-title { margin: 0; font-size: var(--fs-title); }
+.v-title { margin: 0; font-size: var(--el-font-size-extra-large); }
 .dv-sel { width: 160px; }
 .dv-date { width: 180px; }
-.dv-time { font-size: var(--fs-caption); color: var(--muted); }
+.dv-time { font-size: var(--el-font-size-extra-small); color: var(--muted); }
 .dv-cache { font-style: normal; color: var(--brand); font-size: 11px; }
 .dv-bar .sp { flex: 1; }
 .dv-hint { margin-bottom: var(--sp-12); }
 .dv-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: var(--sp-12); margin-bottom: var(--sp-16); }
 .dv-card { background: var(--white); border: 1px solid var(--border-soft); border-radius: var(--r-md); padding: var(--sp-16); display: flex; flex-direction: column; gap: 4px; }
 .dv-card-num { font-size: 24px; font-weight: var(--fw-bold); color: var(--brand); }
-.dv-card-label { font-size: var(--fs-caption); color: var(--muted); }
+.dv-card-label { font-size: var(--el-font-size-extra-small); color: var(--muted); }
 .dv-table { border-radius: var(--r-md); }
 .dv-rate-block { margin-bottom: var(--sp-16); }
-.dv-rate-title { margin: 0 0 var(--sp-8); font-size: var(--fs-subtitle); font-weight: var(--fw-semibold); color: var(--text); }
+.dv-rate-title { margin: 0 0 var(--sp-8); font-size: var(--el-font-size-medium); font-weight: var(--fw-semibold); color: var(--text); }
 .dv-matrix-wrap { overflow: auto; border-radius: var(--r-md); max-height: 560px; }
 .dv-state { padding: var(--sp-40); text-align: center; color: var(--muted); display: flex; gap: var(--sp-8); justify-content: center; align-items: center; }
 .dv-cfg-group { display: flex; flex-direction: column; gap: var(--sp-8); }

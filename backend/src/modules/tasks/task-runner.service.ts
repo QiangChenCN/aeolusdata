@@ -626,10 +626,21 @@ export class TaskRunnerService implements OnModuleInit {
         if (o.endsWith('/')) {
           const d = path.resolve(this.projectRoot, o.replace(/\/+$/, ''));
           if (fs.existsSync(d) && fs.statSync(d).isDirectory()) {
-            for (const fn of fs.readdirSync(d).sort()) {
-              const fp = path.join(d, fn);
-              if (fs.existsSync(fp) && fs.statSync(fp).isFile()) hits.push(fp);
+            const keep = typeof task.artifact_keep === 'number' ? task.artifact_keep : Infinity;
+            let dirFiles = fs
+              .readdirSync(d)
+              .map((fn) => path.join(d, fn))
+              .filter((fp) => fs.existsSync(fp) && fs.statSync(fp).isFile())
+              .sort((a, b) => fs.statSync(b).mtimeMs - fs.statSync(a).mtimeMs);
+            // 历史产物保留策略：超出保留数的旧文件直接删除，避免目录无限膨胀
+            // （仅对声明了 artifact_keep 的任务生效；默认 Infinity = 全部保留）。
+            if (isFinite(keep) && dirFiles.length > keep) {
+              for (const fp of dirFiles.slice(keep)) {
+                try { fs.unlinkSync(fp); } catch { /* ignore */ }
+              }
+              dirFiles = dirFiles.slice(0, keep);
             }
+            hits.push(...dirFiles);
           }
         } else {
           hits.push(...this.globFiles(o));

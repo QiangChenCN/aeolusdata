@@ -98,6 +98,36 @@ export class DingtalkController {
     );
   }
 
+  /** 发起钉钉设备流登录：返回 userCode + verificationUri，供前端展示让用户授权。 */
+  @Post('ding/auth/device-login')
+  async deviceLogin() {
+    return this.guard(() => this.ding.deviceLogin());
+  }
+
+  /** 查询钉钉登录状态（是否已授权）。 */
+  @Get('ding/auth/status')
+  async authStatus() {
+    return this.guard(() => this.ding.authStatus());
+  }
+
+  /** 退出钉钉登录（清除登录态，用于重新授权）。 */
+  @Post('ding/auth/logout')
+  async authLogout() {
+    return this.guard(() => this.ding.authLogout());
+  }
+
+  /** 读取 dws CLI 全部配置项（元数据 + 当前生效值）。 */
+  @Get('ding/config')
+  async dingConfig() {
+    return this.guard(() => this.ding.getDingConfig());
+  }
+
+  /** 保存 dws CLI 配置覆盖（空字符串表示删除该覆盖，恢复内置默认）。 */
+  @Post('ding/config')
+  async saveDingConfig(@Body() b: { patch?: Record<string, string> }) {
+    return this.guard(() => this.ding.saveDingConfig(b?.patch || {}));
+  }
+
   private async guard(fn: () => Promise<unknown>) {
     try {
       return { ok: true, data: await fn() };

@@ -7,9 +7,9 @@
   · 取数入口一律走 `sources`（原 get_data），本包不关心数据怎么来。
 
 目录约定（与 Nest 的约定成对，勿单边改动）：
-  原始数据在 **项目根** `dashboard/data/{kind}_{team}_{date}.json` —— 那是 Nest
+  原始数据在 `backend/data/raw/{kind}_{team}_{date}.json` —— 那是 Nest
   `RawCacheService` 的唯一写入位置；本包只读不写（`cache.load_raw`）。
-  注意名字相近但不是一回事：本包叫 analytics，数据目录仍叫 dashboard/data。
+  注意名字相近但不是一回事：本包叫 analytics，数据目录现在叫 backend/data/raw。
 
 子包：
   · realtime/ —— 实时看板（运单/违规的近实时聚合）

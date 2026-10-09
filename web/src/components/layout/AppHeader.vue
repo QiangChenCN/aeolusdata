@@ -86,6 +86,6 @@ const quarkTitle = computed(() => {
 .hd-menu:hover { background: var(--surface-sunken); }
 .hd-brand { display: flex; align-items: center; gap: var(--sp-8); }
 .hd-logo { font-size: 20px; }
-.hd-title { font-weight: var(--fw-bold); font-size: var(--fs-subtitle); }
+.hd-title { font-weight: var(--fw-bold); font-size: var(--el-font-size-medium); }
 .hd-spacer { flex: 1; }
 </style>

@@ -130,13 +130,11 @@ POST_NEVER_SEND = {
     "/api/run": "会真实启动任务",
     "/api/stop": "无参即生效，会停掉当前任务",
     "/api/todo/trigger": "会真实触发提醒任务",
-    # —— 空载荷即写入配置（由状态快照实测发现，已自动还原）——
-    "/api/realtime/selection": "空载荷即写入 .realtime_selection.json",
 }
 # 可写状态文件：POST 探测前后比对哈希，变了就说明该端点会真写入
 STATE_FILES = [
-    "backend/data/.data_perms.json", "backend/data/.pwpolicy.json", ".realtime_selection.json",
-    ".realtime_selection.json", "backend/data/.roles.json", "backend/data/.users.json", "org_tree.json",
+    "backend/data/.data_perms.json", "backend/data/.pwpolicy.json",
+    "backend/data/.roles.json", "backend/data/.users.json", "backend/data/org_tree.json",
     "analytics/attend_period_teams.json",
     "python/dashboard/standard/standard_grade_settings.json",
     "backend/data/todo.db",
@@ -648,8 +646,7 @@ def test_remaining_post_endpoints_parity():
 
     1) 回写当前值：先 GET 读出配置，再把同样的值 POST 回去。
        会完整走一遍校验 → 序列化 → 落盘 → 响应，但内容不变（文件哈希不动）。
-       适用于 /api/policy、/api/standard/teams-config、/api/standard/thresholds、
-       /api/realtime/selection。
+       适用于 /api/policy、/api/standard/teams-config、/api/standard/thresholds。
     2) 必然被拒的无效 id：task_id / item_id 不存在，两端都应在产生副作用前拒绝。
        适用于 /api/run、/api/todo/trigger、/api/groups/forget。
        /api/stop 只在确认无任务运行（/api/state 的 current 为空）时才发。
@@ -695,9 +692,6 @@ def test_remaining_post_endpoints_parity():
         # 注：/api/standard/thresholds 不做回写 —— 它会刷新 updated_at，
         # 文件哈希必然变化，与「回写不改变状态」的前提冲突（实测被状态防护拦下）。
         # 该端点已在 POST_NEVER_SEND 里标注「空载荷即写配置」。
-        sel = current("/api/realtime/selection", "teams")
-        if sel is not None:
-            probe("/api/realtime/selection", {"teams": sel}, "回写当前站点选择")
 
         # 2) 必然被拒的无效 id
         probe("/api/run", {"items": [{"task_id": "__no_such_task__"}]}, "不存在的任务")

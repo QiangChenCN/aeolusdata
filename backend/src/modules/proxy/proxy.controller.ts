@@ -58,7 +58,7 @@ export class ProxyController {
 
   /**
    * 看板配置端点（grade-global / service-quality/targets / attend-period/config /
-   * attend-period/teams / realtime/selection）已迁 Nest 原生
+   * attend-period/teams）已迁 Nest 原生
    * （config.service.ts），不再转发 Python。这里在通配前拦截并改派，避免依赖注册顺序。
    */
   private configSession(
@@ -153,9 +153,8 @@ export class ProxyController {
   proxyOverviewPost(@Req() req: Request, @Body() body: unknown) {
     return this.unwrap(this.proxyReq(req, 'POST', body));
   }
-  // 实时在线播报：realtime/selection 已迁Nest 原生（配置端点），
-  // realtime/targets 的考核目标已并入「服务质量设置」（service-quality/targets）；
-  // 仅 realtime/station（实时聚合计算）仍转发 Python。
+  // 实时在线播报：仅 realtime/station（实时聚合计算）转发 Python，
+  // 其余配置端点（service-quality/targets 等）已迁 Nest 原生（config.service.ts）。
   @Get('realtime/{*path}')
   proxyRealtimeGet(@Req() req: Request) {
     if (this.config.isConfigPath(req.path)) return this.handleConfig('GET', req);

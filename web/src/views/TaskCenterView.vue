@@ -81,11 +81,12 @@
       <el-table-column label="最近运行" min-width="200">
         <template #default="{ row }">{{ lastTextOf(row) }}</template>
       </el-table-column>
-      <el-table-column label="操作" width="172" fixed="right">
+      <el-table-column label="操作" width="270" fixed="right">
         <template #default="{ row }">
           <div class="t-acts">
             <el-button size="small" @click="openConfig(row.id)"><el-icon><Setting /></el-icon>配置</el-button>
             <el-button size="small" type="primary" @click="onRun(row)"><el-icon><VideoPlay /></el-icon>运行</el-button>
+            <el-button size="small" @click="onArtifacts(row)"><el-icon><Files /></el-icon>查看产物</el-button>
           </div>
         </template>
       </el-table-column>
@@ -97,17 +98,19 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue';
+import { ref, computed, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import TaskConfigDialog from '../components/tasks/TaskConfigDialog.vue';
 import { useTasksStore } from '../stores/tasks.js';
 import { useRunsStore } from '../stores/runs.js';
 import { useAppStore } from '../stores/app.js';
+import { useArtifactStore } from '../stores/artifact.js';
 import { GROUP_ICONS, STATUS_TXT, RISK_LABEL } from '../utils/tokens.js';
 
 const tasks = useTasksStore();
 const runs = useRunsStore();
 const app = useAppStore();
+const artifact = useArtifactStore();
 const route = useRoute();
 
 const q = ref('');
@@ -118,6 +121,15 @@ const cfgRef = ref(null);
 
 const isAll = computed(() => route.params.groupId == null);
 const groupId = computed(() => route.params.groupId);
+
+// 「全部任务」与「分类」共用同一组件实例，路由切换不会重新挂载，
+// 故 groupFilter 不会自动重置。进入全部任务视图时必须手动归位到 'all'，
+// 否则会沿用上一次分类的 groupId，导致点「全部任务」仍只显示该分类。
+watch(
+  () => route.params.groupId,
+  (gid) => { if (gid == null) groupFilter.value = 'all'; },
+  { immediate: true },
+);
 const groupName = computed(() => { const g = tasks.groupById(groupId.value); return g ? g.name : ''; });
 const headingIcon = computed(() => isAll.value ? 'Grid' : (GROUP_ICONS[groupId.value] || 'Grid'));
 
@@ -167,6 +179,7 @@ async function onRun(task) {
     app.toast(e.message, 'error');
   }
 }
+function onArtifacts(task) { artifact.open(task.id); }
 </script>
 
 <style scoped>
@@ -194,7 +207,7 @@ async function onRun(task) {
 .tc-hero-ic :deep(.el-icon) { font-size: 26px; }
 .tc-hero-main { min-width: 0; }
 .tc-hero-title { margin: 0; font-size: 26px; font-weight: 800; letter-spacing: -.5px; line-height: 1.15; }
-.tc-hero-sub { margin: 6px 0 0; opacity: .9; font-size: var(--fs-small); }
+.tc-hero-sub { margin: 6px 0 0; opacity: .9; font-size: var(--el-font-size-small); }
 
 /* 大数字状态卡（玻璃拟态） */
 .tc-hero-stats { display: flex; gap: var(--sp-10); margin-left: auto; flex-wrap: wrap; justify-content: flex-end; }
@@ -240,8 +253,8 @@ async function onRun(task) {
 .st-cell { display: inline-flex; align-items: center; gap: var(--sp-6); white-space: nowrap; }
 .st-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
 .t-name { font-weight: var(--fw-semibold); color: var(--text); }
-.t-desc { color: var(--muted); font-size: var(--fs-caption); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.t-acts { display: flex; gap: var(--sp-6); }
+.t-desc { color: var(--muted); font-size: var(--el-font-size-extra-small); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.t-acts { display: flex; gap: var(--sp-6); flex-wrap: wrap; }
 .t-acts :deep(.el-button) { display: inline-flex; align-items: center; gap: var(--sp-4); }
 
 /* ── 响应式 ──────────────────────────────────────────── */

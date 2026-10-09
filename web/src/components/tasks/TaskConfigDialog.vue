@@ -82,8 +82,8 @@ defineExpose({ open });
 }
 .cfg-hd-ic :deep(.el-icon) { font-size: 19px; }
 .cfg-hd-txt { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.cfg-hd-title { font-size: var(--fs-title-lg); font-weight: var(--fw-semibold); color: var(--text); }
-.cfg-hd-sub { font-size: var(--fs-caption); color: var(--muted); }
+.cfg-hd-title { font-size: var(--el-font-size-large); font-weight: var(--fw-semibold); color: var(--text); }
+.cfg-hd-sub { font-size: var(--el-font-size-extra-small); color: var(--muted); }
 
 :deep(.el-dialog__footer .el-button) { display: inline-flex; align-items: center; gap: var(--sp-4); }
 </style>

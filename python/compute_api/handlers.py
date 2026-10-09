@@ -754,44 +754,6 @@ def _post_ap_teams(self, data):
 
 # >>>ROUTES_MARKER<<<
 
-# ---------------- 实时数据：用户所选站点（按账号持久化，多端同步） ----------------
-# 计算/配置逻辑已迁至 analytics/realtime/config.py；此处仅保留 HTTP 路由 + 鉴权 + 数据权限闸门。
-def _get_realtime_selection(self, qs):
-    from analytics.realtime import config as RT
-    s = self.session
-    if not s:
-        self._json({"ok": False, "error": "未登录"}, 401); return
-    username = s["user"]
-    sel = RT.load_realtime_sel().get(username, [])
-    ids = self._visible_ids()
-    if ids is not None:
-        sel = [t for t in sel if str(t) in ids]
-    self._json({"ok": True, "teams": sel})
-
-def _post_realtime_selection(self, qs):
-    from analytics.realtime import config as RT
-    s = self.session
-    if not s:
-        self._json({"ok": False, "error": "未登录"}, 401); return
-    username = s["user"]
-    # do_POST 已将解析后的请求体 dict 作为第二参传入（qs），不可再读 body 流（已消费）
-    data = qs if isinstance(qs, dict) else {}
-    incoming = data.get("teams") or []
-    ids = self._visible_ids()
-    clean, seen = [], set()
-    for t in incoming:
-        t = str(t).strip()
-        if not t or t in seen:
-            continue
-        if ids is not None and t not in ids:
-            continue   # 越权站点不落库（纵深防御）
-        seen.add(t); clean.append(t)
-    obj = RT.load_realtime_sel()
-    obj[username] = clean
-    RT.save_realtime_sel(obj)
-    self._json({"ok": True, "teams": clean})
-
-
 # ---------------- 实时数据：站点概览（推配送单量 / 配送完成单） ----------------
 # 计算逻辑已迁至 analytics/realtime/board.py；此处仅做站点权限闸门 + 转发。
 def _get_realtime_station(self, qs):
@@ -828,7 +790,7 @@ def _get_ov_site_orders(self, qs):
     """数据大屏 —— 站点维度「接单量 / 配送完成量」。
 
     归属口径：骑手接单时间（acceptAtLast）的北京时间自然日，跨午夜归接单当天；
-    数据来自本地运单缓存 dashboard/data/orders_<team>_<date>.json（口径单一来源 order_rules）。
+    数据来自本地运单缓存 backend/data/raw/orders_<team>_<date>.json（口径单一来源 order_rules）。
     默认区间：end（默认今天）往前 7 天。
     """
     import datetime as _dt
@@ -871,7 +833,7 @@ def _get_ov_standard(self, qs):
 def _get_ov_assessment(self, qs):
     """考核结算大屏 —— 跨源聚合（运力达标 / 大网质量 / 时段出勤 / 历史对比 / 红黄灯）。
 
-    只读 dashboard/data 三源缓存（与「标准达成」「时段出勤」同源，零口径漂移），
+    只读 backend/data/raw 三源缓存（与「标准达成」「时段出勤」同源，零口径漂移），
     时段出勤复用 attend_period_source 的进程内数据集缓存（用户未点查询则留空提示）。
     支持 ?date=YYYY-MM-DD（默认今天）与 ?refresh=1（清模块缓存重算）。
     """
@@ -900,12 +862,10 @@ GET_ROUTES = {
     "/api/overview/site-orders": _get_ov_site_orders,
     "/api/overview/standard": _get_ov_standard,
     "/api/overview/assessment": _get_ov_assessment,
-    "/api/realtime/selection":  _get_realtime_selection,
     "/api/realtime/station":    _get_realtime_station,
 }
 
 POST_ROUTES = {
     "/api/attend-period/config": _post_ap_config,
     "/api/attend-period/teams": _post_ap_teams,
-    "/api/realtime/selection": _post_realtime_selection,
 }

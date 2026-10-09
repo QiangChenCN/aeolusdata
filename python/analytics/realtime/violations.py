@@ -21,7 +21,7 @@
     「违规类型」（子串包含，见 TYPE_CONTAINS）—— 真实取值形如 `提前点送达（索赔）`，
     故必须用包含而非相等。
   · 两个比率的分母口径由调用方传入（推配送单量 / 完成单量），见unsat_rate / fulfillment_rate。
-  · 落盘 dashboard/data/violation_{team}_{date}.json，与 orders 同目录同生命周期；
+  · 落盘 backend/data/raw/violation_{team}_{date}.json，与 orders 同目录同生命周期；
     包一层 dict，使「已刷新但 0 条」与「未刷新」可区分（save_raw 拒绝空 payload）。
 """
 import os

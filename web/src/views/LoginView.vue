@@ -136,7 +136,7 @@ async function submit() {
   border-radius: var(--r-pill);
   background: var(--white);
   color: var(--text);
-  font-size: var(--fs-caption);
+  font-size: var(--el-font-size-extra-small);
   cursor: pointer;
 }
 .login-back:hover { background: var(--surface-sunken); }
@@ -160,7 +160,7 @@ async function submit() {
 }
 .lb-logo { font-size: 44px; line-height: 1; }
 .lb-title { margin: var(--sp-16) 0 var(--sp-8); font-size: 22px; font-weight: var(--fw-bold); }
-.lb-tag { margin: 0 0 var(--sp-32); font-size: var(--fs-body); opacity: 0.92; }
+.lb-tag { margin: 0 0 var(--sp-32); font-size: var(--el-font-size-base); opacity: 0.92; }
 .lb-feats {
   list-style: none;
   margin: auto 0 var(--sp-24);
@@ -173,7 +173,7 @@ async function submit() {
   display: flex;
   align-items: center;
   gap: var(--sp-10);
-  font-size: var(--fs-body);
+  font-size: var(--el-font-size-base);
 }
 .lb-foot { margin: 0; font-size: 12px; opacity: 0.8; }
 

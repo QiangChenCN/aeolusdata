@@ -62,7 +62,12 @@ function to(it) {
     case 'todo': return '/todo';
     case 'assessService': return '/assess/service';
     case 'assessStandard': return '/assess/standard';
-    case 'admin': return '/admin';
+    case 'rbac-users': return '/rbac/users';
+    case 'rbac-roles': return '/rbac/roles';
+    case 'rbac-policy': return '/rbac/policy';
+    case 'rbac-pw': return '/rbac/pw';
+    case 'syscfg': return '/settings';
+    case 'sys-dingtalk': return '/settings/dingtalk';
     case 'botcfg': return '/bot/' + it.id;
     default: return '/home';
   }
@@ -72,19 +77,19 @@ const navItems = computed(() => {
   const items = [];
   items.push({ type: 'leaf', key: 'home', kind: 'home', id: '', name: '首页', icon: 'HomeFilled' });
 
+  const dashSubs = [
+    { type: 'leaf', kind: 'realtime', id: '', name: '实时数据', icon: 'DataLine' },
+    { type: 'leaf', kind: 'standard', id: '', name: '标准达成', icon: 'Aim' },
+    { type: 'leaf', kind: 'attendPeriod', id: '', name: '时段出勤', icon: 'Calendar' },
+    { type: 'leaf', kind: 'unsatisfied', id: '', name: '违规处罚', icon: 'Warning' },
+  ];
+  items.push({ type: 'parent', key: 'dash', name: '数据看板', icon: 'DataLine', children: dashSubs });
+
   const subs = [{ type: 'leaf', kind: 'tasks', id: 'all', name: '全部任务', icon: 'Grid', count: tasks.tasks.length }];
   tasks.groups.forEach((g) =>
     subs.push({ type: 'leaf', kind: 'tasks', id: g.id, name: g.name, icon: GROUP_ICONS[g.id] || 'Grid', count: tasks.countInGroup(g.id) }));
   subs.push({ type: 'leaf', kind: 'history', id: '', name: '运行记录', icon: 'Clock', count: runs.history.length });
   items.push({ type: 'parent', key: 'hub', name: '任务中心', icon: 'Grid', children: subs });
-
-  const dashSubs = [
-    { type: 'leaf', kind: 'standard', id: '', name: '标准达成', icon: 'Aim' },
-    { type: 'leaf', kind: 'attendPeriod', id: '', name: '时段出勤', icon: 'Calendar' },
-    { type: 'leaf', kind: 'realtime', id: '', name: '实时数据', icon: 'DataLine' },
-    { type: 'leaf', kind: 'unsatisfied', id: '', name: '违规处罚', icon: 'Warning' },
-  ];
-  items.push({ type: 'parent', key: 'dash', name: '数据看板', icon: 'DataLine', children: dashSubs });
 
   items.push({ type: 'leaf', key: 'todo', kind: 'todo', id: '', name: '工作内容', icon: 'List' });
 
@@ -100,7 +105,17 @@ const navItems = computed(() => {
       { type: 'leaf', kind: 'botcfg', id: 'instance', name: '实例配置', icon: 'Cpu' },
     ];
     items.push({ type: 'parent', key: 'botcfg', name: '机器人配置', icon: 'ChatDotRound', children: botSubs });
-    items.push({ type: 'leaf', key: 'admin', kind: 'admin', id: '', name: '系统设置', icon: 'Tools' });
+    const rbacSubs = [
+      { type: 'leaf', kind: 'rbac-users', id: '', name: '账号管理', icon: 'User' },
+      { type: 'leaf', kind: 'rbac-roles', id: '', name: '角色权限', icon: 'Key' },
+      { type: 'leaf', kind: 'rbac-policy', id: '', name: '密码策略', icon: 'Lock' },
+      { type: 'leaf', kind: 'rbac-pw', id: '', name: '个人改密', icon: 'EditPen' },
+    ];
+    items.push({ type: 'parent', key: 'rbac', name: '权限管理', icon: 'Tools', children: rbacSubs });
+    const sysSubs = [
+      { type: 'leaf', kind: 'sys-dingtalk', id: '', name: '钉钉设置', icon: 'ChatDotRound' },
+    ];
+    items.push({ type: 'parent', key: 'sys', name: '系统设置', icon: 'Setting', kind: 'syscfg', children: sysSubs });
   }
   return items;
 });
@@ -111,7 +126,7 @@ function routeId() {
   return route.meta && route.meta.id;
 }
 function isActive(it) {
-  if (it.type === 'parent') return it.children.some((c) => match(c));
+  if (it.type === 'parent') return it.children.some((c) => match(c)) || !!(it.kind && match(it));
   return match(it);
 }
 function match(it) {
@@ -163,10 +178,29 @@ watch(() => route.fullPath, ensureActiveParents, { immediate: true });
   padding: var(--sp-10) var(--sp-12);
   border-radius: var(--r-xl);
   color: var(--text-body); cursor: pointer;
-  text-decoration: none; font-size: var(--fs-control);
+  text-decoration: none; font-size: var(--el-font-size-base);
   position: relative;
+  transition: background 0.18s ease, color 0.18s ease, transform 0.18s ease;
 }
-.nv:hover, .nv-sub:hover { background: var(--surface-sunken); color: var(--text); }
+/* 悬停/选中时滑入的左侧品牌色竖条 */
+.nv::before, .nv-sub::before {
+  content: '';
+  position: absolute; left: 3px; top: 50%;
+  width: 3px; height: 18px;
+  background: var(--brand); border-radius: var(--r-pill);
+  transform: translateY(-50%) scaleY(0); opacity: 0;
+  transition: transform 0.18s ease, opacity 0.18s ease;
+}
+.nv:hover, .nv-sub:hover {
+  background: color-mix(in srgb, var(--brand) 8%, transparent);
+  color: var(--text);
+  transform: translateX(2px);
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.08);
+}
+.nv:hover::before, .nv-sub:hover::before,
+.nv.on::before, .nv-sub.on::before {
+  transform: translateY(-50%) scaleY(1); opacity: 1;
+}
 .nv.on, .nv-sub.on { background: var(--brand-soft); color: var(--brand); font-weight: var(--fw-semibold); }
 .nv .ic, .nv-sub .ic { font-size: 17px; }
 .nv .nm, .nv-sub .nm { flex: 1; }
@@ -174,11 +208,11 @@ watch(() => route.fullPath, ensureActiveParents, { immediate: true });
   font-size: 11px; color: var(--muted); background: var(--surface-sunken);
   padding: 1px var(--sp-8); border-radius: var(--r-pill); min-width: 20px; text-align: center;
 }
-.nv-sub { padding-left: var(--sp-32); font-size: var(--fs-body); }
-.nv-parent { font-weight: var(--fw-semibold); }
+.nv-sub { padding-left: var(--sp-32); font-size: var(--el-font-size-base); }
 .nv-parent .nv-arw { transition: transform 0.18s ease; color: var(--muted); }
 .nv-parent.open .nv-arw { transform: rotate(90deg); }
-.nv-parent.parent-on { color: var(--brand); }
+/* 仅「含当前选中子项」的父菜单加粗（其余父菜单不加粗） */
+.nv-parent.parent-on { color: var(--brand); font-weight: var(--fw-semibold); }
 /* 手风琴折叠动画：用 grid-template-rows 0fr→1fr 过渡到「内容真实高度」，
    无需知道子项数量（任务中心分组数不定）。旧浏览器不支持插值时仍能正常折叠，只是无动画。 */
 .nv-subs-wrap { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 0.22s ease; }

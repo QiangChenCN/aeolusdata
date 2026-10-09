@@ -91,8 +91,9 @@ backend/data/group_recent.json
 # 看板运行数据（每日刷新的原始层与结果缓存，只算实时，不进版本控制）
 # 说明：这些是「刷新」产物，不是源码；各环境自己刷新生成，进仓库只会让每次
 #       pull 因本地改动冲突（历史数据 09-09~09-17 已一并从版本控制移除）。
-dashboard/data/
-dashboard/standard/cache/
+backend/data/raw/
+backend/logs/
+pace_state.json
 
 # 运行时配置（由 Nest 后端通过 UI 落盘，属于各环境本地状态）：
 # 这些 *.json 是用户在「等级标准设置」里保存的活数据，绝不能进版本控制——
@@ -106,7 +107,7 @@ python/analytics/teams_config.json
 # 「标准达成设置」活数据（2026-10 起改为按月份 × 站点，替代上面的单套文件）
 python/dashboard/standard/standard_grade_settings.json
 # 「服务质量设置」活数据（考核项 × 周中/周末 × 天气 × t0/t60/t100 × 权重 × 分层方式）
-.service_quality_targets.json
+backend/data/.service_quality_targets.json
 
 # 调试/嗅探产物（逆向导出链路捕获，非源码；本地可保留，不进版本控制）
 sniff_delivery_*.json
@@ -114,11 +115,8 @@ _sniff/
 
 # 运行时本地状态（dataperm.py 生成的数据权限状态，每人/每月不同，不提交）
 backend/data/.data_perms.json
-# 看板实时配置（所选站点 / 考核目标，本地状态，不提交）
-.realtime_selection.json
+# 看板实时配置（考核目标，本地状态，不提交）
 .realtime_targets.json
-# 看板运行期落盘数据（实时运单明细等，本地生成，不提交）
-dashboard/standard/实时运单明细.json
 
 # ===== 迁移收尾补充：本地状态 / 运行产物（勿提交）=====
 # 根级运行日志（前端/后端/Python 的 .out/.err；*.log 只覆盖 .log 结尾，这里补 .out/.err）
@@ -142,7 +140,7 @@ python/jobs/**/out/
 # 不满意单看板运行期数据库（violation.db=月累计 / realtime.db=实时）
 # 各环境自行生成（每日 03:00 回补 / 点刷新写入），绝不提交；
 # 否则服务器 git pull 会因本地库与仓库版本不同而起冲突。
-/data/
+# （根级 data/ 已于 2026-10 迁至 backend/data：原始层 raw/ 与持久库 db/ 见上）
 *.db
 *.db-wal
 *.db-shm

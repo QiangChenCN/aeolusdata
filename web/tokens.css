@@ -221,10 +221,8 @@
 /* ── 12b. 收口时新增的静态令牌（取值逐字等于原先的字面量，观感零变化）────────
    --layout-preview-h：运行详情里日志预览区高度（.cs-body--preview）。
      与 --layout-log-h（日志抽屉 320px）语义不同，故单列。
-   --fs-micro：10px 档字号（排序箭头 / 密表徽标 / 表格里的排班状态点）。
    --banner-*：两条横幅的色调 —— 原先写在 standard.js 里（rgba/hex 字面量）。 */
   --layout-preview-h:  220px;
-  --fs-micro:          10px;
   --banner-err:        #C44A2C;
   --banner-err-soft:   rgba(196,74,44,.10);
   --banner-mute:       #5A6B78;
@@ -244,25 +242,9 @@
   --term-dim:           var(--c-term-dim);
 
 /* ── 13. 字体 ──────────────────────────────────────────────────────────── */
-  --font-sans: -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue","PingFang SC","Microsoft YaHei",sans-serif;
+  --font-sans: "Helvetica Neue", Helvetica, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "微软雅黑", Arial, sans-serif;  /* 与 Element Plus --el-font-family 完全一致 */
   --font-mono: "SFMono-Regular",Consolas,"Liberation Mono",Menlo,monospace;
 
-/* ── 14. 字号层级（12 级，命名即用途） ─────────────────────────────────── */    /* 徽标 / 角标 / 分组标签 */
-  --fs-caption:    11.5px;  /* 计数 / 时间戳 / 次要点提示 */
-  --fs-small:      12px;    /* 表头 / 次级说明 */
-  --fs-note:       12.5px;  /* 描述正文 / 副标题 */
-  --fs-control:    13px;    /* 按钮 / 输入 / 表格正文 */
-  --fs-control-lg: 13.5px;  /* 主按钮 / 面板标题 */
-  --fs-body:       14px;    /* 页面正文基准 */
-  --fs-title-sm:   14.5px;  /* 卡片标题 / 区块标题 */
-  --fs-title:      23.25px; /* 顶栏主标题（原 15.5px × 1.5，2026-09-08 用户要求加大，保持不变） */
-  --fs-input:      16px;    /* 表单控件（iOS <16px 会自动放大页面，勿改） */
-  --fs-title-lg:   16.5px;  /* 弹窗标题 */
-  --fs-title-xl:   clamp(15px, 0.6vw + 13px, 17px);  /* 视图主标题（流式，宽屏封顶 17px） */
-  --fs-view:       var(--fs-title-xl);  /* 视图主标题别名（B1 三级映射） */
-  --fs-section:    15px;    /* 区块标题（.section-head / .home-sec） */ /* 卡片标题别名（B1 三级映射） */
-  --fs-subtitle:   15px;    /* 卡片标题（TaskCard 名称） / 顶栏副标题（此前被引用但未定义，现补登记） */
-  --fs-hero:       clamp(28px, 2vw + 20px, 36px);  /* 首页主标题（在 --fs-title 基础上加大 2 级） */
 
 /* ── 15. 字重 ──────────────────────────────────────────────────────────── */
   --fw-regular:    400;     /* 正文 */

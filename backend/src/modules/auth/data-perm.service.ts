@@ -47,7 +47,7 @@ export class DataPermService implements OnModuleInit {
   onModuleInit(): void {
     const root = this.config.get<string>('PROJECT_ROOT') || path.resolve(process.cwd(), '..');
     const dataDir = path.join(process.cwd(), 'data');
-    this.orgFile = path.join(root, 'org_tree.json');
+    this.orgFile = path.join(dataDir, 'org_tree.json');
     this.dataPermsFile = path.join(dataDir, '.data_perms.json');
   }
 

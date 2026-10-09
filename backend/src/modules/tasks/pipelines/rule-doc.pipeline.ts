@@ -131,8 +131,9 @@ function renderNode(node: any[], spec: Record<string, BlockSpec>): string {
 }
 
 // ───────── 元数据 ─────────
+// 注意：生效时间只在 header（rule-details__header-update-time）展示，与真实前台对齐；
+// 这里不再重复放「生效时间」（原 meta 栏用了 effectiveStartTime 与 header 的 effectiveTime 不一致，会出两个不同值）。
 const META_FIELDS: [string, (d: Record<string, any>) => string][] = [
-  ['生效时间', (d) => trunc(d.effectiveStartTime || d.effectiveEndTime || d.publishStartTime)],
   ['更新时间', (d) => trunc(d.updatedAt)],
   ['文件组号', (d) => String(d.ruleSerialId ?? '').trim()],
   ['文件类型', (d) => String(d.ruleTypeDesc ?? '').trim()],

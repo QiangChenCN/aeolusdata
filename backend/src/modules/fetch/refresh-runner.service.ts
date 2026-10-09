@@ -135,7 +135,7 @@ export class RefreshRunnerService {
     this.rootDir = path.resolve(
       this.config.get<string>('PROJECT_ROOT') || path.resolve(process.cwd(), '..'),
     );
-    this.logsDir = path.join(this.rootDir, 'dashboard', 'standard', 'logs');
+    this.logsDir = path.join(this.rootDir, 'backend', 'logs');
   }
 
   private freshState(): RefreshState {

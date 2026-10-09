@@ -7,7 +7,7 @@ import { RawCacheService, todayYmd, nowStamp } from './raw-cache.service';
 /**
  * 原始层落盘的跨语言契约测试。
  *
- * `RawCacheService` 是 `dashboard/data/*.json` 的**唯一写入方**，读侧是 Python
+ * `RawCacheService` 是 `backend/data/raw/*.json` 的**唯一写入方**，读侧是 Python
  * （`dashboard/standard/cache.load_raw` 与 `dashboard/realtime/violations.load_team_raw`）。
  * 格式一错，Python 计算会静默读到 None（表现为「看板没数据」而不是报错），所以这里把
  * 字节级形状钉住；Python 侧对同一形状的消费行为见 `tests/test_data_scope.py`。
@@ -29,7 +29,7 @@ describe('RawCacheService（原始层唯一写入方）', () => {
   });
 
   const file = (kind: string, team: string, date: string) =>
-    path.join(root, 'dashboard', 'data', `${kind}_${team}_${date}.json`);
+    path.join(root, 'backend', 'data', 'raw', `${kind}_${team}_${date}.json`);
   const read = (kind: string, team: string, date: string) =>
     JSON.parse(fs.readFileSync(file(kind, team, date), 'utf-8'));
 

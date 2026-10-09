@@ -137,8 +137,8 @@ const quarkText = computed(() => {
 }
 .hero-main { display: flex; align-items: center; gap: var(--sp-16); }
 .hero-logo { font-size: 44px; }
-.hero h1 { margin: 0; font-size: var(--fs-hero); line-height: var(--lh-tight); }
-.hero-sub { margin: var(--sp-6) 0 0; color: var(--muted); font-size: var(--fs-body); }
+.hero h1 { margin: 0; font-size: clamp(28px, 2vw + 20px, 36px); line-height: var(--lh-tight); }
+.hero-sub { margin: var(--sp-6) 0 0; color: var(--muted); font-size: var(--el-font-size-base); }
 .hero-stats { display: flex; gap: var(--sp-12); }
 .stat {
   display: flex; flex-direction: column; align-items: center;
@@ -147,13 +147,13 @@ const quarkText = computed(() => {
 }
 .stat-num { font-size: 26px; font-weight: var(--fw-bold); color: var(--text); }
 .stat-num.stat--run { color: var(--brand); }
-.stat-label { font-size: var(--fs-caption); color: var(--muted); margin-top: 2px; }
+.stat-label { font-size: var(--el-font-size-extra-small); color: var(--muted); margin-top: 2px; }
 
 .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: var(--sp-12); flex: none; }
 .quick { cursor: pointer; display: flex; align-items: center; gap: var(--sp-12); }
 .quick-ic { font-size: 26px; color: var(--brand); }
-.quick b { font-size: var(--fs-subtitle); }
-.quick p { margin: 2px 0 0; color: var(--muted); font-size: var(--fs-caption); }
+.quick b { font-size: var(--el-font-size-medium); }
+.quick p { margin: 2px 0 0; color: var(--muted); font-size: var(--el-font-size-extra-small); }
 
 /* 两块面板占满剩余垂直空间；面板内部滚动，避免撑出整页滚动条 */
 .two { display: grid; grid-template-columns: 1.4fr 1fr; gap: var(--sp-12); flex: 1; min-height: 0; }
@@ -168,7 +168,7 @@ const quarkText = computed(() => {
 }
 .run-row:hover { background: var(--surface-sunken); }
 .run-name { flex: 1; font-weight: var(--fw-semibold); }
-.run-meta { color: var(--muted); font-size: var(--fs-caption); }
+.run-meta { color: var(--muted); font-size: var(--el-font-size-extra-small); }
 .run-go { color: var(--muted); }
 .svc { display: flex; flex-direction: column; gap: var(--sp-12); }
 .svc-row { display: flex; align-items: center; justify-content: space-between; }

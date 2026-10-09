@@ -74,12 +74,12 @@ export class FetchPaceService {
 
   constructor(private readonly config: ConfigService) {}
 
-  /** pace_state.json 与 Python 版共用同一份（放在 dashboard/standard/cache/ 下），
+  /** pace_state.json 与 Python 版共用同一份（放在仓库根目录下），
    *  两边学到的下限互通，避免各自从冷启动重新撞一轮。 */
   onModuleInitCompat() {
     const root =
       this.config.get<string>('PROJECT_ROOT') || path.resolve(process.cwd(), '..');
-    this.paceStateFile = path.join(root, 'dashboard', 'standard', 'cache', 'pace_state.json');
+    this.paceStateFile = path.join(root, 'pace_state.json');
   }
 
   private stateFile(): string {

@@ -81,8 +81,8 @@ onMounted(load);
 <style scoped>
 .hist { padding: var(--sp-20); }
 .hist-bar { display: flex; align-items: baseline; gap: var(--sp-12); margin-bottom: var(--sp-16); flex-wrap: wrap; }
-.v-title { margin: 0; font-size: var(--fs-title); }
-.v-sub { color: var(--muted); font-size: var(--fs-body); }
+.v-title { margin: 0; font-size: var(--el-font-size-extra-large); }
+.v-sub { color: var(--muted); font-size: var(--el-font-size-base); }
 .hist-bar .sp { flex: 1; }
 .hist-table { border-radius: var(--r-md); overflow: hidden; }
 </style>

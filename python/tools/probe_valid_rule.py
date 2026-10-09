@@ -23,7 +23,7 @@ os.chdir(PY_HOME)
 from analytics import order_rules as OR
 
 BJ = datetime.timezone(datetime.timedelta(hours=8))
-data = json.load(open('dashboard/data/orders_917521136_2026-09-10.json', encoding='utf-8'))
+data = json.load(open('backend/data/raw/orders_917521136_2026-09-10.json', encoding='utf-8'))
 target_rid = '1040107752'
 today = '2026-09-10'
 

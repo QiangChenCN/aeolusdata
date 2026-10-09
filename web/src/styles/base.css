@@ -9,7 +9,7 @@ html, body, #app {
 
 body {
   font-family: var(--font-sans);
-  font-size: var(--fs-body);
+  font-size: var(--el-font-size-base);
   line-height: var(--lh-base);
   color: var(--text);
   background: var(--bg);
@@ -49,7 +49,7 @@ a { color: var(--info); text-decoration: none; }
 /* 暗色日志终端（在 el-dialog 内使用，沿用 tokens 的终端色） */
 .term {
   font-family: var(--font-mono);
-  font-size: 12.5px;
+  font-size: var(--el-font-size-extra-small);
   line-height: var(--lh-term);
   background: var(--term-bg);
   color: var(--term-fg);

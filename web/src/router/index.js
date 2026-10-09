@@ -12,7 +12,12 @@ import OverviewView from '../views/OverviewView.vue';
 import RealtimeView from '../views/RealtimeView.vue';
 import UnsatisfiedView from '../views/UnsatisfiedView.vue';
 import GroupsView from '../views/GroupsView.vue';
-import AdminView from '../views/AdminView.vue';
+import UsersView from '../views/UsersView.vue';
+import RolesView from '../views/RolesView.vue';
+import PolicyView from '../views/PolicyView.vue';
+import ChangePwView from '../views/ChangePwView.vue';
+import SystemSettingsView from '../views/SystemSettingsView.vue';
+import DingtalkSettingsView from '../views/DingtalkSettingsView.vue';
 import BotGlobalView from '../views/BotGlobalView.vue';
 import BotRobotView from '../views/BotRobotView.vue';
 import BotInstanceView from '../views/BotInstanceView.vue';
@@ -38,7 +43,13 @@ const routes = [
   { path: '/realtime', name: 'realtime', component: RealtimeView, meta: { title: '实时数据', kind: 'realtime', id: '' } },
   { path: '/unsatisfied', name: 'unsatisfied', component: UnsatisfiedView, meta: { title: '违规处罚', kind: 'unsatisfied', id: '' } },
   { path: '/groups', name: 'groups', component: GroupsView, meta: { title: '群组' } },
-  { path: '/admin', name: 'admin', component: AdminView, meta: { title: '系统设置' } },
+  { path: '/rbac', redirect: '/rbac/users' },
+  { path: '/rbac/users', name: 'rbac-users', component: UsersView, meta: { title: '账号管理', kind: 'rbac-users' } },
+  { path: '/rbac/roles', name: 'rbac-roles', component: RolesView, meta: { title: '角色权限', kind: 'rbac-roles' } },
+  { path: '/rbac/policy', name: 'rbac-policy', component: PolicyView, meta: { title: '密码策略', kind: 'rbac-policy' } },
+  { path: '/rbac/pw', name: 'rbac-pw', component: ChangePwView, meta: { title: '个人改密', kind: 'rbac-pw' } },
+  { path: '/settings', name: 'system-settings', component: SystemSettingsView, meta: { title: '系统设置', kind: 'syscfg' } },
+  { path: '/settings/dingtalk', name: 'dingtalk-settings', component: DingtalkSettingsView, meta: { title: '钉钉设置', kind: 'sys-dingtalk' } },
   { path: '/bot/global', name: 'bot-global', component: BotGlobalView, meta: { title: '全局配置', kind: 'botcfg', id: 'global' } },
   { path: '/bot/robot', name: 'bot-robot', component: BotRobotView, meta: { title: '机器人配置', kind: 'botcfg', id: 'robot' } },
   { path: '/bot/instance', name: 'bot-instance', component: BotInstanceView, meta: { title: '实例配置', kind: 'botcfg', id: 'instance' } },

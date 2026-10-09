@@ -103,7 +103,7 @@ export class FetchController {
   }
 
   /**
-   * 全量刷新「阶段 0」：一次拉全量运单 → 按站点分组 → 写 dashboard/data/orders_*.json。
+   * 全量刷新「阶段 0」：一次拉全量运单 → 按站点分组 → 写 backend/data/raw/orders_*.json。
    * 后续阶段（sched 排班 / att 考勤 / violation 违规 / 结果计算）仍在 Python，
    * 通过保留的委托接口调用 —— 见 FetchModule 头部说明。
    */

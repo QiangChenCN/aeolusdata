@@ -94,14 +94,14 @@ onUnmounted(deactivate);
 
 <style scoped>
 .bc { padding: var(--sp-20); }
-.v-title { margin: 0 0 var(--sp-16); font-size: var(--fs-title); }
+.v-title { margin: 0 0 var(--sp-16); font-size: var(--el-font-size-extra-large); }
 .bc-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg); padding: var(--sp-16) var(--sp-20); margin-bottom: var(--sp-16); }
-.bc-h { margin: 0 0 var(--sp-12); font-size: var(--fs-subtitle); }
+.bc-h { margin: 0 0 var(--sp-12); font-size: var(--el-font-size-medium); }
 .bc-poll { font-size: 12px; color: var(--muted); font-weight: normal; margin-left: 8px; }
 .sw-row { display: flex; align-items: center; gap: var(--sp-10); }
 .gw-row { display: flex; align-items: center; gap: var(--sp-10); margin-bottom: var(--sp-10); flex-wrap: wrap; }
 .bc-table { margin-top: var(--sp-8); }
-.bc-sub { margin: var(--sp-16) 0 var(--sp-8); font-size: var(--fs-subtitle); }
+.bc-sub { margin: var(--sp-16) 0 var(--sp-8); font-size: var(--el-font-size-medium); }
 .bc-tip { margin-top: var(--sp-8); }
 .bc-detail { margin-top: var(--sp-8); }
 .muted { color: var(--muted); }

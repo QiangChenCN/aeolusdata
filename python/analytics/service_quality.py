@@ -3,7 +3,7 @@
 """服务质量考核设置（读取层）——实时看板计算得分的**唯一**目标来源。
 
 配置由 Nest `ConfigService` 写入（页面：考核设置 → 服务质量设置），落盘：
-    <仓库根>/.service_quality_targets.json
+    backend/data/.service_quality_targets.json
     {
       "version": 1, "updated_at": "...", "updated_by": "...",
       "months": {
@@ -50,8 +50,8 @@ import os
 import json
 import datetime as _dt
 
-# 与 Nest config.service.ts 的 realtimePath() 同口径（仓库根）
-SERVICE_QUALITY_FILE = os.path.join(_ROOT, ".service_quality_targets.json")
+# 与 Nest config.service.ts 同口径：后端本地状态统一落 backend/data/（带点前缀）
+SERVICE_QUALITY_FILE = os.path.join(_ROOT, "backend", "data", ".service_quality_targets.json")
 
 # 考核项 / 日期类型 / 天气：与 Nest ConfigService 的 RT_METRICS / RT_DATE_TYPES / RT_WEATHER 逐字对应。
 # 单一来源仍是 Nest（写入方）；此处仅为计算侧的只读目录，避免打分逻辑硬编码指标名。

@@ -105,6 +105,7 @@
         "python/jobs/attendance/out/attendance_summary.json",
         "python/jobs/attendance/out/attendance_raw/"
       ],
+      "artifact_keep": 1,
       "confirm": "将向钉钉群发送实时在线播报并 @ 站长，这是真实的群消息，无法撤回。确认继续？"
     },
     {

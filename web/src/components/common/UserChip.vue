@@ -43,7 +43,7 @@ function onCommand(cmd) {
   border-radius: var(--r-pill);
   background: var(--white);
   cursor: pointer;
-  font-size: var(--fs-caption);
+  font-size: var(--el-font-size-extra-small);
 }
 .uc-name { font-weight: var(--fw-semibold); color: var(--text); }
 .uc-role { color: var(--brand); font-size: 11px; }

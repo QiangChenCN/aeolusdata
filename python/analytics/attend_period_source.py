@@ -74,8 +74,8 @@ OFFLINE_STATES = {3}       # 下线（未在线装备）
 # 进程内缓存：键 (team, date) -> dataset dict。server 单进程串行处理请求，无需加锁。
 _DS_CACHE = {}
 
-# 落盘目录（与原始层同根 dashboard/data，子目录隔离避免污染 latest_cache_time_all）。
-_DS_DIR = os.path.join(ROOT, "dashboard", "data", "attend_ds")
+# 落盘目录（与原始层同根 backend/data/raw，子目录隔离避免污染 latest_cache_time_all）。
+_DS_DIR = os.path.join(ROOT, "backend", "data", "raw", "attend_ds")
 
 
 def _log(msg):

@@ -24,7 +24,7 @@ defineProps({
   border: 1px solid var(--border-soft);
   border-radius: var(--r-pill);
   background: var(--white);
-  font-size: var(--fs-caption);
+  font-size: var(--el-font-size-extra-small);
   line-height: 1;
   white-space: nowrap;
 }

@@ -22,7 +22,7 @@
   也不读这些文件），是 write-only 死物。若将来需要结果级快照，应走 Nest 侧并提供读取方。
 
 缓存键：(kind, team_id, date)，date 默认 = 北京时间当天。
-落盘文件：`dashboard/data/{kind}_{team}_{date}.json`（四类原始数据同目录同生命周期）。
+落盘文件：`backend/data/raw/{kind}_{team}_{date}.json`（四类原始数据同目录同生命周期）。
 
 触发约定（2026-09-09 用户明确，仍然有效）：
   · 切站点 / 切维度  → 只读本地原始层重算，绝不实时拉取
@@ -55,15 +55,15 @@ import threading
 BJ = datetime.timezone(datetime.timedelta(hours=8))
 
 # 目录约定（2026-09-11 重构：原始数据外迁到项目级共享目录，供多个看板复用）。
-# ⚠️ 必须是**项目根**下的 dashboard/data，与唯一写入方（Nest RawCacheService）同目录。
+# ⚠️ 必须是 `backend/data/raw`，与唯一写入方（Nest RawCacheService）同目录。
 #
 # 2026-09-23 修正：原实现是 `dirname(dirname(__file__))/data`（本包的上级 + data），
 # 落在 **python/dashboard/data**（代码目录内）。取数迁到 Nest 后，写入方是 Nest
-# （写 <项目根>/dashboard/data），两边不一致 → 刷新后 Nest 写了新数据，Python 仍读
+# （写 backend/data/raw），两边不一致 → 刷新后 Nest 写了新数据，Python 仍读
 # 代码目录里那份过期原始层，表现为「刷新显示成功，但看板数字一直停留在某个历史时刻那一版」。
-_DATA_DIR = os.path.join(ROOT, "dashboard", "data")
+_DATA_DIR = os.path.join(ROOT, "backend", "data", "raw")
 
-# 原始数据种类（落盘到 dashboard/data）。
+# 原始数据种类（落盘到 backend/data/raw）。
 # 2026-09-19 增加 violation：实时看板的「违规处罚明细」（投诉/差评/索赔口径数据源）。
 RAW_KINDS = ("orders", "sched", "att", "violation")
 

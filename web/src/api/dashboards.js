@@ -184,3 +184,12 @@ export function setBotCredentialsRef(botId, ref) { return request('/bot/bots', j
 export function patchBot(botId, patch = {}) { return request('/bot/bots', j(Object.assign({ botId }, patch))); }
 export function fetchBotCredentials() { return request('/bot/credentials'); }
 export function saveBotCredentials(groups) { return request('/bot/credentials', j({ groups })); }
+
+/* ============ 钉钉授权（设备流 WebUI） ============ */
+export function dingAuthStart() { return request('/ding/auth/device-login', { ...j({}), timeout: 30000 }); }
+export function dingAuthStatus() { return request('/ding/auth/status'); }
+export function dingAuthLogout() { return request('/ding/auth/logout', j({})); }
+
+/* ============ 钉钉 CLI 配置（WebUI 设置） ============ */
+export function dingConfig() { return request('/ding/config'); }
+export function saveDingConfig(patch = {}) { return request('/ding/config', j({ patch })); }

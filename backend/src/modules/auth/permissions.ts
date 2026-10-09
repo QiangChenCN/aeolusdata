@@ -40,6 +40,10 @@ export const GET_ROUTE_PERMS: Record<string, string> = {
   '/api/bot/config': 'admin:bot',
   '/api/bot/status': 'admin:bot',
   '/api/bot/credentials': 'admin:bot',
+  // 钉钉授权（设备流发起 / 状态查询）：限管理员，绕过 /api/ding/.*→machine 前缀
+  '/api/ding/auth/status': 'admin:bot',
+  // 钉钉 DWS 配置读取（系统设置页）：限管理员机器人配置权限，绕过 machine 前缀
+  '/api/ding/config': 'admin:bot',
 };
 
 export const POST_ROUTE_PERMS: Record<string, string> = {
@@ -68,6 +72,12 @@ export const POST_ROUTE_PERMS: Record<string, string> = {
   '/api/bot/reload': 'admin:bot',
   '/api/bot/bots': 'admin:bot',
   '/api/bot/credentials': 'admin:bot',
+  // 钉钉授权发起（设备流）：限管理员，绕过 /api/ding/.*→machine 前缀
+  '/api/ding/auth/device-login': 'admin:bot',
+  // 钉钉退出登录（触发重新授权）：限管理员
+  '/api/ding/auth/logout': 'admin:bot',
+  // 钉钉 DWS 配置保存（系统设置页）：限管理员机器人配置权限，绕过 machine 前缀
+  '/api/ding/config': 'admin:bot',
   '/api/service-quality/targets': 'config:write',
   '/api/account/change-pw': 'self',
 };

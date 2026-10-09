@@ -422,24 +422,24 @@ onMounted(load);
 }
 .asq-bar { display: flex; align-items: center; gap: var(--sp-12); flex-wrap: wrap; }
 .asq-bar .sp { flex: 1; }
-.v-title { margin: 0; font-size: var(--fs-title); }
+.v-title { margin: 0; font-size: var(--el-font-size-extra-large); }
 .asq-month { width: 150px; }
 .asq-card { width: 100%; box-sizing: border-box; flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
 .asq-card :deep(.el-card__header) { flex: 0 0 auto; }
 .asq-card :deep(.el-card__body) { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
 .asq-card-h { font-weight: 600; }
-.asq-warn { margin-left: var(--sp-12); font-size: var(--fs-caption); color: var(--warn); }
+.asq-warn { margin-left: var(--sp-12); font-size: var(--el-font-size-extra-small); color: var(--warn); }
 /* 权重项合计提示（需 100%） */
-.asq-sum { margin-left: var(--sp-12); font-size: var(--fs-caption); color: var(--muted); }
+.asq-sum { margin-left: var(--sp-12); font-size: var(--el-font-size-extra-small); color: var(--muted); }
 .asq-sum.is-bad { color: var(--el-color-danger); font-weight: 600; }
 /* 分层方式下拉 */
 .asq-layer { width: 112px; }
 .asq-legend { margin-left: auto; display: flex; gap: var(--sp-12); }
-.asq-legend-item { display: inline-flex; align-items: center; gap: 4px; font-size: var(--fs-caption); color: var(--muted); }
+.asq-legend-item { display: inline-flex; align-items: center; gap: 4px; font-size: var(--el-font-size-extra-small); color: var(--muted); }
 .asq-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
 .asq-dot.is-pos { background: var(--el-color-success); }
 .asq-dot.is-neg { background: var(--el-color-danger); }
-.asq-tip { font-size: var(--fs-caption); color: var(--muted); }
+.asq-tip { font-size: var(--el-font-size-extra-small); color: var(--muted); }
 .asq-table { flex: 1 1 auto; min-height: 0; --el-component-size: 28px; }
 .asq-table :deep(.el-table__cell) { padding: 6px 0; }
 /* 全部列用 min-width（flex 列）→ fit 时剩余宽度按各列 min-width 比例分配；
@@ -463,7 +463,7 @@ onMounted(load);
 .asq-tier { font-size: 12px; color: var(--muted); }
 .asq-tier.is-t100 { color: var(--el-color-success); }
 .asq-tier.is-t0 { color: var(--el-color-danger); }
-.asq-note { margin: var(--sp-8) 0 0; font-size: var(--fs-caption); color: var(--muted); }
-.asq-updated { font-size: var(--fs-caption); color: var(--muted); }
-.asq-saved { font-size: var(--fs-caption); color: #1aac5a; }
+.asq-note { margin: var(--sp-8) 0 0; font-size: var(--el-font-size-extra-small); color: var(--muted); }
+.asq-updated { font-size: var(--el-font-size-extra-small); color: var(--muted); }
+.asq-saved { font-size: var(--el-font-size-extra-small); color: #1aac5a; }
 </style>
