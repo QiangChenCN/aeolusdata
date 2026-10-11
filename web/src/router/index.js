@@ -19,6 +19,7 @@ import PolicyView from '../views/PolicyView.vue';
 import ChangePwView from '../views/ChangePwView.vue';
 import SystemSettingsView from '../views/SystemSettingsView.vue';
 import DingtalkSettingsView from '../views/DingtalkSettingsView.vue';
+import AeolusSettingsView from '../views/AeolusSettingsView.vue';
 import BotGlobalView from '../views/BotGlobalView.vue';
 import BotRobotView from '../views/BotRobotView.vue';
 import BotInstanceView from '../views/BotInstanceView.vue';
@@ -52,6 +53,7 @@ const routes = [
   { path: '/rbac/pw', name: 'rbac-pw', component: ChangePwView, meta: { title: '个人改密', kind: 'rbac-pw' } },
   { path: '/settings', name: 'system-settings', component: SystemSettingsView, meta: { title: '系统设置', kind: 'syscfg' } },
   { path: '/settings/dingtalk', name: 'dingtalk-settings', component: DingtalkSettingsView, meta: { title: '钉钉设置', kind: 'sys-dingtalk' } },
+  { path: '/settings/aeolus', name: 'aeolus-settings', component: AeolusSettingsView, meta: { title: '风神设置', kind: 'sys-aeolus' } },
   { path: '/bot/global', name: 'bot-global', component: BotGlobalView, meta: { title: '全局配置', kind: 'botcfg', id: 'global' } },
   { path: '/bot/robot', name: 'bot-robot', component: BotRobotView, meta: { title: '机器人配置', kind: 'botcfg', id: 'robot' } },
   { path: '/bot/instance', name: 'bot-instance', component: BotInstanceView, meta: { title: '实例配置', kind: 'botcfg', id: 'instance' } },

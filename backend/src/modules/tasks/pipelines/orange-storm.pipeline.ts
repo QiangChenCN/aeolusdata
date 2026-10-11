@@ -157,7 +157,7 @@ export class OrangeStormPipeline implements TaskHandler {
     const root = path.resolve(
       this.config.get<string>('PROJECT_ROOT') || path.resolve(process.cwd(), '..'),
     );
-    this.outDir = path.join(root, 'python', 'jobs', 'orange_storm', 'out');
+    this.outDir = path.join(root, 'backend', 'data', 'jobs', 'orange_storm', 'out');
   }
 
   async run(ctx: TaskRunContext): Promise<void> {

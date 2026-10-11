@@ -132,7 +132,8 @@ backend/*.out
 # python 运行日志与生成文档
 python/logs/
 python/**/*.err
-python/jobs/**/out/
+# 任务产物（运行期生成，非源码）：backend/data/jobs/**/out/
+backend/data/jobs/**/out/
 # 仓库根的 Nest 启动重定向日志（run<port>.out/.err；上面 backend/*.out 只覆盖 backend/ 目录）
 /run*.out
 /run*.err

@@ -140,7 +140,7 @@ export class AttendancePipeline implements TaskHandler {
     const root = path.resolve(
       config.get<string>('PROJECT_ROOT') || path.resolve(process.cwd(), '..'),
     );
-    this.outDir = path.join(root, 'python', 'jobs', 'attendance', 'out');
+    this.outDir = path.join(root, 'backend', 'data', 'jobs', 'attendance', 'out');
     this.rawDir = path.join(this.outDir, 'attendance_raw');
   }
 

@@ -214,3 +214,10 @@ export function dingAuthLogout() { return request('/ding/auth/logout', j({})); }
 /* ============ 钉钉 CLI 配置（WebUI 设置） ============ */
 export function dingConfig() { return request('/ding/config'); }
 export function saveDingConfig(patch = {}) { return request('/ding/config', j({ patch })); }
+
+/* ============ 风神账号配置（WebUI 系统设置） ============ */
+export function fetchAeolusCreds() { return request('/fetch/settings/aeolus'); }
+export function saveAeolusCreds({ account, password } = {}) {
+  return request('/fetch/settings/aeolus', j({ account, password }));
+}
+export function logoutAeolus() { return request('/fetch/settings/aeolus/logout', j({})); }

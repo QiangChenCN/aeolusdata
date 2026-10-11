@@ -33,7 +33,7 @@ export class DeliveryDbService {
     const root = path.resolve(
       this.config.get<string>('PROJECT_ROOT') || path.resolve(process.cwd(), '..'),
     );
-    this.deliveryDir = path.join(root, 'python', 'jobs', 'delivery');
+    this.deliveryDir = path.join(root, 'backend', 'data', 'jobs', 'delivery');
     this.cfgPath = path.join(this.deliveryDir, 'db_config.json');
   }
 

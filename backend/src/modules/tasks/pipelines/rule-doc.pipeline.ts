@@ -19,6 +19,47 @@ const TAG_TO_DT: Record<string, string> = {
 
 const REF_FILES = ['rule_native_reference.html', 'rule_native_reference_6355.html'];
 
+/**
+ * 有序列表编号格式化（docx 多级列表 format 字段）。
+ * 各级格式不同：decimal(1,2,3) / lowerLetter(a,b,c) / upperLetter(A,B,C) /
+ * lowerRoman(i,ii,iii) / upperRoman(I,II,III)。源数据如 7107 的层级列表：
+ * level0=decimal、level1=lowerLetter、level2=lowerRoman、level3=decimal。
+ */
+function toAlpha(n: number): string {
+  if (n <= 0) return String(n);
+  let s = '';
+  while (n > 0) {
+    const r = (n - 1) % 26;
+    s = String.fromCharCode(97 + r) + s;
+    n = Math.floor((n - 1) / 26);
+  }
+  return s;
+}
+function toRoman(n: number): string {
+  if (n <= 0) return String(n);
+  const map: [number, string][] = [
+    [1000, 'm'], [900, 'cm'], [500, 'd'], [400, 'cd'], [100, 'c'], [90, 'xc'],
+    [50, 'l'], [40, 'xl'], [10, 'x'], [9, 'ix'], [5, 'v'], [4, 'iv'], [1, 'i'],
+  ];
+  let s = '';
+  for (const [v, sym] of map) {
+    while (n >= v) {
+      s += sym;
+      n -= v;
+    }
+  }
+  return s;
+}
+function formatListNumber(n: number, type: string): string {
+  switch (type) {
+    case 'lowerLetter': return toAlpha(n);
+    case 'upperLetter': return toAlpha(n).toUpperCase();
+    case 'lowerRoman': return toRoman(n);
+    case 'upperRoman': return toRoman(n).toUpperCase();
+    default: return String(n);
+  }
+}
+
 interface BlockSpec {
   tag: string;
   class: string;
@@ -49,6 +90,78 @@ function cleanStyle(s: string): string {
   return out.replace(/;/g, ';').replace(/^;+|;+$/g, '').trim();
 }
 
+/**
+ * 按 Slate 节点自身的对齐属性 `jc`（justification）覆盖参考样式里的 text-align。
+ *
+ * 规则正文每个标题/段落节点的 attrs 携带 `jc`（center/left/right/both），
+ * 这是前台真实对齐的来源；而参考快照（rule_native_reference*.html）的 heading 样式
+ * 可能整体是居中的（如 6355 的 heading-2），若直接套用会把本该左对齐的标题误居中。
+ * 故：有 jc 用 jc 映射值，缺 jc 默认左对齐，并剔除参考样式的 text-align。
+ */
+function alignFromJc(style: string, attrs: Record<string, any>): string {
+  const jcMap: Record<string, string> = {
+    center: 'center',
+    left: 'left',
+    right: 'right',
+    both: 'justify',
+    distribute: 'justify',
+  };
+  const jc = attrs && attrs.jc !== undefined ? String(attrs.jc) : undefined;
+  const align = jc !== undefined ? jcMap[jc] || 'left' : 'left';
+  let s = (style || '')
+    .replace(/text-align\s*:\s*[^;]+;?/gi, '')
+    .replace(/;+/g, ';')
+    .replace(/^;+|;+$/g, '');
+  return s ? `${s};text-align:${align}` : `text-align:${align}`;
+}
+
+/**
+ * 按 Slate 节点自身的缩进属性 `ind` 叠加 CSS 缩进。
+ *
+ * `ind` 字段（docx 风格）：left=左缩进、right=右缩进、firstLine=首行缩进(正)、
+ * hanging=悬挂缩进(正，转为负 text-indent)。原前台（风神）的真实映射（见
+ * rule_native_reference*.html）为：
+ *   - `ind:{left:N}`     → `padding-left:Npx; text-indent:0px`（左缩进，无首行缩进）
+ *   - `ind:{firstLine:N}`→ `padding-left:0px; text-indent:Npx`（无左缩进，首行缩进）
+ *   - 无 `ind` 的块      → 沿用参考默认（正文标准首行缩进），**不**继承上下文左缩进。
+ *
+ * 每个块只渲染自己 `ind`，风神不会让无 ind 的段落去继承上一个标题的左缩进
+ * （否则「（一）」下的正文会被错误左移，与「（二）」下的同类正文不一致）。
+ * 参考段落默认带 `text-indent:32px`，故 `ind:{left:N}` 必须显式把 text-indent 置 0，
+ * 否则会与残留的首行缩进叠加。
+ */
+function buildBlockStyle(baseStyle: string, attrs: Record<string, any>, ctxLeft = 0): string {
+  const ind = attrs && attrs.ind;
+  if (!ind || typeof ind !== 'object') {
+    // 无 ind：若处于带左缩进的上下文（如「（一）」这类左缩进标题下的正文），
+    // 原文该正文是顶格的（无左缩进、无首行缩进），需剥掉参考默认的首行缩进；
+    // 否则沿用参考默认（正文标准首行缩进），避免影响其它文档。
+    if (ctxLeft > 0) {
+      let s = (baseStyle || '')
+        .replace(/padding-left\s*:\s*[^;]+;?/gi, '')
+        .replace(/text-indent\s*:\s*[^;]+;?/gi, '')
+        .replace(/;+/g, ';')
+        .replace(/^;+|;+$/g, '');
+      return s ? `${s};padding-left:0px;text-indent:0px` : 'padding-left:0px;text-indent:0px';
+    }
+    return baseStyle;
+  }
+  const left = typeof ind.left === 'number' ? ind.left : 0;
+  let textIndent = 0;
+  if (typeof ind.firstLine === 'number') textIndent = ind.firstLine;
+  else if (typeof ind.hanging === 'number' && ind.hanging > 0) textIndent = -ind.hanging;
+
+  let s = (baseStyle || '')
+    .replace(/padding-left\s*:\s*[^;]+;?/gi, '')
+    .replace(/text-indent\s*:\s*[^;]+;?/gi, '')
+    .replace(/;+/g, ';')
+    .replace(/^;+|;+$/g, '');
+  const add: string[] = [];
+  if (left) add.push(`padding-left:${left}px`);
+  if (textIndent) add.push(`text-indent:${textIndent}px`);
+  return s ? (add.length ? `${s};${add.join(';')}` : s) : add.join(';');
+}
+
 function isSlateNode(x: unknown): x is any[] {
   return Array.isArray(x) && x.length > 0 && typeof x[0] === 'string' && (x.length === 1 || (typeof x[1] === 'object' && x[1] !== null && !Array.isArray(x[1])));
 }
@@ -75,35 +188,204 @@ function renderLeaf(attrs: Record<string, any>, text: string): string {
   return `<span data-type="leaf" style="${leafStyle(attrs)}">${H(text)}</span>`;
 }
 
-function renderChildren(children: unknown, spec: Record<string, BlockSpec>): string {
+function renderChildren(
+  children: unknown,
+  spec: Record<string, BlockSpec>,
+  ctx?: RenderCtx,
+): string {
   if (children === null || children === undefined) return '';
   if (typeof children === 'string') return H(children);
   if (!Array.isArray(children)) return '';
+  if (!ctx) ctx = { left: 0 };
   const out: string[] = [];
   for (const ch of children) {
     if (typeof ch === 'string') out.push(H(ch));
-    else if (isSlateNode(ch)) out.push(renderNode(ch, spec));
+    else if (isSlateNode(ch)) out.push(renderNode(ch, spec, ctx));
   }
   return out.join('');
 }
 
-function renderTable(type: string, children: any[], spec: Record<string, BlockSpec>): string {
+function renderTable(
+  type: string,
+  children: any[],
+  spec: Record<string, BlockSpec>,
+  attrs: Record<string, any> = {},
+): string {
   if (type === 'table') {
     const b = spec.table || { tag: 'div', class: '', style: '' };
     const inner = renderChildren(children, spec);
-    return `<div data-type="table" class="${b.class}" style="${cleanStyle(b.style)}"><table><tbody>${inner}</tbody></table></div>`;
+    // 表级缩进：attrs.ind.left → 容器 margin-left（原前台 data-type="table" 容器即用 margin-left）。
+    // 先剥掉参考 spec 里固化的 margin-left，再按源数据重建。
+    let style = cleanStyle(b.style).replace(/margin-left\s*:\s*[^;]+;?/gi, '');
+    const indLeft =
+      attrs && attrs.ind && typeof attrs.ind === 'object' && typeof attrs.ind.left === 'number'
+        ? attrs.ind.left
+        : 0;
+    if (indLeft) style += `;margin-left:${indLeft}px`;
+    // 列宽：attrs.colsWidth（px 数组）→ colgroup；表格总宽 = 各列之和。
+    // 与原生（rule_native_reference_6355）一致：自动布局 + table width=列宽之和 +
+    // col 宽度提示。单元格 white-space:pre-wrap（中文可在任意处断行），内容超出
+    // 列宽即折行——这正是原文表格的折叠行为，需按列宽精确复刻而非自适应撑宽。
+    // 不用 table-layout:fixed（原生无此属性），以免与原文渲染口径不一致。
+    let colgroup = '';
+    let tableStyle = 'border-collapse:collapse';
+    if (Array.isArray(attrs.colsWidth) && attrs.colsWidth.length) {
+      const ws = attrs.colsWidth.map((w: any) => (typeof w === 'number' && w > 0 ? w : 100));
+      const total = ws.reduce((a: number, x: number) => a + x, 0);
+      colgroup = `<colgroup>${ws.map((w: number) => `<col style="width:${w}px">`).join('')}</colgroup>`;
+      tableStyle += `;width:${total}px`;
+    }
+    return `<div data-type="table" class="${b.class}" style="${style}"><table style="${tableStyle}">${colgroup}<tbody>${inner}</tbody></table></div>`;
   }
   if (type === 'tr') return `<tr>${renderChildren(children, spec)}</tr>`;
   if (type === 'td' || type === 'tc') {
+    // 合并格占位（hidden:true）：合并格除首格外会带 hidden 占位，前台不渲染（与参考 DOM 一致）
+    if (attrs.hidden) return '';
     // 前台不渲染空单元格：与参考 DOM 保持一致
     if (extractText(children).trim() === '') return '';
     const b = spec['table-cell'] || { tag: 'td', class: '', style: '' };
-    return `<td data-type="table-cell" class="${b.class}" style="${cleanStyle(b.style)}">${renderChildren(children, spec)}</td>`;
+    // 合并格：原生 td 恒带 rowspan/colspan（见参考快照 6355，缺省为 1）。
+    // 此前漏掉该属性，「有效运力标准等级」这类 colSpan:5 的格只占 1 列，整表错位。
+    const cs = typeof attrs.colSpan === 'number' && attrs.colSpan > 0 ? attrs.colSpan : 1;
+    const rs = typeof attrs.rowSpan === 'number' && attrs.rowSpan > 0 ? attrs.rowSpan : 1;
+    // fill / vAlign：单元格背景色与垂直对齐（docx 风格属性，原前台会应用）
+    let style = cleanStyle(b.style);
+    if (attrs.fill) style += `;background-color:${String(attrs.fill)}`;
+    const vaMap: Record<string, string> = { top: 'top', center: 'middle', middle: 'middle', bottom: 'bottom' };
+    const va = vaMap[String(attrs.vAlign || '').toLowerCase()];
+    if (va) style += `;vertical-align:${va}`;
+    // bdr：单元格显式边框（docx 风格）。源数据指定 #000000 single 时覆盖参考 spec 的
+    // 默认浅色边框，否则表格没有原文的黑色网格线（7107 实际缺陷）。
+    const bdr = attrs.bdr && typeof attrs.bdr === 'object' ? attrs.bdr : null;
+    if (bdr) {
+      for (const side of ['top', 'right', 'bottom', 'left'] as const) {
+        const v = (bdr as Record<string, any>)[side];
+        if (!v || typeof v !== 'object') continue;
+        const val = String(v.val || 'single');
+        const sz = typeof v.sz === 'number' && v.sz > 0 ? v.sz : 1;
+        const color = v.color ? String(v.color) : '#000000';
+        style +=
+          val === 'none'
+            ? `;border-${side}:none`
+            : `;border-${side}:${sz}px ${val === 'single' ? 'solid' : val} ${color}`;
+      }
+    }
+    return `<td data-type="table-cell" rowspan="${rs}" colspan="${cs}" class="${b.class}" style="${style}">${renderChildren(children, spec, { left: 0, inCell: true })}</td>`;
   }
   return '';
 }
 
-function renderNode(node: any[], spec: Record<string, BlockSpec>): string {
+/** 渲染上下文：left=当前继承的左缩进；counters=列表计数器（ordered 为 number[] 多级计数）；
+ *  inCell=处于表格单元格内（原生强制 text-indent/padding-left 为 0）。 */
+interface RenderCtx {
+  left: number;
+  counters?: Map<string, number | number[]>;
+  inCell?: boolean;
+}
+
+/**
+ * 列表项渲染（块 attrs.list：listId/level/listStyle，对应原前台 data-testid="list"）。
+ *
+ * 原前台（见 rule_native_reference_6355.html）把带 list 属性的块渲染为：
+ *   <div style="display:flex;padding-left:{缩进}">
+ *     <span class="list-symbol-wrapper">…<span class="list-symbol">●</span></span>
+ *     <内容块 style="…;flex-grow:1;text-indent:0px;padding-left:0px">…</内容块>
+ *   </div>
+ * 缩进 = ind.left + level*32（快照实测：level0→0/32、level1→32/96、level2→64/128、
+ * level3→96，步长恒为 32，基准即块自身的 ind.left）。
+ *
+ * 若忽略 list 属性，这些块会被拍平成顶格段落：多级 bullet 与缩进全丢，
+ * 「（2）xxx」标题下的条目看起来就像一堆独立段落（rule 7107 实际缺陷）。
+ */
+function renderListItem(
+  list: Record<string, any>,
+  dt: string,
+  b: BlockSpec,
+  attrs: Record<string, any>,
+  children: unknown[],
+  spec: Record<string, BlockSpec>,
+  ctx?: RenderCtx,
+): string {
+  const level = typeof list.level === 'number' ? list.level : 0;
+  const indLeft =
+    attrs && attrs.ind && typeof attrs.ind === 'object' && typeof attrs.ind.left === 'number'
+      ? attrs.ind.left
+      : 0;
+  if (ctx && attrs && attrs.ind && typeof attrs.ind === 'object' && typeof attrs.ind.left === 'number') {
+    ctx.left = attrs.ind.left;
+  }
+  const pad = indLeft + level * 32;
+
+  let symbol = '';
+  if (!list.hideSymbol) {
+    const ls = list.listStyle && typeof list.listStyle === 'object' ? list.listStyle : {};
+    if (list.isOrdered) {
+      const listId = String(list.listId || '');
+      if (!ctx) ctx = { left: 0 };
+      if (!ctx.counters) ctx.counters = new Map();
+      // 多级有序列表：同一 listId 下按 level 维护独立计数器，进入条目时
+      // 当前层级 +1 并把更深层级计数清零（docx 多级编号语义）。
+      // 此前按 listId 平铺累加，导致层级 0-3 的条目连成 1..20+，层级丢失。
+      const key = `ol:${listId}`;
+      let arr = ctx.counters.get(key);
+      if (!Array.isArray(arr)) {
+        arr = [];
+        ctx.counters.set(key, arr);
+      }
+      arr[level] = (arr[level] || 0) + 1;
+      for (let i = level + 1; i < arr.length; i++) arr[i] = 0;
+      // 符号：listStyle.text 为编号模板（如 "%1."），%k 取第 k 级计数器；
+      // 各级模板只引用自身层级（level0→%1、level1→%2…），即各级独立编号。
+      const fmt =
+        list.listStyle && typeof list.listStyle === 'object' && typeof list.listStyle.text === 'string'
+          ? String(list.listStyle.text)
+          : '';
+      const fmtType =
+        list.listStyle && typeof list.listStyle === 'object' && typeof list.listStyle.format === 'string'
+          ? String(list.listStyle.format)
+          : 'decimal';
+      if (fmt.includes('%')) {
+        symbol = fmt.replace(/%(\d+)/g, (_m, k) => {
+          const idx = Number(k) - 1;
+          const v = idx >= 0 && idx < arr!.length && arr![idx] ? arr![idx] : arr![level] || 1;
+          // 模板 %N（N=level+1）引用自身层级计数器，用本条目 listStyle.format 渲染；
+          // 各级 format 不同：decimal(1)/lowerLetter(a)/lowerRoman(i) 等（见 7107 源数据）。
+          return formatListNumber(v, fmtType);
+        });
+      } else {
+        symbol = fmt || `${formatListNumber(arr[level], fmtType)}.`;
+      }
+    } else {
+      symbol = String(ls.text || '•');
+    }
+  }
+  const symFonts =
+    list.listStyle &&
+    list.listStyle.symbolStyle &&
+    typeof list.listStyle.symbolStyle === 'object' &&
+    list.listStyle.symbolStyle.fonts
+      ? String(list.listStyle.symbolStyle.fonts)
+      : 'Arial';
+  const sym = symbol
+    ? `<span class="list-symbol-wrapper" style="font-weight:700;margin-right:6px;white-space:nowrap;">` +
+      `<span class="list-symbol" style="font-family:${H(symFonts)};font-size:16px;font-weight:700;">${H(symbol)}</span></span>`
+    : '';
+
+  // 内容块：沿用参考样式与 jc 对齐，但缩进由外层 flex 容器负责，内层强制置 0（与原生一致）
+  let inner = alignFromJc(cleanStyle(b.style), attrs)
+    .replace(/padding-left\s*:\s*[^;]+;?/gi, '')
+    .replace(/text-indent\s*:\s*[^;]+;?/gi, '')
+    .replace(/;+/g, ';')
+    .replace(/^;+|;+$/g, '');
+  inner = inner ? `${inner};padding-left:0px;text-indent:0px;flex-grow:1` : 'padding-left:0px;text-indent:0px;flex-grow:1';
+  return (
+    `<div data-type="list-item" style="display:flex;padding-left:${pad}px">` +
+    `${sym}<${b.tag} data-type="${dt}" class="${b.class}" style="${inner}">${renderChildren(children, spec, ctx)}</${b.tag}>` +
+    `</div>`
+  );
+}
+
+function renderNode(node: any[], spec: Record<string, BlockSpec>, ctx?: RenderCtx): string {
   if (!isSlateNode(node)) return '';
   const type = node[0];
   const attrs: Record<string, any> =
@@ -119,15 +401,54 @@ function renderNode(node: any[], spec: Record<string, BlockSpec>): string {
     const style = leafStyle(attrs);
     return style ? `<span data-type="leaf" style="${style}">${inner}</span>` : inner;
   }
+  // 图片节点：Slate 表示为 ["img", { src, name, width, height, ... }]，没有子节点。
+  // 原实现（含 Python 原版）漏掉该类型，落入默认 <div> 分支被整段丢弃，图片从不进文档。
+  if (type === 'img' || type === 'image' || type === 'picture') {
+    const src = attrs.src || attrs.url || attrs.dataUrl || '';
+    if (!src) return '';
+    const alt = String(attrs.name || attrs.alt || '');
+    const width = Number(attrs.width);
+    const maxW = Number.isFinite(width) && width > 0 ? `max-width:${width}px;` : '';
+    return (
+      `<div data-type="image" style="margin:14px 0;${maxW}">` +
+      `<img src="${H(src)}" alt="${H(alt)}" style="max-width:100%;height:auto;border-radius:4px;" />` +
+      `</div>`
+    );
+  }
   if (type === 'table' || type === 'tr' || type === 'tc') {
-    return renderTable(type, children, spec);
+    return renderTable(type, children, spec, attrs);
   }
   const dt = TAG_TO_DT[type];
   if (dt === undefined) return `<div>${renderChildren(children, spec)}</div>`;
   const b = spec[dt];
   if (!b) return `<div data-type="${dt}">${renderChildren(children, spec)}</div>`;
-  const st = cleanStyle(b.style);
-  return `<${b.tag} data-type="${dt}" class="${b.class}" style="${st}">${renderChildren(children, spec)}</${b.tag}>`;
+  const ind = attrs && attrs.ind;
+  // 列表项：attrs.list 携带 listId/level/listStyle，必须按原前台 flex 列表渲染，
+  // 否则多级 bullet 与缩进丢失，标题下的条目会被拍平成独立段落。
+  const list = attrs && attrs.list && typeof attrs.list === 'object' ? attrs.list : null;
+  if (list) return renderListItem(list, dt, b, attrs, children, spec, ctx);
+  let st = buildBlockStyle(alignFromJc(cleanStyle(b.style), attrs), attrs, ctx ? ctx.left : 0);
+  // 表格单元格内：原生（6355 快照 td 内段落）一律 text-indent:0px;padding-left:0px，
+  // 且无 margin-bottom（快照实测 None）。若沿用参考默认（首行缩进 32px / margin-bottom 8px）：
+  // 缩进会压小首行可用宽度（表头折行），margin 会让行高比原生每段多 8px（7107 实际缺陷）。
+  let inner = renderChildren(children, spec, ctx && ctx.inCell ? ctx : undefined);
+  if (ctx && ctx.inCell) {
+    st = st
+      .replace(/padding-left\s*:\s*[^;]+;?/gi, '')
+      .replace(/text-indent\s*:\s*[^;]+;?/gi, '')
+      .replace(/margin-bottom\s*:\s*[^;]+;?/gi, '')
+      .replace(/;+/g, ';')
+      .replace(/^;+|;+$/g, '');
+    st = st ? `${st};padding-left:0px;text-indent:0px;margin-bottom:0px` : 'padding-left:0px;text-indent:0px;margin-bottom:0px';
+    // 单元格内空段落：原生按整行高渲染（docx 常用空段落给合并格做垂直占位，
+    // 如 7107「麦当劳」格 = 22 个空段落 + 1 个文本段，原文文字因此被推到格中部）。
+    // 空 div 无行盒高度会塌陷为 0，插入 <br> 撑出一行行高（line-height:24.93px）。
+    if (!extractText(children).trim()) inner = '<br>';
+  }
+  // 维护上下文左缩进：仅当块自身携带显式 left（含 0）时更新，供后续 ind:null 块继承，
+  // 使「（一）」这类左缩进标题下的正文与之对齐。
+  if (ctx && ind && typeof ind === 'object' && typeof ind.left === 'number') ctx.left = ind.left;
+  return `<${b.tag} data-type="${dt}" class="${b.class}" style="${st}">${inner}</${b.tag}>`;
 }
 
 // ───────── 元数据 ─────────
@@ -178,17 +499,27 @@ function padLeft(style: string): number {
   return m ? Number(m[1]) : 0;
 }
 
-function buildAttachmentsHtml(data: Record<string, any>, indent = 0): string {
+/**
+ * 文末「附件：」区块（对应原前台 rule-details__bottom，见 6355 快照）：
+ * 位于可编辑内容区末尾，带 border-top:1px solid #eee 分隔线 + padding:20px，
+ * 内含 h1「附件：」与附件列表。原前台恒渲染该区块（无附件时列表为空），
+ * 不能因 attachments 为空而整个省略（7107 实际缺陷：缺分隔线与附件区块）。
+ */
+function buildBottomHtml(data: Record<string, any>): string {
   const atts: Record<string, any>[] = data.attachments || [];
   const valid = atts.filter((a) => a.url && a.name);
-  if (!valid.length) return '';
   const items = valid
     .map(
       (a) =>
         `<li style="margin-bottom:6px;"><a href="${H(a.url)}" target="_blank" rel="noopener noreferrer" style="color:#1677ff;text-decoration:none;">${H(a.name)}</a></li>`,
     )
     .join('');
-  return `<div class="rule-details__attachments" style="margin:16px ${indent}px 24px;padding:0;font-size:13px;color:#333;line-height:1.9;"><div style="font-weight:bold;margin-bottom:8px;">附件</div><ul style="margin:0;padding-left:0;list-style:none;line-height:1.9;">${items}</ul></div>`;
+  const list = items ? `<ul style="margin:8px 0 0;padding-left:20px;line-height:1.9;">${items}</ul>` : '';
+  return (
+    `<div class="rule-details__bottom" style="border-top:1px solid #eeeeee;padding:20px;font-size:16px;">` +
+    `<h1 style="font-size:16px;font-weight:700;margin:0;">附件：</h1>${list}` +
+    `</div>`
+  );
 }
 
 function buildHeader(raw: string, ruleName: string, eff: string, metaHtml = ''): string {
@@ -228,23 +559,44 @@ const HEAD_MD: Record<string, string> = {
 
 function mdLines(children: any[]): string[] {
   const out: string[] = [];
-  for (const ch of children || []) {
-    if (!isSlateNode(ch)) continue;
-    if (ch[0] === 'table') {
-      for (const tr of ch.slice(2)) {
-        if (!isSlateNode(tr) || tr[0] !== 'tr') continue;
-        let cells = tr
-          .slice(2)
-          .filter((tc: unknown) => isSlateNode(tc))
-          .map((tc: any) => extractText(tc.slice(2)).trim());
-        cells = cells.filter((c: string) => c);
-        if (cells.length) out.push(cells.join(' | '));
+  const walk = (nodes: unknown): void => {
+    if (!Array.isArray(nodes)) return;
+    for (const ch of nodes) {
+      if (typeof ch === 'string') {
+        const t = ch.trim();
+        if (t) out.push(t);
+        continue;
       }
-      continue;
+      if (!isSlateNode(ch)) continue;
+      const type = ch[0];
+      if (type === 'img' || type === 'image' || type === 'picture') {
+        const a = (ch.length > 1 && typeof ch[1] === 'object' && ch[1] !== null ? ch[1] : {}) as Record<string, any>;
+        const src = a.src || a.url || a.dataUrl || '';
+        if (src) out.push(`![${H(a.name || a.alt || 'image')}](${src})`);
+        continue;
+      }
+      if (type === 'table') {
+        for (const tr of ch.slice(2)) {
+          if (!isSlateNode(tr) || tr[0] !== 'tr') continue;
+          let cells = tr
+            .slice(2)
+            .filter((tc: unknown) => isSlateNode(tc))
+            .map((tc: any) => extractText(tc.slice(2)).trim());
+          cells = cells.filter((c: string) => c);
+          if (cells.length) out.push(cells.join(' | '));
+        }
+        continue;
+      }
+      // 标题整行输出，不再递归其文本；其余节点（p/div/span…）递归找文本与嵌套图片。
+      if (HEAD_MD[type]) {
+        const line = extractText(ch.slice(2)).trim();
+        if (line) out.push(HEAD_MD[type] + line);
+        continue;
+      }
+      walk(ch.slice(2));
     }
-    const line = extractText(ch.slice(2)).trim();
-    if (line) out.push((HEAD_MD[ch[0]] || '') + line);
-  }
+  };
+  walk(children);
   return out;
 }
 
@@ -270,8 +622,8 @@ export class RuleDocPipeline implements TaskHandler {
     const root = path.resolve(
       this.config.get<string>('PROJECT_ROOT') || path.resolve(process.cwd(), '..'),
     );
-    this.refDir = path.join(root, 'python', 'jobs', 'ruledoc');
-    this.outDir = path.join(root, 'python', 'jobs', 'ruledoc', 'out');
+    this.refDir = path.join(root, 'backend', 'data', 'jobs', 'ruledoc');
+    this.outDir = path.join(root, 'backend', 'data', 'jobs', 'ruledoc', 'out');
   }
 
   private readRefs(): string[] {
@@ -307,7 +659,7 @@ export class RuleDocPipeline implements TaskHandler {
 
   private buildDoc(data: Record<string, any>, spec: Record<string, BlockSpec>, raw: string): string {
     const tree = JSON.parse(data.ruleContent);
-    const body = renderChildren(tree.slice(2), spec);
+    const body = renderChildren(tree.slice(2), spec, { left: 0 });
     const ruleName = data.ruleName || '未命名规则';
     let eff = String(data.effectiveTime || data.effectiveStartTime || data.publishEndTime || '');
     eff = eff.slice(0, 10);
@@ -323,8 +675,7 @@ export class RuleDocPipeline implements TaskHandler {
       : 'user-select:text';
     const ceStyle = cleanStyle(styleOf(raw, 'data-cangjie-editable="true"[^>]*style="([^"]*)"'));
     const metaRow = buildMetaRow(data);
-    const attIndent = padLeft(contStyle) + padLeft(ccStyle);
-    const attachmentsHtml = buildAttachmentsHtml(data, attIndent);
+    const bottomHtml = buildBottomHtml(data);
     const header = buildHeader(raw, ruleName, eff, metaRow);
     return (
       `<!DOCTYPE html>\n<html lang="zh-CN"><head><meta charset="utf-8">\n` +
@@ -334,8 +685,8 @@ export class RuleDocPipeline implements TaskHandler {
       `<div class="rule-details-container" style="${contStyle}">\n` +
       `<div class="ruleDetail-preview ruleDetail-preview-withToc" style="${prevStyle}">\n` +
       `<div data-cangjie-content="true" data-zoom="1" style="${ccStyle}">\n` +
-      `<div data-cangjie-editable="true" style="${ceStyle}">\n${body}\n` +
-      `</div></div></div></div>${attachmentsHtml}\n</div>\n</body></html>`
+      `<div data-cangjie-editable="true" style="${ceStyle}">\n${body}\n${bottomHtml}\n` +
+      `</div></div></div></div>\n</div>\n</body></html>`
     );
   }
 

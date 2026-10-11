@@ -33,7 +33,7 @@ cd backend && npm ci && npm run build && cd ..
 
 echo "== setup 完成 =="
 echo "下一步："
-echo "  1) 把凭据单独传上来：scp backend/aeolus_sdk/cookie.txt backend/minio_config.json python/jobs/delivery/db_config.json backend/.env .env root@<IP>:/opt/aeolusdata/对应路径"
+echo "  1) 把凭据单独传上来：scp backend/aeolus_sdk/cookie.txt backend/minio_config.json backend/data/jobs/delivery/db_config.json backend/.env .env root@<IP>:/opt/aeolusdata/对应路径"
 echo "     —— .env 里要含 NEST_AUTH_TOKEN（= backend/.env 的 AUTH_TOKEN），否则计算服务"
 echo "        回访 Nest 取数会被 401 拒绝、静默降级为 Python 本地取数（刷新变慢但不报错）"
 echo "  2) sudo cp deploy/aeolus-backend.service deploy/aeolus-compute.service /etc/systemd/system/ \\"

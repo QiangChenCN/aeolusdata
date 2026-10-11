@@ -101,9 +101,9 @@
       "risk": "external",
       "timeout": 600,
       "outputs": [
-        "python/jobs/attendance/out/attendance_absent.png",
-        "python/jobs/attendance/out/attendance_summary.json",
-        "python/jobs/attendance/out/attendance_raw/"
+        "backend/data/jobs/attendance/out/attendance_absent.png",
+        "backend/data/jobs/attendance/out/attendance_summary.json",
+        "backend/data/jobs/attendance/out/attendance_raw/"
       ],
       "artifact_keep": 1,
       "confirm": "将向钉钉群发送实时在线播报并 @ 站长，这是真实的群消息，无法撤回。确认继续？"
@@ -159,8 +159,8 @@
       "risk": "external",
       "timeout": 600,
       "outputs": [
-        "python/jobs/appeal/out/violations.csv",
-        "python/jobs/appeal/out/violation_detail.png"
+        "backend/data/jobs/appeal/out/violations.csv",
+        "backend/data/jobs/appeal/out/violation_detail.png"
       ],
       "confirm": "将向钉钉群发送违规申诉明细并 @ 对应站长，这是真实的群消息。确认继续？",
       "nodes": [
@@ -236,8 +236,8 @@
       "risk": "external",
       "timeout": 300,
       "outputs": [
-        "python/jobs/board/out/task_started.png",
-        "python/jobs/board/out/task_list_raw.json"
+        "backend/data/jobs/board/out/task_started.png",
+        "backend/data/jobs/board/out/task_list_raw.json"
       ],
       "confirm": "将向钉钉群发送任务看板并 @ 执行人，这是真实的群消息。确认继续？",
       "nodes": [
@@ -294,8 +294,8 @@
       "risk": "safe",
       "timeout": 900,
       "outputs": [
-        "python/jobs/rush/out/dispatcher_jidan_3stations.json",
-        "python/jobs/rush/out/dispatcher_jidan_3stations.csv"
+        "backend/data/jobs/rush/out/dispatcher_jidan_3stations.json",
+        "backend/data/jobs/rush/out/dispatcher_jidan_3stations.csv"
       ],
       "nodes": [
         {
@@ -374,11 +374,11 @@
       "risk": "caution",
       "timeout": 7200,
       "outputs": [
-        "python/jobs/delivery/out/delivery_raw/*.jsonl",
-        "python/jobs/delivery/out/aeolus_delivery_*.csv"
+        "backend/data/jobs/delivery/out/delivery_raw/*.jsonl",
+        "backend/data/jobs/delivery/out/aeolus_delivery_*.csv"
       ],
       "needs": [
-        "python/jobs/delivery/out/delivery_raw/"
+        "backend/data/jobs/delivery/out/delivery_raw/"
       ],
       "prereq_note": "load / verify 节点需 PostgreSQL 在 localhost:5432 在线（库 postgres / 用户 admin），否则这两个节点连接失败；raw 节点可独立跑完。导出 CSV 不再是独立节点，而是 raw 的收尾动作——需要先抓到 JSONL（即区间要包含 raw）。",
       "confirm": "将写入/读取 PostgreSQL（数据库 postgres / 表 ods_delivery_tracking）。",
@@ -402,7 +402,7 @@
     },
     {
       "id": "rule_doc",
-      "name": "生成骑士规则文档",
+      "name": "规则文档生成",
       "group": "tool",
       "desc": "按规则 ID 拉骑士规则详情 → 生成 HTML + Markdown 文档",
       "params": [
@@ -451,8 +451,8 @@
       "risk": "safe",
       "timeout": 300,
       "outputs": [
-        "python/jobs/ruledoc/out/rule_doc_<id>.html",
-        "python/jobs/ruledoc/out/rule_doc_<id>.md"
+        "backend/data/jobs/ruledoc/out/rule_doc_<id>.html",
+        "backend/data/jobs/ruledoc/out/rule_doc_<id>.md"
       ],
       "output_vars": {
         "id": "--rule"
@@ -527,9 +527,9 @@
       "risk": "safe",
       "timeout": 600,
       "outputs": [
-        "python/jobs/orange_storm/out/orange_storm_*.json",
-        "python/jobs/orange_storm/out/orange_storm_*.csv",
-        "python/jobs/orange_storm/out/orange_storm_*_slim.csv"
+        "backend/data/jobs/orange_storm/out/orange_storm_*.json",
+        "backend/data/jobs/orange_storm/out/orange_storm_*.csv",
+        "backend/data/jobs/orange_storm/out/orange_storm_*_slim.csv"
       ],
       "nodes": [
         {
@@ -627,10 +627,10 @@
       "timeout": 900,
       "needs": [],
       "outputs": [
-        "python/jobs/equipment/out/rider_equipment.csv",
-        "python/jobs/equipment/out/rider_equipment_raw.json",
-        "python/jobs/equipment/out/rider_equipment_warning.png",
-        "python/jobs/equipment/out/rider_equipment_unlit.csv"
+        "backend/data/jobs/equipment/out/rider_equipment.csv",
+        "backend/data/jobs/equipment/out/rider_equipment_raw.json",
+        "backend/data/jobs/equipment/out/rider_equipment_warning.png",
+        "backend/data/jobs/equipment/out/rider_equipment_unlit.csv"
       ],
       "confirm": "将向「台账安全处理群」发送装备未点亮明细并 @ 站长，这是真实的群消息。确认继续？",
       "params": [

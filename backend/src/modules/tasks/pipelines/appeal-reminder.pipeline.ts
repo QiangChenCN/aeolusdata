@@ -68,7 +68,7 @@ export class AppealReminderPipeline implements TaskHandler {
     const root = path.resolve(
       config.get<string>('PROJECT_ROOT') || path.resolve(process.cwd(), '..'),
     );
-    this.outDir = path.join(root, 'python', 'jobs', 'appeal', 'out');
+    this.outDir = path.join(root, 'backend', 'data', 'jobs', 'appeal', 'out');
   }
 
   private get imgPath(): string {

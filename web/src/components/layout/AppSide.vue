@@ -69,6 +69,7 @@ function to(it) {
     case 'rbac-pw': return '/rbac/pw';
     case 'syscfg': return '/settings';
     case 'sys-dingtalk': return '/settings/dingtalk';
+    case 'sys-aeolus': return '/settings/aeolus';
     case 'botcfg': return '/bot/' + it.id;
     default: return '/home';
   }
@@ -116,6 +117,7 @@ const navItems = computed(() => {
     items.push({ type: 'parent', key: 'rbac', name: '权限管理', icon: 'Tools', children: rbacSubs });
     const sysSubs = [
       { type: 'leaf', kind: 'sys-dingtalk', id: '', name: '钉钉设置', icon: 'ChatDotRound' },
+      { type: 'leaf', kind: 'sys-aeolus', id: '', name: '风神设置', icon: 'Key' },
     ];
     items.push({ type: 'parent', key: 'sys', name: '系统设置', icon: 'Setting', kind: 'syscfg', children: sysSubs });
   }

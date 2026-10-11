@@ -10,6 +10,13 @@
         </div>
         <el-icon class="card-arw"><ArrowRight /></el-icon>
       </RouterLink>
+      <RouterLink to="/settings/aeolus" class="card">
+        <div>
+          <div class="card-t">风神设置</div>
+          <div class="card-d">风神（Aeolus）登录账号与密码，原手写于后端 credentials.json</div>
+        </div>
+        <el-icon class="card-arw"><ArrowRight /></el-icon>
+      </RouterLink>
     </div>
   </div>
 </template>
@@ -21,9 +28,10 @@
 .sys { padding: var(--sp-20); max-width: 980px; }
 .v-title { margin: 0 0 var(--sp-16); font-size: var(--el-font-size-extra-large); }
 .muted { color: var(--muted); }
-.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: var(--sp-12); margin-top: var(--sp-12); }
+.cards { display: flex; flex-direction: column; gap: var(--sp-12); margin-top: var(--sp-12); }
 .card {
   display: flex; align-items: center; justify-content: space-between; gap: var(--sp-12);
+  max-width: 420px;
   padding: var(--sp-16); border: 1px solid #ebeef5; border-radius: 8px;
   text-decoration: none; color: var(--text);
   transition: border-color .15s, box-shadow .15s;

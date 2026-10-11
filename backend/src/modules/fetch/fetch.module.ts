@@ -10,6 +10,7 @@ import { DeliveryQueryService } from './delivery-query.service';
 import { DeliveryExportService } from './delivery-export.service';
 import { AeolusCookieService } from './aeolus-cookie.service';
 import { AeolusLoginService } from './aeolus-login.service';
+import { AeolusCredentialsService } from './aeolus-credentials.service';
 import { OrdersFetchService } from './orders-fetch.service';
 import { RefreshAllService } from './refresh-all.service';
 import { FetchController } from './fetch.controller';
@@ -61,6 +62,7 @@ import { CacheController } from './cache.controller';
     DeliveryExportService,
     AeolusCookieService,
     AeolusLoginService,
+    AeolusCredentialsService,
     OrdersFetchService,
     RefreshAllService,
     RushFetchService,
@@ -92,6 +94,7 @@ import { CacheController } from './cache.controller';
     DeliveryExportService,
     AeolusCookieService,
     AeolusLoginService,
+    AeolusCredentialsService,
     OrdersFetchService,
     RefreshAllService,
     RushFetchService,

@@ -125,6 +125,27 @@ export class AeolusCookieService {
     return p;
   }
 
+  /**
+   * 退出登录（WebUI 系统设置「账号设置」→ 退出登录）：清空进程内登录态并删除本地 cookie 文件。
+   * 不删除账号密码配置；下次取数 / `ensure()` 会用已保存凭据自动重登，故本操作只"使当前会话失效"。
+   */
+  async logout(): Promise<{ ok: boolean; removed: boolean }> {
+    this.cached = null;
+    this.cachedProbedAt = 0;
+    this.reloginInFlight = null;
+    let removed = false;
+    try {
+      if (fs.existsSync(this.cookieFile)) {
+        fs.unlinkSync(this.cookieFile);
+        removed = true;
+      }
+    } catch (e) {
+      this.logger.warn(`退出登录时删除 cookie 文件失败：${(e as Error).message}`);
+    }
+    this.logger.log('已退出风神登录态（本地 cookie 已清除）');
+    return { ok: true, removed };
+  }
+
   /** 锁内：先复查（等锁期间可能已被刷新），仍无效才真登录。 */
   private loginLocked(): Promise<string> {
     return this.withLock(async () => {

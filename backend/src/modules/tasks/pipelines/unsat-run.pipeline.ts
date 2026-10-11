@@ -82,7 +82,7 @@ export class UnsatRunPipeline implements TaskHandler {
     const root = path.resolve(
       this.config.get<string>('PROJECT_ROOT') || path.resolve(process.cwd(), '..'),
     );
-    this.dataDir = path.join(root, 'python', 'jobs', 'unsat', 'out', 'unsat_data');
+    this.dataDir = path.join(root, 'backend', 'data', 'jobs', 'unsat', 'out', 'unsat_data');
     this.lastUrlFile = path.join(this.dataDir, 'last_sheet_url.txt');
   }
 

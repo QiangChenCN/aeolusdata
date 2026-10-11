@@ -90,7 +90,6 @@ export class TaskRunnerService implements OnModuleInit {
   private history: HistoryEntry[] = [];
   private runsDir = '';
   private historyFile = '';
-  private pythonBin = 'python';
   /** 项目根（jobs/ 所在）：产物 outputs 是相对它的路径。 */
   private projectRoot = '';
 
@@ -110,7 +109,6 @@ export class TaskRunnerService implements OnModuleInit {
     );
     this.runsDir = path.join(wb, 'runs');
     this.historyFile = path.join(this.runsDir, 'history.json');
-    this.pythonBin = this.config.get<string>('PYTHON_BIN') || 'python';
     fs.mkdirSync(this.runsDir, { recursive: true });
     this.loadHistory();
   }
@@ -148,33 +146,6 @@ export class TaskRunnerService implements OnModuleInit {
     return this.enqueue([{ task_id: taskId, args }]);
   }
 
-  private buildCommand(task: TaskDef, args: Record<string, unknown>): string[] {
-    // 全部任务已迁为 Nest 原生流水线，tasks.json 不再声明 cmd；走到这里说明该任务没实现。
-    if (!task.cmd || !task.cmd.length) {
-      throw new Error(`任务「${task.name}」未声明 cmd，且没有对应的 Nest 原生流水线`);
-    }
-    const cmd = task.cmd.map((p) => (p === '{py}' ? this.pythonBin : p));
-    for (const param of task.params || []) {
-      const val = args[param.flag];
-      if (param.raw) {
-        if (val) cmd.push(String(val));
-        continue;
-      }
-      if (param.type === 'switch') {
-        if ([true, 'true', 'True', '1', 1].includes(val as never)) cmd.push(param.flag);
-        continue;
-      }
-      if (val != null && val !== '' && val !== false) {
-        if (param.flag.startsWith('--') && !param.flag.includes('=')) {
-          cmd.push(`${param.flag}=${String(val)}`);
-        } else {
-          cmd.push(param.flag, String(val));
-        }
-      }
-    }
-    return cmd;
-  }
-
   // ---- 串行工作循环 ----
   private pump(): void {
     if (this.running) return;
@@ -195,78 +166,18 @@ export class TaskRunnerService implements OnModuleInit {
 
   private async execute(run: RunRecord): Promise<void> {
     const task = this.registry.get(run.taskId)!;
-    // 迁移期双路径：已注册原生处理器的任务在 Nest 内跑流水线；其余仍 spawn Python。
+    // 所有任务均已实现为 Nest 原生流水线；不再回退 spawn(python)。
+    // 无对应原生处理器即视为未实现，直接报错。
     const handler = this.handlers.get(run.taskId);
     if (handler) return this.executeNative(handler, task, run);
-    // 全部任务已迁为 Nest 原生流水线，tasks.json 不再声明 cmd。
-    // 走到这里说明该任务既无原生处理器、也无命令 —— 明确报错，不要静默去起一个不存在的脚本。
-    if (!task.cmd || !task.cmd.length) {
-      run.status = 'failed';
-      run.exitCode = -1;
-      run.errorKind = '未实现';
-      run.errorAdvice = `任务 ${run.taskId} 尚未实现为 Nest 原生流水线，且 tasks.json 未声明 cmd`;
-      this.append(
-        run,
-        `[错误] 任务「${task.name}」尚未实现为 Nest 原生流水线（tasks.json 亦无可执行命令）。`,
-      );
-      this.finalize(run);
-      return;
-    }
-    let cmd: string[];
-    try {
-      cmd = this.buildCommand(task, run.args);
-    } catch (e) {
-      run.status = 'failed';
-      run.exitCode = -1;
-      run.errorKind = '参数错误';
-      run.errorAdvice = String(e);
-      this.append(run, `[错误] 构建命令失败：${e}`);
-      this.finalize(run);
-      return;
-    }
-
-    run.status = 'running';
-    run.start = Date.now();
-    run.cmd = cmd.join(' ');
-    this.emit({ type: 'run_start', run: this.publicRun(run) });
-    this.append(run, `$ ${cmd.join(' ')}`);
-    this.append(run, `[开始] ${task.name}`);
-
-    const env: Record<string, string | undefined> = {
-      ...process.env,
-      PYTHONIOENCODING: 'utf-8',
-      PYTHONUNBUFFERED: '1',
-      PYTHONUTF8: '1',
-    };
-    // Python job 会用 ding_client 回调本服务（钉钉推送 / 在线表读写等），需要机器令牌。
-    // 未显式配置 NEST_AUTH_TOKEN 时用 AUTH_TOKEN 兜底，保证子进程一定拿得到 ——
-    // 否则 job 里的钉钉调用会被 AccessGuard 判 401 而静默失败。
-    if (!env.NEST_AUTH_TOKEN) {
-      const machine = this.config.get<string>('AUTH_TOKEN');
-      if (machine) env.NEST_AUTH_TOKEN = machine;
-    }
-    const proc = spawn(cmd[0], cmd.slice(1), {
-      cwd: this.config.get<string>('PROJECT_ROOT') || process.cwd(),
-      env,
-      stdio: ['ignore', 'pipe', 'pipe'],
-      detached: os.platform() !== 'win32',
-    });
-    this.proc = proc;
-    proc.stdout?.on('data', (d: Buffer) => this.append(run, d.toString('utf-8')));
-    proc.stderr?.on('data', (d: Buffer) => this.append(run, d.toString('utf-8')));
-
-    const timeout = Number(task.timeout ?? 600);
-    let exitCode: number;
-    try {
-      exitCode = await this.awaitExit(proc, timeout);
-    } catch {
-      this.append(run, `[系统] 超过 ${timeout} 秒未完成，强制终止。`);
-      this.killTree(proc.pid);
-      run.timeout = true;
-      exitCode = -9;
-    }
-    run.end = Date.now();
-    run.exitCode = exitCode;
+    run.status = 'failed';
+    run.exitCode = -1;
+    run.errorKind = '未实现';
+    run.errorAdvice = `任务 ${run.taskId} 尚未实现为 Nest 原生流水线`;
+    this.append(
+      run,
+      `[错误] 任务「${task.name}」尚未实现为 Nest 原生流水线（无对应处理器，不回退 Python）。`,
+    );
     this.finalize(run);
   }
 
@@ -328,20 +239,6 @@ export class TaskRunnerService implements OnModuleInit {
     }
     run.end = Date.now();
     this.finalize(run);
-  }
-
-  private awaitExit(proc: ChildProcess, timeoutSec: number): Promise<number> {
-    return new Promise<number>((resolve, reject) => {
-      const timer = setTimeout(() => reject(new Error('timeout')), timeoutSec * 1000);
-      proc.on('exit', (code) => {
-        clearTimeout(timer);
-        resolve(code ?? -1);
-      });
-      proc.on('error', (err) => {
-        clearTimeout(timer);
-        reject(err);
-      });
-    });
   }
 
   private killTree(pid?: number): void {
@@ -676,7 +573,9 @@ export class TaskRunnerService implements OnModuleInit {
     const norm = rel.replace(/\\/g, '/').replace(/^\/+/, '');
     if (!norm || norm === '.') return true; // 不允许直接读项目根本身
     const parts = norm.split('/');
-    if (parts.length >= 3 && parts[0] === 'backend' && parts[1] === 'data') return true;
+    // backend/data 整体为敏感（内部数据），但 backend/data/jobs 下是公开任务产物，
+    // 需经 /api/file 读取，故对该子目录放行（其余 backend/data/* 仍拦截）。
+    if (parts[0] === 'backend' && parts[1] === 'data' && parts[2] !== 'jobs') return true;
     for (const part of parts) {
       const low = part.toLowerCase();
       if (

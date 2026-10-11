@@ -7,6 +7,7 @@ import { QuarkCredsService } from './quark-creds.service';
 import { TeamsFetchService } from './teams-fetch.service';
 import { AttendanceFetchService } from './attendance-fetch.service';
 import { AeolusCookieService } from './aeolus-cookie.service';
+import { AeolusCredentialsService } from './aeolus-credentials.service';
 import { ScheduleFetchService } from './schedule-fetch.service';
 import { ViolationFetchService } from './violation-fetch.service';
 import { ViolationListFetchService } from './violation-list-fetch.service';
@@ -31,6 +32,7 @@ export class FetchController {
     private readonly teams: TeamsFetchService,
     private readonly attendance: AttendanceFetchService,
     private readonly aeolusCookie: AeolusCookieService,
+    private readonly aeolusCreds: AeolusCredentialsService,
     private readonly schedule: ScheduleFetchService,
     private readonly violation: ViolationFetchService,
     private readonly violationListSvc: ViolationListFetchService,
@@ -237,6 +239,29 @@ export class FetchController {
     } catch (e) {
       return this.fail(e);
     }
+  }
+
+  /**
+   * 风神登录凭据（系统设置「风神设置」维护）。GET 返回脱敏快照（账号脱敏 + 是否设密码），
+   * 明文密码永不外泄；POST 保存（账号必填，密码留空 = 沿用原值）。落盘到
+   * `backend/aeolus_sdk/credentials.json`（与 AeolusLoginService 读取路径一致）。
+   */
+  @Get('settings/aeolus')
+  aeolusCredsGet() {
+    return this.aeolusCreds.masked();
+  }
+  @Post('settings/aeolus')
+  aeolusCredsSave(@Body() b: { account?: unknown; password?: unknown }) {
+    return this.aeolusCreds.save(b || {});
+  }
+
+  /**
+   * 退出风神登录态（系统设置「账号设置」→ 退出登录）。只清除本地 SSO cookie 会话，
+   * 不删除账号密码；下次取数会自动用已保存凭据重登。
+   */
+  @Post('settings/aeolus/logout')
+  aeolusLogout() {
+    return this.aeolusCookie.logout();
   }
 
   /**

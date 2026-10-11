@@ -185,7 +185,7 @@ export class JidanFetchPipeline implements TaskHandler {
     const root = path.resolve(
       this.config.get<string>('PROJECT_ROOT') || path.resolve(process.cwd(), '..'),
     );
-    this.outDir = path.join(root, 'python', 'jobs', 'rush', 'out');
+    this.outDir = path.join(root, 'backend', 'data', 'jobs', 'rush', 'out');
   }
 
   async run(ctx: TaskRunContext): Promise<void> {

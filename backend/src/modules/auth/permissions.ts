@@ -24,6 +24,7 @@ export const PERM_CATALOG: PermItem[] = [
   { perm: 'admin:policy', label: '密码策略管理', group: '管理' },
   { perm: 'admin:data-perm', label: '数据权限管理', group: '管理' },
   { perm: 'admin:bot', label: '机器人配置管理', group: '管理' },
+  { perm: 'admin:aeolus', label: '风神账号配置', group: '管理' },
 ];
 export const ALL_PERMS = new Set(PERM_CATALOG.map((p) => p.perm));
 
@@ -40,6 +41,8 @@ export const GET_ROUTE_PERMS: Record<string, string> = {
   '/api/bot/config': 'admin:bot',
   '/api/bot/status': 'admin:bot',
   '/api/bot/credentials': 'admin:bot',
+  // 风神登录凭据（系统设置「风神设置」）：限管理员，明文密码不外泄
+  '/api/fetch/settings/aeolus': 'admin:aeolus',
   // 钉钉授权（设备流发起 / 状态查询）：限管理员，绕过 /api/ding/.*→machine 前缀
   '/api/ding/auth/status': 'admin:bot',
   // 钉钉 DWS 配置读取（系统设置页）：限管理员机器人配置权限，绕过 machine 前缀
@@ -74,6 +77,10 @@ export const POST_ROUTE_PERMS: Record<string, string> = {
   '/api/bot/reload': 'admin:bot',
   '/api/bot/bots': 'admin:bot',
   '/api/bot/credentials': 'admin:bot',
+  // 风神登录凭据保存：限管理员
+  '/api/fetch/settings/aeolus': 'admin:aeolus',
+  // 风神退出登录：限管理员（精确匹配，避免落入默认 'view'）
+  '/api/fetch/settings/aeolus/logout': 'admin:aeolus',
   // 钉钉授权发起（设备流）：限管理员，绕过 /api/ding/.*→machine 前缀
   '/api/ding/auth/device-login': 'admin:bot',
   // 钉钉退出登录（触发重新授权）：限管理员

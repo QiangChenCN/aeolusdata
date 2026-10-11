@@ -11,7 +11,7 @@ export function diagnose(full: string, exitCode: number): Diagnosis {
     return {
       kind: '参考快照缺失',
       advice:
-        '骑士规则文档所需的参考样式快照（python/jobs/ruledoc/rule_native_reference*.html）缺失，' +
+        '骑士规则文档所需的参考样式快照（backend/data/jobs/ruledoc/rule_native_reference*.html）缺失，' +
         '请从仓库恢复该文件（或重新抓取前台规则详情页快照）后重试。',
     };
   }

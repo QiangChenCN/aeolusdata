@@ -63,7 +63,7 @@ export class UnsatStoreService {
     const root = path.resolve(
       config.get<string>('PROJECT_ROOT') || path.resolve(process.cwd(), '..'),
     );
-    this.dataDir = path.join(root, 'python', 'jobs', 'unsat', 'out', 'unsat_data');
+    this.dataDir = path.join(root, 'backend', 'data', 'jobs', 'unsat', 'out', 'unsat_data');
     this.dbPath = path.join(this.dataDir, 'unsat.db');
     this.imgPath = path.join(this.dataDir, 'unsat_detail.png');
     this.csvPath = path.join(this.dataDir, 'violations.csv');

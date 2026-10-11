@@ -32,8 +32,6 @@ export const envValidationSchema = Joi.object({
   PROJECT_ROOT: Joi.string().optional(),
   // 任务注册表目录（tasks.json / runs / data）
   WORKBENCH_DIR: Joi.string().optional(),
-  // Python 解释器（spawn 任务子进程用）
-  PYTHON_BIN: Joi.string().default('python'),
 }).unknown(true);
 
 export interface AppConfig {
@@ -44,7 +42,6 @@ export interface AppConfig {
   pythonComputeUrl?: string;
   projectRoot: string;
   workbenchDir: string;
-  pythonBin: string;
 }
 
 export function loadAppConfig(): AppConfig {
@@ -58,6 +55,5 @@ export function loadAppConfig(): AppConfig {
     pythonComputeUrl: process.env.PYTHON_COMPUTE_URL,
     projectRoot,
     workbenchDir: process.env.WORKBENCH_DIR || path.join(projectRoot, 'backend'),
-    pythonBin: process.env.PYTHON_BIN || 'python',
   };
 }

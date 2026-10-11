@@ -28,7 +28,7 @@
 
 ### 1. 运单库 PostgreSQL（仅 delivery load/verify 节点）—— 仅剩的这一道真硬阻塞
 - 入库已迁到 NestJS（`backend/src/modules/fetch/delivery-db.service.ts`，Node `pg` 驱动）→ **不再需要 `psycopg2-binary`**。
-- `python/jobs/delivery/db_config.json` 指向 `127.0.0.1:5432 / postgres / admin`（密码明文，已被 gitignore）；该文件仍被 Nest 读取（数据/配置保留在 `python/jobs/` 下）。
+- `backend/data/jobs/delivery/db_config.json` 指向 `127.0.0.1:5432 / postgres / admin`（密码明文，已被 gitignore）；该文件仍被 Nest 读取（数据/配置保留在 `backend/data/jobs/` 下）。
 - 服务器需：① 运行 PostgreSQL；② 已建库；③ init 节点会 `DROP TABLE ... CASCADE` 重建表。
 - 未部署 PG 时：load/verify 节点连接失败；raw 节点（抓 JSONL）仍可独立跑完。
 
@@ -41,7 +41,7 @@
 - **不影响功能**：`python/venv_guard.py` 已做跨平台（`os.name=="nt"` 区分 `Scripts`/`bin`），直接 `python script.py` 即可，它会自动切到正确解释器。`run.sh` 是个坏掉的便捷脚本，弃用即可。
 
 ### 4. 凭据文件 git 不带，需手动传
-- `.gitignore` 忽略：`backend/aeolus_sdk/cookie.txt` / `backend/data/quark/`（DA cookie 缓存 + curl 罐） / `backend/minio_config.json` / `python/jobs/delivery/db_config.json` / `.env` 及 Nest 状态文件。
+- `.gitignore` 忽略：`backend/aeolus_sdk/cookie.txt` / `backend/data/quark/`（DA cookie 缓存 + curl 罐） / `backend/minio_config.json` / `backend/data/jobs/delivery/db_config.json` / `.env` 及 Nest 状态文件。
 - `git clone` 只拿源码 → 这些全丢。首次跑会：重新登录（风神账密常量在 `login.py` 内，可自动）/ 重兑 DA（需 curl，Nest 自动完成）/ 重配 MinIO（需 minio_config）/ 重连 PG（需 db_config）。
 - **必须手动 `scp/rsync` 这些文件**，否则每次重登且依赖账密硬编码可用（或重新走登录流程）。
 - 注意：`quark_sdk/` 已删除，Quark 凭证缓存改到 `backend/data/quark/`，**无需手工传**（首次运行自动兑换）。
@@ -107,7 +107,7 @@ rsync -av --exclude='.venv' --exclude='__pycache__' --exclude='preview' ./ user@
 
 # 2. 手动传凭据（git 不带！）
 #    Quark DA cookie 由 Nest 自动兑换并缓存到 backend/data/quark/，无需手工传
-scp backend/aeolus_sdk/cookie.txt backend/minio_config.json python/jobs/delivery/db_config.json .env \
+scp backend/aeolus_sdk/cookie.txt backend/minio_config.json backend/data/jobs/delivery/db_config.json .env \
     user@server:/opt/fengshen/对应路径
 
 # 3. 建 venv + 装依赖

@@ -79,7 +79,7 @@ export class DeliveryRawService {
     const root = path.resolve(
       this.config.get<string>('PROJECT_ROOT') || path.resolve(process.cwd(), '..'),
     );
-    this.rawDir = path.join(root, 'python', 'jobs', 'delivery', 'out', 'delivery_raw');
+    this.rawDir = path.join(root, 'backend', 'data', 'jobs', 'delivery', 'out', 'delivery_raw');
   }
 
   private ts(): string {

@@ -10,8 +10,9 @@ export interface TaskParam {
   raw?: boolean;
 }
 export interface TaskDef {
-  /** 可执行命令（`{py}` 占位符会被替换成 python）。9 个任务已全部迁为 Nest 原生流水线，
-   *  tasks.json 不再声明它；仅当任务尚未原生实现时才需要（回退 spawn 路径）。 */
+  /** 可执行命令（`{py}` 占位符会被替换成 python）。历史上用于「未原生实现的任务」回退
+   *  spawn(python)；现已移除该回退路径，所有任务均走 Nest 原生流水线，本字段保留仅为
+   *  类型兼容，运行期不再读取。 */
   cmd?: string[];
   name: string;
   group?: string;

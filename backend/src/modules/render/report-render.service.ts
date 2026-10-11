@@ -65,7 +65,7 @@ export class ReportRenderService {
     totalRiders: number,
     outPath?: string,
   ): string {
-    const out = outPath || this.out('python/jobs/attendance/out/realtime_online.png');
+    const out = outPath || this.out('backend/data/jobs/attendance/out/realtime_online.png');
     const timeStr = fmtNow();
     const cols: [string, number][] = [
       ['序号', 50],
@@ -156,7 +156,7 @@ export class ReportRenderService {
     stats: TeamStats,
     outPath?: string,
   ): string {
-    const out = outPath || this.out('python/jobs/attendance/out/attendance_absent.png');
+    const out = outPath || this.out('backend/data/jobs/attendance/out/attendance_absent.png');
     const timeStr = fmtNow();
     const cols: [string, number][] = [
       ['骑手姓名', 95],
@@ -318,7 +318,7 @@ export class ReportRenderService {
 
   // ───────────── 3. 不满意单申诉提醒 ─────────────
   renderAppeal(rows: Record<string, any>[], dateStr: string, outPath?: string): string {
-    const out = outPath || this.out('python/jobs/appeal/out/violation_detail.png');
+    const out = outPath || this.out('backend/data/jobs/appeal/out/violation_detail.png');
     const cols: [string, number][] = [
       ['违规时间', 165],
       ['运单号', 200],
@@ -387,7 +387,7 @@ export class ReportRenderService {
     dateStr: string,
     outPath?: string,
   ): string {
-    const out = outPath || this.out('python/jobs/equipment/out/rider_equipment_warning.png');
+    const out = outPath || this.out('backend/data/jobs/equipment/out/rider_equipment_warning.png');
     const titleF = 22;
     const headF = 15;
     const cellF = 14;
@@ -476,7 +476,7 @@ export class ReportRenderService {
 
   // ───────────── 5. 站长任务看板（进行中任务） ─────────────
   renderTasks(tasks: Record<string, any>[], outPath?: string): string {
-    const out = outPath || this.out('python/jobs/board/out/task_started.png');
+    const out = outPath || this.out('backend/data/jobs/board/out/task_started.png');
     const nowStr = fmtNow();
     const columns: [string, string][] = [
       ['任务名称', 'taskName'],

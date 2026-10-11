@@ -65,7 +65,7 @@ export class TaskBoardPipeline implements TaskHandler {
     const root = path.resolve(
       config.get<string>('PROJECT_ROOT') || path.resolve(process.cwd(), '..'),
     );
-    this.outDir = path.join(root, 'python', 'jobs', 'board', 'out');
+    this.outDir = path.join(root, 'backend', 'data', 'jobs', 'board', 'out');
   }
 
   private get rawPath(): string {
