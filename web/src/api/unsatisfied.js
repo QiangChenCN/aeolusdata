@@ -10,9 +10,13 @@ export function fetchViolationRange({ start_ms, end_ms, page_size, cookie } = {}
   });
 }
 
-/* 月累计：读取已落库的某月违规明细 */
-export function fetchViolationMonth(month) {
-  return request(`/fetch/violation-month?month=${encodeURIComponent(month)}`, { method: 'GET' });
+/* 月累计：按日期区间读取已落库的违规明细（配合含快捷选项的日期范围选择器） */
+export function fetchViolationMonthRange({ start, end } = {}) {
+  return request('/fetch/violation-month-range', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ start, end }),
+  });
 }
 
 /* 实时看板：读取本地已落盘缓存（按日期区间，不再请求风神） */

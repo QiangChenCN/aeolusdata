@@ -118,4 +118,34 @@ export class ViolationStoreService {
       db.close();
     }
   }
+
+  /** 取日期区间 [start, end]（YYYY-MM-DD，含两端）全部违规记录原始行。 */
+  getRange(start: string, end: string): Record<string, any>[] {
+    const db = this.open();
+    try {
+      const rows = db
+        .prepare(
+          `SELECT raw_json FROM violation_records WHERE stat_date >= ? AND stat_date <= ? ORDER BY stat_date, id`,
+        )
+        .all(start, end) as Record<string, any>[];
+      return rows.map((r) => JSON.parse(r['raw_json'] as string));
+    } finally {
+      db.close();
+    }
+  }
+
+  /** 日期区间内已入库的天数。 */
+  dayCountRange(start: string, end: string): number {
+    const db = this.open();
+    try {
+      const r = db
+        .prepare(
+          `SELECT COUNT(DISTINCT stat_date) AS c FROM violation_records WHERE stat_date >= ? AND stat_date <= ?`,
+        )
+        .get(start, end) as { c: number };
+      return r?.c ?? 0;
+    } finally {
+      db.close();
+    }
+  }
 }

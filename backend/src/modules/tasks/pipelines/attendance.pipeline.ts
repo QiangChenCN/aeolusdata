@@ -11,6 +11,7 @@ import { ReportRenderService, TeamItem } from '../../render/report-render.servic
 import { MinioService } from '../../media/minio.service';
 import { DingtalkService } from '../../dingtalk/dingtalk.service';
 import { ALL_MANAGER_IDS, PRODUCTION_GROUP_NAME } from '../../notify/notify-config';
+import { readKnownTeams } from '../../fetch/teams-fetch.service';
 
 const REST_STATES = new Set([2]);
 const OFFLINE_STATES = new Set([3]);
@@ -19,12 +20,7 @@ const STATE_LABEL: Record<number, string> = { 2: '小休', 3: '下线' };
 
 const TEST_GROUP_QUERY = '机器人测试';
 
-/** 兜底站点清单（接口挂了时才顶上）。 */
-const FALLBACK_TEAMS: TeamItem[] = [
-  ['917521130', '东莞市黄江镇站-UB'],
-  ['917521136', '东莞市长安万科站-UB'],
-  ['917521139', '东莞市大岭山大学城站-UB'],
-];
+// 站点名兜底不再硬编码：接口挂了时由 readKnownTeams()（落盘站点目录文件）补名。
 
 /** 时段映射（含区间）。 */
 const TIME_SLOTS: [number, number, string, string][] = [
@@ -218,7 +214,7 @@ export class AttendancePipeline implements TaskHandler {
     const need = items.some(([tid, nm]) => String(nm) === String(tid));
     if (!need) return items;
     const mapping: Record<string, string> = {};
-    for (const [tid, nm] of FALLBACK_TEAMS) mapping[tid] = nm;
+    for (const t of readKnownTeams()) mapping[t.id] = t.name;
     for (const [tid, nm] of this.loadLastTeams()) mapping[tid] = nm;
     const out: TeamItem[] = items.map(([tid, nm]) => [tid, mapping[tid] || nm]);
     const still = out.filter(([t, n]) => String(n) === String(t)).map(([t]) => t);
@@ -280,8 +276,8 @@ export class AttendancePipeline implements TaskHandler {
         if (teamItems.length) {
           ctx.log(`[fetch] 站点来源：沿用上次选择（${this.lastTeamsFile}），共 ${teamItems.length} 个`);
         } else {
-          teamItems = FALLBACK_TEAMS;
-          ctx.log(`  ⚠ 没有上次选择记录，回落内置兜底清单（${teamItems.length} 个，可能已过期）`);
+          teamItems = readKnownTeams().map((t) => [t.id, t.name] as TeamItem);
+          ctx.log(`  ⚠ 没有上次选择记录，回落落盘站点目录（${teamItems.length} 个）`);
         }
       }
       this.saveLastTeams(teamItems);

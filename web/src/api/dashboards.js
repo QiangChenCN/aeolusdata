@@ -41,8 +41,9 @@ export function forgetGroup(id) {
 }
 
 /* ============ 站点目录 ============ */
-/* 后端在风神接口失败/无返回时，会把三站兜底放进 `fallback` 而 `teams` 为空；
-   前端必须合并两者，否则选择器会空白。优先用 teams，空则回落 fallback。 */
+/* 站点目录的唯一来源是 `GET /api/teams`（数据来自 Nest 落盘的 backend/data/teams.json，
+   由风神真实站点目录写入）。成功时 `teams` 为真实站点列表、`fallback` 为空；
+   风神不可达时 `teams` 为空、`fallback` 回落落盘文件。前端合并两者，优先 teams，空则回落 fallback。 */
 export async function fetchTeams() {
   const t = await request('/teams');
   const arr = (t && (Array.isArray(t.teams) && t.teams.length ? t.teams : t.fallback)) || [];
@@ -156,6 +157,19 @@ export function fetchRealtimeTimeout({ team } = {}) {
   const p = [];
   if (team) p.push('team=' + enc(team));
   return request('/realtime/timeout' + (p.length ? '?' + p.join('&') : ''));
+}
+/* 独立刷新：拉全站运单明细落盘（与标准达成落盘文件名一致），标准达成计算时也能读。
+   同步返回抓取+落盘结果，前端无需轮询；风神导出可能耗时，放宽超时。 */
+export function refreshDeliveryTimeout(body = {}) {
+  return request('/delivery-timeout/refresh', { ...j(body), timeout: 120000 });
+}
+/* 配送超时看板「展示站点」配置：GET 返回 {teams: 已配置展示站点id, all: 全部可选站点{id,name}}；
+   POST 保存展示站点（config:write）。未配置任何站点时回落全部站点。 */
+export function fetchTimeoutTeams() {
+  return request('/realtime/timeout/teams');
+}
+export function saveTimeoutTeams(teams) {
+  return request('/realtime/timeout/teams', j({ teams }));
 }
 
 /* ============ 系统设置（Admin） ============ */

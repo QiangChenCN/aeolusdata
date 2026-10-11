@@ -3,6 +3,8 @@ import { AuthModule } from '../auth/auth.module';
 import { ComputeModule } from '../compute/compute.module';
 import { RefreshController } from './refresh.controller';
 import { RefreshRunnerService } from './refresh-runner.service';
+import { DeliveryTimeoutController } from './delivery-timeout.controller';
+import { DeliveryTimeoutRefreshService } from './delivery-timeout-refresh.service';
 import { FetchPaceService } from './fetch-pace.service';
 import { DeliveryQueryService } from './delivery-query.service';
 import { DeliveryExportService } from './delivery-export.service';
@@ -52,7 +54,7 @@ import { CacheController } from './cache.controller';
  */
 @Module({
   imports: [AuthModule, ComputeModule],
-  controllers: [FetchController, RefreshController, CacheController],
+  controllers: [FetchController, RefreshController, CacheController, DeliveryTimeoutController],
   providers: [
     FetchPaceService,
     DeliveryQueryService,
@@ -77,6 +79,7 @@ import { CacheController } from './cache.controller';
     CookieStatusService,
     ScheduleFetchService,
     RefreshRunnerService,
+    DeliveryTimeoutRefreshService,
     RawCacheService,
     ViolationListFetchService,
     ViolationStoreService,
@@ -107,6 +110,7 @@ import { CacheController } from './cache.controller';
     CookieStatusService,
     ScheduleFetchService,
     RefreshRunnerService,
+    DeliveryTimeoutRefreshService,
     RawCacheService,
     ViolationListFetchService,
     ViolationStoreService,

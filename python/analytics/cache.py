@@ -224,8 +224,14 @@ def save_violation(team, date, rows, ok=True, error=None):
 # 生命周期：原始层写入后失效对应 team/date 的结果（save_raw / save_violation 里已接）；
 # 等级标准 / 门槛配置变更时由对应接口调用 clear_results() 整体清空（避免旧口径）。
 # 命中即返回浅拷贝（覆盖 source 字段），不改动缓存中的原对象。
+#
+# ⚠️ 失效依赖 Nest 调 /api/cache/invalidate 回调；该回调偶发未触发时，缓存会一直返回首次
+#   计算的结果（表现即「看板数字几小时不动」）。故这里额外加一层 TTL：即便失效回调没到，
+#   结果最多 60 秒后也会自动重算，保证实时看板数据能跟上原始层刷新。
 _RESULT_LOCK = threading.Lock()
-_RESULT_CACHE = {}  # key=(module, team, date, month, source) -> 聚合结果 dict
+_RESULT_CACHE = {}      # key=(module, team, date, month, source) -> 聚合结果 dict
+_RESULT_TS = {}         # 同上 key -> 写入时间戳（秒），用于 TTL 过期
+_RESULT_TTL = 60        # 秒；实时看板数据最多 60s 后自动重算
 
 
 def _result_key(module, team_id, date, month, source):
@@ -233,15 +239,19 @@ def _result_key(module, team_id, date, month, source):
 
 
 def get_result(module, team_id, date, month=None, source="cache"):
-    """命中进程内结果缓存则返回浅拷贝（覆盖 source 字段），未命中返回 None。
+    """命中进程内结果缓存则返回浅拷贝（覆盖 source 字段），未命中 / 过期返回 None。
 
     用于 recompute / build_one：原始层已有落盘时直接复用上次算好的聚合结果，
     省掉对 orders 原始 JSON 的反复 json.load + 全量扫描 + 聚合。
+    TTL 过期视为未命中（即便 Nest 失效回调未触发也能自动刷新）。
     """
     k = _result_key(module, team_id, date, month, source)
     with _RESULT_LOCK:
         v = _RESULT_CACHE.get(k)
-    if v is None:
+        ts = _RESULT_TS.get(k)
+    if v is None or ts is None:
+        return None
+    if (datetime.datetime.now().timestamp() - ts) > _RESULT_TTL:
         return None
     out = dict(v)
     out["source"] = source
@@ -253,6 +263,7 @@ def put_result(module, team_id, date, month, source, value):
     k = _result_key(module, team_id, date, month, source)
     with _RESULT_LOCK:
         _RESULT_CACHE[k] = value
+        _RESULT_TS[k] = datetime.datetime.now().timestamp()
     return value
 
 
@@ -260,6 +271,7 @@ def clear_results():
     """清空全部进程内结果缓存（等级标准 / 门槛配置变更后调用，避免读到旧口径）。"""
     with _RESULT_LOCK:
         _RESULT_CACHE.clear()
+        _RESULT_TS.clear()
 
 
 def invalidate_results(team_id, date):
@@ -274,3 +286,4 @@ def invalidate_results(team_id, date):
         drop = [k for k in _RESULT_CACHE if k[1] == tid and k[2] == d]
         for k in drop:
             _RESULT_CACHE.pop(k, None)
+            _RESULT_TS.pop(k, None)

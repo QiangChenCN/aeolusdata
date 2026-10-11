@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService as NestConfigService } from '@nestjs/config';
 import * as fs from 'fs';
 import * as path from 'path';
-import { TeamsFetchService, TeamRef } from '../fetch/teams-fetch.service';
+import { TeamsFetchService, TeamRef, readKnownTeams } from '../fetch/teams-fetch.service';
 import { RawCacheService } from '../fetch/raw-cache.service';
 
 /**
@@ -98,8 +98,6 @@ const SQ_LAYERING_KEYS = new Set<string>(SQ_LAYERING.map((x) => x.key));
 /** 权重项合计须为 100%（允许 0.1 的浮点误差） */
 const SQ_WEIGHT_SUM = 100;
 const SQ_WEIGHT_SUM_TOL = 0.1;
-
-const DEFAULT_TEAMS = ['917521130', '917521136', '917521139'];
 
 @Injectable()
 export class ConfigService {
@@ -533,9 +531,9 @@ export class ConfigService {
   private aptGetTeams(): string[] {
     const obj = this.readJson(this.stdPath('attend_period_teams.json'));
     const ids = obj && Array.isArray(obj.teams) ? obj.teams : null;
-    if (!ids) return [...DEFAULT_TEAMS];
+    if (!ids) return readKnownTeams().map((t) => t.id);
     const out = ids.map((x: unknown) => String(x).trim()).filter((x: string) => x);
-    return out.length ? out : [...DEFAULT_TEAMS];
+    return out.length ? out : readKnownTeams().map((t) => t.id);
   }
   private aptSetTeams(ids: unknown): { ok: boolean; teams: string[]; error: string | null } {
     if (!Array.isArray(ids) || !ids.length) {
@@ -560,6 +558,37 @@ export class ConfigService {
     }
   }
 
+  // ============================================================ delivery_timeout_teams
+  private dtGetTeams(): string[] {
+    const obj = this.readJson(this.stdPath('delivery_timeout_teams.json'));
+    const ids = obj && Array.isArray(obj.teams) ? obj.teams : null;
+    if (!ids) return readKnownTeams().map((t) => t.id);
+    const out = ids.map((x: unknown) => String(x).trim()).filter((x: string) => x);
+    return out.length ? out : readKnownTeams().map((t) => t.id);
+  }
+  private dtSetTeams(ids: unknown): { ok: boolean; teams: string[]; error: string | null } {
+    if (!Array.isArray(ids) || !ids.length) {
+      return { ok: false, teams: this.dtGetTeams(), error: '站点不能为空' };
+    }
+    const clean: string[] = [];
+    const seen = new Set<string>();
+    for (const x of ids) {
+      const s = String(x).trim();
+      if (!s || seen.has(s)) continue;
+      seen.add(s);
+      clean.push(s);
+    }
+    if (!clean.length) {
+      return { ok: false, teams: this.dtGetTeams(), error: '站点不能为空' };
+    }
+    try {
+      this.atomicWrite(this.stdPath('delivery_timeout_teams.json'), { teams: clean });
+      return { ok: true, teams: clean, error: null };
+    } catch (e) {
+      return { ok: false, teams: this.dtGetTeams(), error: `写入失败：${(e as Error).message}` };
+    }
+  }
+
   // ===================================================================== 对外分发
   /** 是否为「配置端点」（应归 Nest 处理，而非转发 Python）。 */
   isConfigPath(urlPath: string): boolean {
@@ -568,6 +597,7 @@ export class ConfigService {
       '/api/service-quality/targets',
       '/api/attend-period/config',
       '/api/attend-period/teams',
+      '/api/realtime/timeout/teams',
     ].includes(urlPath);
   }
 
@@ -594,6 +624,8 @@ export class ConfigService {
         return method === 'GET' ? this.periodConfigGet(q('month')) : this.periodConfigPost(body);
       case '/api/attend-period/teams':
         return method === 'GET' ? this.apTeamsGet(allowed) : this.apTeamsPost(body);
+      case '/api/realtime/timeout/teams':
+        return method === 'GET' ? this.dtTeamsGet(allowed) : this.dtTeamsPost(body);
       case '/api/service-quality/targets':
         return method === 'GET'
           ? this.serviceQualityTargetsGet(q('month'))
@@ -632,6 +664,29 @@ export class ConfigService {
   }
   apTeamsPost(body: any): unknown {
     const r = this.aptSetTeams(body && body.teams);
+    return { ok: r.ok, teams: r.teams, error: r.error };
+  }
+
+  // ============================================================ delivery_timeout_teams
+  // 配送超时看板「展示站点」配置：与 attend_period_teams 同构，落盘到
+  // python/dashboard/standard/delivery_timeout_teams.json（前端按此过滤站点下拉与「全部站点」聚合）。
+  async dtTeamsGet(allowed: Allowed): Promise<unknown> {
+    const payload = await this.teams.fetchAll();
+    const list = (payload.teams && payload.teams.length ? payload.teams : payload.fallback) || [];
+    const allRefs = list
+      .filter((t) => allowed === null || allowed.has(String(t.id)))
+      .map((t) => ({ id: String(t.id), name: String(t.name) }));
+    const teams = filterIds(this.dtGetTeams(), allowed);
+    return {
+      ok: payload.ok === false ? false : true,
+      teams,
+      all: allRefs,
+      source: payload.source,
+      error: payload.error || null,
+    };
+  }
+  dtTeamsPost(body: any): unknown {
+    const r = this.dtSetTeams(body && body.teams);
     return { ok: r.ok, teams: r.teams, error: r.error };
   }
 

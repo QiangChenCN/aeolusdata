@@ -36,8 +36,19 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 _PATH = os.path.join(_HERE, "attend_period_teams.json")
 _LOCK = threading.Lock()
 
-# 默认纳入站点（用户日常看板的三个 -UB 站）
-DEFAULT_TEAMS = ["917521130", "917521136", "917521139"]
+# 无配置时的回落来源：Nest 每次从风神拉取站点目录后落盘的 backend/data/teams.json（全部已知站点）。
+_TEAMS_FILE = os.path.join(ROOT, "backend", "data", "teams.json")
+
+
+def _known_team_ids():
+    """读落盘站点目录文件，返回全部已知站点 id 列表（接口不可达时的回落来源）。"""
+    try:
+        with open(_TEAMS_FILE, "r", encoding="utf-8") as f:
+            obj = json.load(f)
+        return [str(t.get("id")).strip() for t in (obj or {}).get("teams") or []
+                if str(t.get("id")).strip()]
+    except Exception:
+        return []
 
 
 def _atomic_write(obj):
@@ -51,17 +62,23 @@ def _atomic_write(obj):
 
 
 def get_teams():
-    """返回纳入站点的 id 列表（list[str]）。文件缺失 / 空 → 返回默认值（不落盘）。"""
+    """返回纳入站点的 id 列表（list[str]）。
+
+    配置来源是 attend_period_teams.json（系统在「站点管理」里保存的结果）。
+    文件缺失 / 空 → 回落到落盘文件里的全部已知站点（不再硬编码默认三站）。
+    """
     try:
         with open(_PATH, "r", encoding="utf-8") as f:
             obj = json.load(f)
     except Exception:
-        return list(DEFAULT_TEAMS)
+        obj = None
     ids = (obj or {}).get("teams")
-    if not isinstance(ids, list):
-        return list(DEFAULT_TEAMS)
-    out = [str(x).strip() for x in ids if str(x).strip()]
-    return out or list(DEFAULT_TEAMS)
+    if isinstance(ids, list):
+        out = [str(x).strip() for x in ids if str(x).strip()]
+        if out:
+            return out
+    # 无配置：回落落盘站点目录（全部已知站点）
+    return _known_team_ids()
 
 
 def set_teams(ids):

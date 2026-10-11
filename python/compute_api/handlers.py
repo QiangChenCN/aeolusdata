@@ -177,10 +177,10 @@ def _rate_limited_json(handler, endpoint, retry_after, window=RATE_LIMIT_SEC):
 _TEAMS_CACHE = {"data": None, "ts": 0}
 _TEAMS_CACHE_TTL = 300
 def _teams_with_names():
-    """全部站点 [(team_id, name)]：优先 /api/teams 的 5 分钟内存缓存，否则兜底三站。
+    """全部站点 [(team_id, name)]：优先 /api/teams 的 5 分钟内存缓存，否则读落盘站点目录文件。
 
     仅供「系统设置 → 参与站点」与「全部站点」合并取数使用；不主动打接口
-    （缓存没有就返回兜底清单，等 /api/teams 被前端触发过自然就有全量了）。
+    （缓存没有就读取盘文件，等 /api/teams 被前端触发过自然就有全量了）。
     """
     cached = _TEAMS_CACHE.get("data") or {}
     items = cached.get("teams") or cached.get("fallback") or []
@@ -192,7 +192,7 @@ def _teams_with_names():
     if out:
         return out
     from analytics import teams_config as TCFG
-    return [(tid, name) for tid, name in TCFG.TEAM_NAMES.items()]
+    return [(tid, name) for tid, name in TCFG.get_team_names().items()]
 
 
 def _configured_teams():
@@ -211,7 +211,7 @@ def _part_teams(month):
     from analytics import grade_standards as GS
     from analytics import teams_config as TCFG
     names = dict(_teams_with_names())
-    names.update(TCFG.TEAM_NAMES)
+    names.update(TCFG.get_team_names())
     out = []
     for tid in GS.graded_team_ids(month):
         out.append((tid, names.get(tid, tid)))
@@ -261,11 +261,10 @@ def _fetch_all_teams():
                "error": "Nest 站点取数不可达: %s: %s" % (type(e).__name__, e)}
 
     if not out.get("teams") and not out.get("fallback"):
-        # 末位兜底：兜底清单的唯一来源是 Nest 的 FALLBACK_TEAMS，这里只在 Nest
-        # 整体不可达时用本清单顶上（前端 web/src/teams.js 同理）。
+        # Nest 整体不可达时的末位兜底：读上次落盘的站点目录文件（不再硬编码任何清单）。
         from analytics import teams_config as TCFG
-        out["fallback"] = [{"id": tid, "name": name}
-                           for tid, name in TCFG.TEAM_NAMES.items()]
+        nm = TCFG.get_team_names()
+        out["fallback"] = [{"id": tid, "name": name} for tid, name in nm.items()]
 
     _TEAMS_CACHE["data"] = out
     _TEAMS_CACHE["ts"] = now
@@ -806,6 +805,8 @@ def _get_realtime_timeout(self, qs):
             "team": team,
             "teamName": row.get("team_name"),
             "start": date, "end": date, "basis": "day",
+            # 取数时间：原始运单明细最近一次落盘时间（北京时间），即「拉取数据」的时刻
+            "fetched_at": CACHE.latest_cache_time(team, date),
             "rows": [] if miss else [row],
             "data_status": "no_data" if miss else (row.get("data_status") or "ok"),
             "data_note": row.get("data_note"),

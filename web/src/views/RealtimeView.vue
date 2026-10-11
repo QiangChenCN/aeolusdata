@@ -7,8 +7,19 @@
         <el-option v-for="t in teams" :key="t.id" :label="t.name" :value="t.id" />
       </el-select>
       <el-tag v-if="dataDate" type="info" effect="plain" class="dv-date-tag">数据日期：{{ dataDate }}</el-tag>
+      <el-tag v-if="lastUpdated" :type="autoRefresh ? 'success' : 'info'" effect="plain" class="dv-date-tag">
+        {{ autoRefresh ? '自动刷新中' : '已暂停自动刷新' }} · 最近更新 {{ lastUpdated }}
+      </el-tag>
       <span class="sp" />
-      <el-button :loading="loading" @click="load"><el-icon><Refresh /></el-icon> 刷新</el-button>
+      <el-select v-model="intervalSec" class="dv-sel" style="width: 110px" @change="restartPoll">
+        <el-option label="15 秒" :value="15" />
+        <el-option label="30 秒" :value="30" />
+        <el-option label="60 秒" :value="60" />
+      </el-select>
+      <el-switch v-model="autoRefresh" inline-prompt active-text="自动" inactive-text="手动" @change="onAutoToggle" />
+      <el-button :loading="loading" @click="load">
+        <el-icon><Refresh /></el-icon> 刷新
+      </el-button>
     </div>
 
     <el-alert v-if="needRefresh" type="info" :closable="false" show-icon class="dv-hint">
@@ -16,7 +27,9 @@
     </el-alert>
     <el-alert v-else-if="dataNote" type="warning" :closable="false" show-icon class="dv-hint">{{ dataNote }}</el-alert>
 
-    <div v-if="loading" class="dv-state"><el-icon class="is-loading"><Loading /></el-icon> 加载中…</div>
+    <div v-if="loading" class="dv-state">
+      <el-icon class="is-loading"><Loading /></el-icon> 加载中…
+    </div>
     <template v-else>
       <!-- KPI 汇总卡片（随选中站点聚合，全部站点=各站求和后重算比率） -->
       <div v-if="cards.length" class="dv-cards">
@@ -26,28 +39,36 @@
         </div>
       </div>
 
-      <!-- 站点明细对比表 -->
-      <el-table :data="rows" stripe border class="dv-table" empty-text="暂无实时数据" :max-height="560">
-        <el-table-column prop="team_name" label="站点" min-width="160" fixed />
-        <el-table-column prop="pushed_order_volume" label="推配送单量" min-width="110" />
-        <el-table-column prop="delivery_completed" label="配送完成单" min-width="110" />
-        <el-table-column prop="t8_timeout" label="T8超时单" min-width="110" />
-        <el-table-column label="T8准时率" min-width="120" align="center">
+      <!-- 站点明细对比表（列可排序，默认按推配送单量降序） -->
+      <el-table
+        :data="rows"
+        stripe
+        border
+        class="dv-table"
+        empty-text="暂无实时数据"
+        :max-height="560"
+        :default-sort="{ prop: 'pushed_order_volume', order: 'descending' }"
+      >
+        <el-table-column prop="team_name" label="站点" min-width="160" fixed sortable />
+        <el-table-column prop="pushed_order_volume" label="推配送单量" min-width="120" sortable />
+        <el-table-column prop="delivery_completed" label="配送完成单" min-width="120" sortable />
+        <el-table-column prop="t8_timeout" label="T8超时单" min-width="110" sortable />
+        <el-table-column label="T8准时率" min-width="120" align="center" sortable :sort-method="rateSort('t8_ontime_rate')">
           <template #default="{ row }">
             <span class="rt" :class="rateClsUp(row.t8_ontime_rate)">{{ fmtRate(row.t8_ontime_rate) }}</span>
           </template>
         </el-table-column>
-        <el-table-column prop="complaint" label="投诉" min-width="80" />
-        <el-table-column prop="bad_review" label="差评" min-width="80" />
-        <el-table-column prop="claim" label="索赔" min-width="80" />
-        <el-table-column prop="cancel_liable" label="物流责取消" min-width="110" />
-        <el-table-column prop="early_delivered" label="提前送达" min-width="100" />
-        <el-table-column label="不满意率" min-width="110" align="center">
+        <el-table-column prop="complaint" label="投诉" min-width="80" sortable />
+        <el-table-column prop="bad_review" label="差评" min-width="80" sortable />
+        <el-table-column prop="claim" label="索赔" min-width="80" sortable />
+        <el-table-column prop="cancel_liable" label="物流责取消" min-width="110" sortable />
+        <el-table-column prop="early_delivered" label="提前送达" min-width="100" sortable />
+        <el-table-column label="不满意率" min-width="110" align="center" sortable :sort-method="rateSort('unsat_rate')">
           <template #default="{ row }">
             <span class="rt" :class="rateClsDown(row.unsat_rate)">{{ fmtRate(row.unsat_rate) }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="物流妥投率" min-width="120" align="center">
+        <el-table-column label="物流妥投率" min-width="120" align="center" sortable :sort-method="rateSort('fulfillment_rate')">
           <template #default="{ row }">
             <span class="rt" :class="rateClsUp(row.fulfillment_rate)">{{ fmtRate(row.fulfillment_rate) }}</span>
           </template>
@@ -58,7 +79,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, onUnmounted, ref } from 'vue';
 import { useAppStore } from '../stores/app.js';
 import { fetchTeams, fetchRealtimeStation } from '../api/dashboards.js';
 
@@ -70,6 +91,30 @@ const loading = ref(false);
 const loaded = ref(false);
 const attempted = ref(0);      // 本次实际请求的站点数
 const dataDate = ref('');
+const lastUpdated = ref('');   // 最近一次成功取数时间（HH:MM:SS）
+
+/* —— 自动刷新（照搬 BotGlobalView 约定：setInterval + onUnmounted 清理）—— */
+const autoRefresh = ref(true);
+const intervalSec = ref(30);
+let pollTimer = null;
+function fmtClock(d = new Date()) {
+  const p = (n) => String(n).padStart(2, '0');
+  return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+}
+function startPoll() {
+  stopPoll();
+  pollTimer = setInterval(() => void load(true), intervalSec.value * 1000);
+}
+function stopPoll() {
+  if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+}
+function restartPoll() {
+  if (autoRefresh.value) startPoll();
+}
+function onAutoToggle(on) {
+  if (on) startPoll();
+  else stopPoll();
+}
 
 const needRefresh = computed(() => loaded.value && attempted.value > 0 && rows.value.length === 0);
 const dataNote = computed(() => {
@@ -113,14 +158,25 @@ const cards = computed(() => [
   { label: '物流妥投率', value: fmtRate(agg.value.fulfill), cls: rateClsUp(agg.value.fulfill) },
 ]);
 
+/* 比率列排序：null 永远排最后（无论升/降序），便于把「暂无数据」沉底 */
+function rateSort(key) {
+  return (a, b) => {
+    const va = a[key], vb = b[key];
+    if (va == null && vb == null) return 0;
+    if (va == null) return 1;
+    if (vb == null) return -1;
+    return va - vb;
+  };
+}
+
 function fmtRate(v) { return v == null ? '—' : (v + '%'); }
 /* 越高越好的比率着色（T8准时率 / 物流妥投率） */
 function rateClsUp(v) { if (v == null) return 'is-none'; if (v >= 95) return 'is-ok'; if (v >= 90) return 'is-warn'; return 'is-bad'; }
 /* 越低越好的比率着色（不满意率） */
 function rateClsDown(v) { if (v == null) return 'is-none'; if (v <= 2) return 'is-ok'; if (v <= 5) return 'is-warn'; return 'is-bad'; }
 
-async function load() {
-  loading.value = true;
+async function load(silent = false) {
+  if (!silent) loading.value = true;
   try {
     const ids = teamSel.value === '__all__'
       ? teams.value.map((t) => t.id)
@@ -137,19 +193,23 @@ async function load() {
       if (res.start && !dataDate.value) dataDate.value = res.start;
     }
     rows.value = good;
+    lastUpdated.value = fmtClock();
   } catch (e) {
-    app.toast(e.message || '加载失败', 'error');
-    rows.value = [];
+    if (!silent) app.toast(e.message || '加载失败', 'error');
+    if (!silent) rows.value = [];
   } finally {
     loaded.value = true;
-    loading.value = false;
+    if (!silent) loading.value = false;
   }
 }
 
 onMounted(async () => {
   try { const t = await fetchTeams(); teams.value = (t && t.teams) || []; } catch (e) { /* ignore */ }
   await load();
+  if (autoRefresh.value) startPoll();
 });
+
+onUnmounted(stopPoll);
 </script>
 
 <style scoped>

@@ -1,17 +1,17 @@
 import { Injectable, Logger } from '@nestjs/common';
+import * as fs from 'fs';
+import * as path from 'path';
 import { AeolusCookieService } from './aeolus-cookie.service';
 
 /**
  * 站点目录取数（原 Python `get_data/teams.py::fetch_teams` + `server.py::_fetch_all_teams`）。
  *
  * 单一接口：POST `xtop.lpd.intelligentConfig.getTeamsAll/1.0`，返回当前账号可见的全部站点。
- * 5 分钟内存缓存（选择器反复开关不重打风神）；登录态失效 / 网络异常时降级到写死的三站兜底
- * 清单，绝不让选择器空白。
+ * 5 分钟内存缓存（选择器反复开关不重打风神）；登录态失效 / 网络异常时降级到**上次落盘的站点
+ * 目录文件**（`backend/data/teams.json`，每次成功获取后写入），绝不让选择器空白。
  *
- * ⚠️ 兜底清单 `FALLBACK_TEAMS` 现为**唯一来源**：原 Python
- * `dashboard/standard/teams_config.py::TEAM_NAMES` 的「站点名」用途已改为回调本服务
- * （`GET /api/fetch/teams`，见 `compute_service/handlers.py::_fetch_all_teams`）。
- * 前端另有一份末位兜底副本见 `web/src/teams.js` —— **新增 / 改名站点需同步这两处**。
+ * 站点目录不再内置任何硬编码清单：主来源是风神接口，兜底来源是落盘文件（Nest 整体不可达时
+ * 由计算层直接读同一份文件）。所有需要站点名 / 站点列表的读取都走这份落盘文件。
  */
 export const TEAMS_API =
   'https://httpizza.ele.me/xtop/xtop.lpd.intelligentConfig.getTeamsAll/1.0';
@@ -33,12 +33,24 @@ const STATIC_HEADERS: Record<string, string> = {
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36 Edg/151.0.0.0',
 };
 
-/** 兜底三站（-UB）。风神不可达时保底，绝不让选择器空白。 */
-export const FALLBACK_TEAMS: TeamRef[] = [
-  { id: '917521130', name: '东莞市黄江镇站-UB' },
-  { id: '917521136', name: '东莞市长安万科站-UB' },
-  { id: '917521139', name: '东莞市大岭山大学城站-UB' },
-];
+/**
+ * 站点目录落盘文件路径（与订单落盘同根 backend/data）。Nest 每次成功获取站点目录后写入，
+ * 计算层 / 前端在风神接口不可达时直接读这份文件。
+ */
+function teamsFilePath(): string {
+  return path.join(process.cwd(), 'data', 'teams.json');
+}
+
+/** 读上次落盘的站点目录（Nest 每次成功获取后写入）。接口不可达时的末位兜底来源。 */
+export function readKnownTeams(): TeamRef[] {
+  try {
+    const j = JSON.parse(fs.readFileSync(teamsFilePath(), 'utf-8'));
+    if (j && Array.isArray(j.teams)) return j.teams as TeamRef[];
+  } catch {
+    /* 文件不存在 / 损坏：返回空，由上层决定 */
+  }
+  return [];
+}
 
 export interface TeamRef {
   id: string;
@@ -98,7 +110,11 @@ export class TeamsFetchService {
       out.ok = false;
       out.source = 'fallback';
       out.error = err || '风神接口未返回任何站点';
-      out.fallback = FALLBACK_TEAMS.map((t) => ({ ...t }));
+      // 不再硬编码兜底清单：读上次落盘的站点目录文件。
+      out.fallback = readKnownTeams();
+    } else {
+      // 每次成功获取站点目录后落盘，供计算层 / 前端在接口不可达时读取。
+      this.persist(out.teams);
     }
 
     this.cache = { data: out, ts: nowSec };
@@ -140,5 +156,18 @@ export class TeamsFetchService {
     }
     this.logger.log(`xtop 站点目录：${out.length} 个`);
     return out;
+  }
+
+  /** 成功获取站点目录后落盘到 backend/data/teams.json。 */
+  private persist(teams: TeamRef[]): void {
+    try {
+      fs.writeFileSync(
+        teamsFilePath(),
+        JSON.stringify({ updatedAt: new Date().toISOString(), teams }, null, 2),
+        'utf-8',
+      );
+    } catch (e) {
+      this.logger.warn(`落盘站点目录失败: ${(e as Error).message}`);
+    }
   }
 }

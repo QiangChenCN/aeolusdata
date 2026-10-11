@@ -1,39 +1,40 @@
 <template>
   <div class="dv">
-    <div class="dv-bar">
+    <div class="dv-topbar">
       <span class="dv-title">违规处罚</span>
+      <el-menu mode="horizontal" :default-active="tab" class="dv-menu" @select="(k) => (tab = k)">
+        <el-menu-item index="realtime">实时</el-menu-item>
+        <el-menu-item index="monthly">月累计</el-menu-item>
+      </el-menu>
     </div>
-
-    <el-menu mode="horizontal" :default-active="tab" class="dv-menu" @select="(k) => (tab = k)">
-      <el-menu-item index="realtime">实时</el-menu-item>
-      <el-menu-item index="monthly">月累计</el-menu-item>
-    </el-menu>
 
     <!-- 月累计 -->
     <div v-show="tab === 'monthly'" class="dv-pane">
       <div class="dv-controls">
-        <span class="dv-ctl-label">月份</span>
-        <el-date-picker
-          v-model="month"
-          type="month"
-          value-format="YYYY-MM"
-          format="YYYY-MM"
-          placeholder="选择月份"
-          size="small"
-          style="width: 140px"
-          :clearable="false"
-          @change="loadMonthly"
-        />
+        <span class="dv-ctl-label">日期范围</span>
+        <div class="dv-range-wrap">
+          <el-date-picker
+            v-model="monthRange"
+            type="daterange"
+            value-format="YYYY-MM-DD"
+            format="YYYY-MM-DD"
+            :clearable="false"
+            :shortcuts="monthRangeShortcuts"
+            @change="loadMonthly"
+          />
+        </div>
         <span class="dv-ctl-label">违规分类</span>
         <el-select
           v-model="monthlyCats"
           multiple
           collapse-tags
           collapse-tags-tooltip
-          size="small"
           style="width: 240px"
+          filterable
           placeholder="违规分类"
+          @change="onSelectAll(monthlyCats, monthlyCatOptions.filter(o => o.value !== SELECT_ALL).map(o => o.value), $event)"
         >
+          <el-option label="全选" :value="SELECT_ALL" />
           <el-option
             v-for="o in monthlyCatOptions"
             :key="o.value"
@@ -41,7 +42,64 @@
             :value="o.value"
           />
         </el-select>
-        <span v-if="monthDays" class="dv-date">已入库 {{ monthDays }} 天</span>
+        <span class="dv-ctl-label">违规类型</span>
+        <el-select
+          v-model="monthlyTypes"
+          multiple
+          collapse-tags
+          collapse-tags-tooltip
+          style="width: 240px"
+          filterable
+          placeholder="违规类型"
+          @change="onSelectAll(monthlyTypes, monthlyTypeOptions.filter(o => o.value !== SELECT_ALL).map(o => o.value), $event)"
+        >
+          <el-option label="全选" :value="SELECT_ALL" />
+          <el-option
+            v-for="o in monthlyTypeOptions"
+            :key="o.value"
+            :label="o.label"
+            :value="o.value"
+          />
+        </el-select>
+        <span class="dv-ctl-label">站点</span>
+        <el-select
+          v-model="monthlySites"
+          multiple
+          collapse-tags
+          collapse-tags-tooltip
+          filterable
+          style="width: 200px"
+          placeholder="站点"
+          @change="onSelectAll(monthlySites, monthlySiteOptions.filter(o => o.value !== SELECT_ALL).map(o => o.value), $event)"
+        >
+          <el-option label="全选" :value="SELECT_ALL" />
+          <el-option
+            v-for="o in monthlySiteOptions"
+            :key="o.value"
+            :label="o.label"
+            :value="o.value"
+          />
+        </el-select>
+        <span class="dv-ctl-label">骑手</span>
+        <el-select
+          v-model="monthlyRiders"
+          multiple
+          collapse-tags
+          collapse-tags-tooltip
+          filterable
+          style="width: 200px"
+          placeholder="骑手"
+          @change="onSelectAll(monthlyRiders, monthlyRiderOptions.filter(o => o.value !== SELECT_ALL).map(o => o.value), $event)"
+        >
+          <el-option label="全选" :value="SELECT_ALL" />
+          <el-option
+            v-for="o in monthlyRiderOptions"
+            :key="o.value"
+            :label="o.label"
+            :value="o.value"
+          />
+        </el-select>
+        <span v-if="monthDays" class="dv-date" style="margin-left:auto">已入库 {{ monthDays }} 天</span>
       </div>
       <div class="dv-table-wrap">
         <el-table
@@ -53,11 +111,11 @@
           empty-text="暂无数据，每日 03:00 自动同步至 T-1"
         >
           <el-table-column
-            v-for="col in monthlyColumns"
+            v-for="(col, idx) in monthlyColumns"
             :key="col.key"
             :prop="col.key"
             :label="col.label"
-            :min-width="col.minWidth"
+            :min-width="monthlyNatural[idx]"
             :formatter="col.key === 'violationTime' ? fmtDateTime
               : CODE_FIELDS.has(col.key) ? fmtCode : undefined"
             show-overflow-tooltip
@@ -69,9 +127,8 @@
           v-model:current-page="monthlyPage"
           :page-size="monthlyPageSize"
           :total="monthlyFilteredRows.length"
-          :page-sizes="[25, 50, 100, 200]"
-          layout="sizes, prev, pager, next, jumper, total"
-          size="small"
+          :page-sizes="[25, 50, 75, 100]"
+          layout="total, prev, pager, next, jumper, sizes"
           background
           @size-change="monthlyPage = 1"
         />
@@ -83,22 +140,62 @@
       <div class="dv-controls">
         <span class="dv-ctl-label">取数时间</span>
         <span class="dv-date">{{ fetchedAt || '—' }}</span>
-        <el-button size="small" type="primary" :loading="loadingRealtime" @click="refreshRealtime">
+        <el-button type="primary" :loading="loadingRealtime" @click="refreshRealtime">
           刷新
         </el-button>
-        <el-button size="small" v-if="!isToday" @click="backToToday">回到今天</el-button>
+        <el-button v-if="!isToday" @click="backToToday">回到今天</el-button>
         <span class="dv-ctl-label">违规分类</span>
         <el-select
           v-model="realtimeCats"
           multiple
           collapse-tags
           collapse-tags-tooltip
-          size="small"
           style="width: 240px"
+          filterable
           placeholder="违规分类"
+          @change="onSelectAll(realtimeCats, realtimeCatOptions.filter(o => o.value !== SELECT_ALL).map(o => o.value), $event)"
         >
+          <el-option label="全选" :value="SELECT_ALL" />
           <el-option
             v-for="o in realtimeCatOptions"
+            :key="o.value"
+            :label="o.label"
+            :value="o.value"
+          />
+        </el-select>
+        <span class="dv-ctl-label">违规类型</span>
+        <el-select
+          v-model="realtimeTypes"
+          multiple
+          collapse-tags
+          collapse-tags-tooltip
+          style="width: 240px"
+          filterable
+          placeholder="违规类型"
+          @change="onSelectAll(realtimeTypes, realtimeTypeOptions.filter(o => o.value !== SELECT_ALL).map(o => o.value), $event)"
+        >
+          <el-option label="全选" :value="SELECT_ALL" />
+          <el-option
+            v-for="o in realtimeTypeOptions"
+            :key="o.value"
+            :label="o.label"
+            :value="o.value"
+          />
+        </el-select>
+        <span class="dv-ctl-label">站点</span>
+        <el-select
+          v-model="realtimeSites"
+          multiple
+          collapse-tags
+          collapse-tags-tooltip
+          filterable
+          style="width: 200px"
+          placeholder="站点"
+          @change="onSelectAll(realtimeSites, realtimeSiteOptions.filter(o => o.value !== SELECT_ALL).map(o => o.value), $event)"
+        >
+          <el-option label="全选" :value="SELECT_ALL" />
+          <el-option
+            v-for="o in realtimeSiteOptions"
             :key="o.value"
             :label="o.label"
             :value="o.value"
@@ -108,25 +205,35 @@
       <div class="dv-table-wrap">
         <el-table
           ref="realtimeTableRef"
-          :data="realtimeFilteredRows"
+          :data="realtimePagedRows"
           v-loading="loadingRealtime"
           border
           height="100%"
           empty-text="暂无数据，点「刷新」获取最新并落盘"
         >
           <el-table-column
-            v-for="col in realtimeColumns"
+            v-for="(col, idx) in realtimeColumns"
             :key="col.key"
             :prop="col.key"
             :label="col.label"
-            :min-width="col.minWidth"
+            :min-width="realtimeNatural[idx]"
             :formatter="col.key === 'violationTime' ? fmtDateTime
               : CODE_FIELDS.has(col.key) ? fmtCode : undefined"
             show-overflow-tooltip
           />
         </el-table>
       </div>
-      <div class="dv-foot">共 {{ realtimeFilteredRows.length }} 条</div>
+      <div class="dv-foot">
+        <el-pagination
+          v-model:current-page="realtimePage"
+          :page-size="realtimePageSize"
+          :total="realtimeFilteredRows.length"
+          :page-sizes="[25, 50, 75, 100]"
+          layout="total, prev, pager, next, jumper, sizes"
+          background
+          @size-change="realtimePage = 1"
+        />
+      </div>
     </div>
   </div>
 </template>
@@ -136,7 +243,7 @@ import { ref, watch, onMounted, computed, nextTick } from 'vue';
 import { ElMessage } from 'element-plus';
 import {
   fetchViolationRange,
-  fetchViolationMonth,
+  fetchViolationMonthRange,
   fetchViolationRangeDb,
   saveViolationRows,
 } from '../api/unsatisfied.js';
@@ -148,8 +255,42 @@ const todayStr = () => {
   const d = new Date();
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 };
-// 月累计：月份选择器（el-date-picker type=month），默认当月
-const month = ref(`${now.getFullYear()}-${pad(now.getMonth() + 1)}`);
+// 月累计：日期范围选择器（带快捷选项），默认本月 1 号 ~ 今天
+const monthRange = ref([`${now.getFullYear()}-${pad(now.getMonth() + 1)}-01`, `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`]);
+const monthRangeShortcuts = [
+  {
+    text: '本月',
+    value: () => {
+      const d = new Date();
+      return [new Date(d.getFullYear(), d.getMonth(), 1), new Date()];
+    },
+  },
+  {
+    text: '上月',
+    value: () => {
+      const d = new Date();
+      return [new Date(d.getFullYear(), d.getMonth() - 1, 1), new Date(d.getFullYear(), d.getMonth(), 0)];
+    },
+  },
+  {
+    text: '近7天',
+    value: () => {
+      const e = new Date();
+      const s = new Date();
+      s.setDate(s.getDate() - 6);
+      return [s, e];
+    },
+  },
+  {
+    text: '近30天',
+    value: () => {
+      const e = new Date();
+      const s = new Date();
+      s.setDate(s.getDate() - 29);
+      return [s, e];
+    },
+  },
+];
 // 实时标签只盯今天：默认查当天；打开即从落盘读取，无缓存时自动拉取最新并落盘。点刷新才拉风神最新。
 const realtimeRange = ref([todayStr(), todayStr()]);
 const realtimeRangeText = computed(() => realtimeRange.value.join(' ~ '));
@@ -175,33 +316,104 @@ const monthlyPagedRows = computed(() => {
 });
 const realtimeRows = ref([]);
 const realtimeColumns = ref([]);
+// 实时分页：默认 25，候选 25/50/75/100
+const realtimePage = ref(1);
+const realtimePageSize = ref(25);
+const realtimePagedRows = computed(() => {
+  const start = (realtimePage.value - 1) * realtimePageSize.value;
+  return realtimeFilteredRows.value.slice(start, start + realtimePageSize.value);
+});
 
-/* ===== 违规分类筛选（选项取自当前数据，默认全选，可多选） ===== */
+/* ===== 筛选（选项取自当前数据，默认全选，可多选） ===== */
 const catLabel = (code) =>
   (CODE_LABELS.violationCategory && CODE_LABELS.violationCategory[code]) || code || '—';
 const catOf = (r) => String(r?.violationCategory ?? '');
-const distinctCats = (rows) => [...new Set((rows || []).map(catOf))];
+const typeOf = (r) => String(r?.violationType ?? '');
+const typeLabel = (code) =>
+  (CODE_LABELS.violationType && CODE_LABELS.violationType[code]) || code || '—';
+const siteOf = (r) => String(r?.teamName ?? '');
+const siteLabel = (v) => v || '—';
+const distinctOf = (rows, fn) => [...new Set((rows || []).map(fn))];
 // 数据刷新后：保留仍存在的旧选择，否则（首次加载）全选
-const mergeCats = (prev, available) => {
+const mergeSel = (prev, available) => {
   const kept = (prev || []).filter((c) => available.includes(c));
   return kept.length ? kept : available;
 };
 
+// 违规分类
 const realtimeCats = ref([]);
 const realtimeCatOptions = computed(() =>
-  distinctCats(realtimeRows.value).map((v) => ({ value: v, label: catLabel(v) })),
+  distinctOf(realtimeRows.value, catOf).map((v) => ({ value: v, label: catLabel(v) })),
 );
-const realtimeFilteredRows = computed(() =>
-  realtimeRows.value.filter((r) => realtimeCats.value.includes(catOf(r))),
-);
-
 const monthlyCats = ref([]);
 const monthlyCatOptions = computed(() =>
-  distinctCats(monthlyRows.value).map((v) => ({ value: v, label: catLabel(v) })),
+  distinctOf(monthlyRows.value, catOf).map((v) => ({ value: v, label: catLabel(v) })),
+);
+
+// 违规类型（按数值排序，便于查找）
+const realtimeTypes = ref([]);
+const realtimeTypeOptions = computed(() =>
+  distinctOf(realtimeRows.value, typeOf)
+    .sort((a, b) => a.localeCompare(b, 'en', { numeric: true }))
+    .map((v) => ({ value: v, label: typeLabel(v) })),
+);
+const monthlyTypes = ref([]);
+const monthlyTypeOptions = computed(() =>
+  distinctOf(monthlyRows.value, typeOf)
+    .sort((a, b) => a.localeCompare(b, 'en', { numeric: true }))
+    .map((v) => ({ value: v, label: typeLabel(v) })),
+);
+
+// 站点（teamName）。站点较多，选项支持搜索过滤。
+const realtimeSites = ref([]);
+const realtimeSiteOptions = computed(() =>
+  distinctOf(realtimeRows.value, siteOf).map((v) => ({ value: v, label: siteLabel(v) })),
+);
+const monthlySites = ref([]);
+const monthlySiteOptions = computed(() =>
+  distinctOf(monthlyRows.value, siteOf).map((v) => ({ value: v, label: siteLabel(v) })),
+);
+
+// 骑手（knightId 唯一，label 取骑手姓名）
+const riderOf = (r) => String(r?.knightId ?? '');
+function riderOptions(rows) {
+  const m = new Map();
+  for (const r of rows || []) {
+    const v = riderOf(r);
+    if (!v) continue;
+    if (!m.has(v)) m.set(v, (r?.knightName ?? '') || v);
+  }
+  return [...m.entries()].map(([value, label]) => ({ value, label }));
+}
+const monthlyRiders = ref([]);
+const monthlyRiderOptions = computed(() => riderOptions(monthlyRows.value));
+
+// 过滤：违规分类 ∧ 违规类型 ∧ 站点 ∧ 骑手 同时命中
+const realtimeFilteredRows = computed(() =>
+  realtimeRows.value.filter(
+    (r) =>
+      realtimeCats.value.includes(catOf(r)) &&
+      realtimeTypes.value.includes(typeOf(r)) &&
+      realtimeSites.value.includes(siteOf(r)),
+  ),
 );
 const monthlyFilteredRows = computed(() =>
-  monthlyRows.value.filter((r) => monthlyCats.value.includes(catOf(r))),
+  monthlyRows.value.filter(
+    (r) =>
+      monthlyCats.value.includes(catOf(r)) &&
+      monthlyTypes.value.includes(typeOf(r)) &&
+      monthlySites.value.includes(siteOf(r)) &&
+      monthlyRiders.value.includes(riderOf(r)),
+  ),
 );
+
+// 多选框“全选”：选中占位项 SELECT_ALL 即选中全部真实值，并剔除占位项本身（避免参与过滤）
+const SELECT_ALL = '__ALL__';
+function onSelectAll(modelRef, allValues, selected) {
+  modelRef.value = selected.includes(SELECT_ALL)
+    ? allValues.slice()
+    : selected.filter((v) => v !== SELECT_ALL);
+}
 
 const nowDtStr = () => {
   const d = new Date();
@@ -329,68 +541,92 @@ function buildColumns(rows, extraHidden = []) {
   const ordered = ORDER.filter((k) => keys.has(k));
   const rest = [...keys].filter((k) => !ordered.includes(k));
 
-  // 列宽自适应：按"表头/内容展示文本"的最长宽度估算 min-width。
-  // el-table 的 fit 会把容器剩余宽度按各列 min-width 的比例分配，故内容越长的列分到越多余量。
-  const sample = rows.slice(0, 50);
-  const unitsOf = (k) => {
-    let max = textUnits(LABELS[k] || k);
-    for (const r of sample) {
-      const u = textUnits(displayValue(k, r[k]));
-      if (u > max) max = u;
-    }
-    return max;
-  };
-  const minWidthOf = (k) =>
-    Math.round(Math.min(MAX_COL_W, Math.max(MIN_COL_W, unitsOf(k) * PX_PER_UNIT + COL_PADDING)));
-
   return [...ordered, ...rest].map((k) => ({
     key: k,
     label: LABELS[k] || k,
-    minWidth: minWidthOf(k),
   }));
 }
 
-/* ===== 列宽自适应 ===== */
-const MIN_COL_W = 90;
-const MAX_COL_W = 340;
-const PX_PER_UNIT = 7; // 1 单位≈半角字符宽；中文按 2 单位算
-const COL_PADDING = 30;
+/* ===== 列宽自适应：真实内容测量，交给 el-table fit 填满容器 ===== */
+// 各列“内容自然宽度”（按真实渲染测量，等于内容真实宽度，无最小宽度）
+const monthlyNatural = ref([]);
+const realtimeNatural = ref([]);
 
-// 估算文本宽度单位：中日韩/全角字符按 2，其余按 1
-function textUnits(s) {
-  let u = 0;
-  for (const ch of String(s ?? '')) {
-    u += /[\u2e80-\ufe4f\uff00-\uff60]/.test(ch) ? 2 : 1;
-  }
-  return u;
+// 单元格展示文本（与表格 formatter 保持一致）：时间列格式化、代码列转中文
+function cellText(col, r) {
+  const v = r == null ? null : r[col.key];
+  if (col.key === 'violationTime') return fmtDateTime(null, null, v);
+  if (CODE_FIELDS.has(col.key)) return fmtCode(null, { property: col.key }, v);
+  return v == null ? '' : String(v);
 }
-// 单元格实际展示值（需与 formatter 保持一致，否则宽度估算会偏）
-function displayValue(key, v) {
-  if (v == null) return '';
-  if (key === 'violationTime') return String(v).replace('T', ' ').replace(/Z$/, '');
-  if (CODE_FIELDS.has(key)) {
-    const m = CODE_LABELS[key];
-    return (m && m[v]) || v;
-  }
-  return v;
+
+// 基于“全量数据”测量每列真实内容宽度（不随当前翻页变化，列宽在各页保持一致）。
+// 用隐藏容器复刻 el-table 单元格字体与内边距，逐列取表头+抽样正文的最长单行宽度。
+function measureNaturalFromData(tableRef, columns, rows) {
+  const el = tableRef && tableRef.value && tableRef.value.$el;
+  if (!el || !columns.length) return [];
+  const probe = el.querySelector('.el-table__body-wrapper .cell')
+    || el.querySelector('.el-table__header-wrapper .cell');
+  const cs = probe ? getComputedStyle(probe) : null;
+  const fontStyle = cs
+    ? `font-size:${cs.fontSize};font-family:${cs.fontFamily};font-weight:${cs.fontWeight};letter-spacing:${cs.letterSpacing};`
+    : 'font-size:14px;';
+  const pad = cs ? (parseFloat(cs.paddingLeft) || 0) + (parseFloat(cs.paddingRight) || 0) : 24;
+
+  const wrap = document.createElement('div');
+  wrap.style.cssText = `position:absolute;top:-9999px;left:-9999px;visibility:hidden;white-space:nowrap;${fontStyle}`;
+  document.body.appendChild(wrap);
+
+  // 逐列取展示文本最长（按字符数近似宽度）的若干候选，全部测量取最大，
+  // 避免步长抽样漏掉最宽的一行（如超长站点名称）导致该列被压窄折叠。
+  const out = columns.map((col) => {
+    const all = rows.map((r) => cellText(col, r));
+    all.push(col.label);
+    const candidates = all.sort((a, b) => b.length - a.length).slice(0, 12);
+    let max = 0;
+    for (const t of candidates) {
+      const s = document.createElement('span');
+      s.style.cssText = `display:inline-block;white-space:nowrap;${fontStyle}`;
+      s.textContent = t;
+      wrap.appendChild(s);
+      if (s.scrollWidth > max) max = s.scrollWidth;
+      wrap.removeChild(s);
+    }
+    return Math.ceil(max) + pad + 6; // +边框与取整容差，防止个别列被压窄
+  });
+  document.body.removeChild(wrap);
+  return out;
+}
+
+// 数据加载/页签切换后，按全量数据重测自然宽度（与可见性无关，隐藏表也能测）。
+// 之后由 el-table 的 fit（默认开启）把容器剩余宽度按列宽比例填满，无需手动缩放。
+function remeasure(tableRef, naturalRef, columnsRef, rowsRef) {
+  nextTick(() => {
+    naturalRef.value = measureNaturalFromData(tableRef, columnsRef.value, rowsRef.value);
+  });
 }
 
 async function loadMonthly() {
+  const [s, e] = monthRange.value || [];
+  if (!s || !e) return;
   loadingMonthly.value = true;
   try {
-    const r = await fetchViolationMonth(month.value);
+    const r = await fetchViolationMonthRange({ start: s, end: e });
     if (!r.ok) {
       ElMessage.error(r.error || '查询失败');
       return;
     }
     monthlyRows.value = normalizeRows(r.rows || []);
     monthlyColumns.value = buildColumns(monthlyRows.value, ['appealExpireTime']);
-    monthlyCats.value = mergeCats(monthlyCats.value, distinctCats(monthlyRows.value));
+    monthlyCats.value = mergeSel(monthlyCats.value, distinctOf(monthlyRows.value, catOf));
+    monthlyTypes.value = mergeSel(monthlyTypes.value, distinctOf(monthlyRows.value, typeOf));
+    monthlySites.value = mergeSel(monthlySites.value, distinctOf(monthlyRows.value, siteOf));
+    monthlyRiders.value = mergeSel(monthlyRiders.value, riderOptions(monthlyRows.value).map((o) => o.value));
     monthlyPage.value = 1;
-    // 已入库天数（按违规时间日期去重统计）
-    monthDays.value = new Set(
-      monthlyRows.value.map((x) => String(x.violationTime || '').slice(0, 10)),
-    ).size;
+    // 已入库天数（区间内按 stat_date 去重统计，优先用后端返回）
+    monthDays.value =
+      r.days ??
+      new Set(monthlyRows.value.map((x) => String(x.violationTime || '').slice(0, 10))).size;
   } catch (e) {
     ElMessage.error(e?.message || '查询失败');
   } finally {
@@ -402,7 +638,9 @@ async function loadMonthly() {
 function renderRealtime(rows) {
   realtimeRows.value = normalizeRows(rows);
   realtimeColumns.value = buildColumns(realtimeRows.value);
-  realtimeCats.value = mergeCats(realtimeCats.value, distinctCats(realtimeRows.value));
+  realtimeCats.value = mergeSel(realtimeCats.value, distinctOf(realtimeRows.value, catOf));
+  realtimeTypes.value = mergeSel(realtimeTypes.value, distinctOf(realtimeRows.value, typeOf));
+  realtimeSites.value = mergeSel(realtimeSites.value, distinctOf(realtimeRows.value, siteOf));
 }
 
 // 读本地已落盘缓存（不请求风神）：切换标签/改区间时调用
@@ -466,6 +704,37 @@ function backToToday() {
 watch(monthlyCats, () => {
   monthlyPage.value = 1;
 });
+watch(monthlyTypes, () => {
+  monthlyPage.value = 1;
+});
+watch(monthlySites, () => {
+  monthlyPage.value = 1;
+});
+watch(monthlyRiders, () => {
+  monthlyPage.value = 1;
+});
+watch(realtimeCats, () => {
+  realtimePage.value = 1;
+});
+watch(realtimeTypes, () => {
+  realtimePage.value = 1;
+});
+watch(realtimeSites, () => {
+  realtimePage.value = 1;
+});
+
+// 列宽自适应：数据加载后按“全量数据”重测列宽（与翻页无关，各页列宽保持一致）
+watch(monthlyColumns, () => {
+  remeasure(monthlyTableRef, monthlyNatural, monthlyColumns, monthlyRows);
+});
+watch(realtimeColumns, () => {
+  remeasure(realtimeTableRef, realtimeNatural, realtimeColumns, realtimeRows);
+});
+// 切换页签后重测（数据可能尚未加载时也先按已有数据测一遍）
+watch(tab, () => {
+  if (tab.value === 'monthly') remeasure(monthlyTableRef, monthlyNatural, monthlyColumns, monthlyRows);
+  else remeasure(realtimeTableRef, realtimeNatural, realtimeColumns, realtimeRows);
+});
 
 watch(tab, async () => {
   if (tab.value === 'monthly') loadMonthly();
@@ -482,6 +751,9 @@ onMounted(() => {
   // 已有落盘数据，实时表格也会一直空白，必须切到月累计再切回来才显示。
   if (tab.value === 'monthly') loadMonthly();
   else loadRealtimeCache();
+  // 列宽自适应：按当前页签首次测量列宽（之后由 el-table fit 负责填满/分配）
+  if (tab.value === 'monthly') remeasure(monthlyTableRef, monthlyNatural, monthlyColumns, monthlyRows);
+  else remeasure(realtimeTableRef, realtimeNatural, realtimeColumns, realtimeRows);
 });
 </script>
 
@@ -499,13 +771,22 @@ onMounted(() => {
   justify-content: space-between;
   margin-bottom: 8px;
 }
+.dv-topbar {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  border-bottom: 1px solid #ebeef5;
+  margin-bottom: 12px;
+}
 .dv-title {
   font-size: 18px;
   font-weight: 600;
+  white-space: nowrap;
 }
 .dv-menu {
-  border-bottom: 1px solid #ebeef5;
-  margin-bottom: 12px;
+  width: 100%;
+  border-bottom: none;
 }
 .dv-pane {
   flex: 1;
@@ -542,11 +823,27 @@ onMounted(() => {
 .dv-ctl-label {
   color: #6e6e6e;
 }
+/* 日期范围选择器：Element 通过 --el-date-editor-daterange-width(350px) 控制宽度。
+   class/style 不透传到 date-picker 根元素，故用外层包装 + :deep 命中 .el-date-editor；
+   同时覆盖变量与 width（!important 兜底），并缩字号防 220px 下截断 */
+.dv-range-wrap {
+  flex: 0 0 auto;
+}
+.dv-range-wrap :deep(.el-date-editor) {
+  --el-date-editor-daterange-width: 220px !important;
+  width: 220px !important;
+}
+.dv-range-wrap :deep(.el-range-input) {
+  font-size: 13px;
+}
 .dv-date {
   font-weight: 600;
 }
 .dv-foot {
   margin-top: 8px;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
   color: #6e6e6e;
   font-size: 13px;
 }
