@@ -237,12 +237,38 @@ function renderTable(
     }
     return `<div data-type="table" class="${b.class}" style="${style}"><table style="${tableStyle}">${colgroup}<tbody>${inner}</tbody></table></div>`;
   }
-  if (type === 'tr') return `<tr>${renderChildren(children, spec)}</tr>`;
+  if (type === 'tr') {
+    // 行内单元格：保留所有非隐藏单元格（含行首 / 行中空格）。
+    // 仅裁掉行尾的纯空单元格——浏览器会自动补齐行尾缺失单元格，裁掉可避免产生多余的尾列；
+    // 但行首 / 行中空格必须保留，否则整行左移错位。例：骑士考核「实际值<T0」收尾行，
+    // col2（目标区间）为空格，丢弃后本应在 col3 的「实际值<T0」会误落到 col2。
+    const cells = (children || []).filter(
+      (c: any) => isSlateNode(c) && (c[0] === 'td' || c[0] === 'tc'),
+    );
+    let lastKeep = cells.length - 1;
+    while (lastKeep >= 0) {
+      const a = (cells[lastKeep][1] || {}) as Record<string, any>;
+      const t = extractText(cells[lastKeep].slice(2)).trim();
+      const meaningful =
+        t !== '' ||
+        a.fill ||
+        (a.colSpan as number) > 1 ||
+        (a.rowSpan as number) > 1 ||
+        a.hidden;
+      if (meaningful) break;
+      lastKeep--;
+    }
+    const keep = new Set(cells.slice(0, lastKeep + 1));
+    const trimmed = (children || []).filter((c: any) => {
+      if (isSlateNode(c) && (c[0] === 'td' || c[0] === 'tc')) return keep.has(c);
+      return true;
+    });
+    return `<tr>${renderChildren(trimmed, spec)}</tr>`;
+  }
   if (type === 'td' || type === 'tc') {
-    // 合并格占位（hidden:true）：合并格除首格外会带 hidden 占位，前台不渲染（与参考 DOM 一致）
+    // 合并格占位（hidden:true）：合并格除首格外会带 hidden 占位，前台不渲染（与参考 DOM 一致）。
+    // 普通空格（非隐藏）必须渲染为 <td></td>：否则该列被后续单元格挤占，整行左移错位。
     if (attrs.hidden) return '';
-    // 前台不渲染空单元格：与参考 DOM 保持一致
-    if (extractText(children).trim() === '') return '';
     const b = spec['table-cell'] || { tag: 'td', class: '', style: '' };
     // 合并格：原生 td 恒带 rowspan/colspan（见参考快照 6355，缺省为 1）。
     // 此前漏掉该属性，「有效运力标准等级」这类 colSpan:5 的格只占 1 列，整表错位。
