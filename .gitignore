@@ -54,6 +54,8 @@ delivery_raw/
 backend/data/todo.db
 backend/data/todo.db-wal
 backend/data/todo.db-shm
+# 站点目录落盘缓存（程序运行时从风神接口写入，含 updatedAt，非人工维护配置）
+backend/data/teams.json
 
 # 在线表地址记忆（本地状态，每人/每月不同，不提交）
 last_sheet_url.txt
