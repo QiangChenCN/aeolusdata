@@ -31,10 +31,19 @@ export function diagnose(full: string, exitCode: number): Diagnosis {
       advice: '任务超时，先用更小范围（单日/少量）确认能跑通再放大。',
     };
   }
-  if (/Network|连接|ECONN|socket|timeout/i.test(text)) {
+  // 网络层故障：覆盖 Node fetch 的 `fetch failed` 与其 cause 的 errno
+  // （ENOTFOUND / EAI_AGAIN = DNS，ECONNRESET / ECONNREFUSED = 连接，ETIMEDOUT / UND_ERR_* = 超时），
+  // 以及 AeolusLoginService 透出的「登录页请求失败 / doLogin 请求异常」。
+  if (
+    /Network|连接|ECONN|socket|timeout|EAI_AGAIN|ENOTFOUND|ETIMEDOUT|UND_ERR|fetch failed|登录页请求失败|doLogin 请求异常|cause=/i.test(
+      text,
+    )
+  ) {
     return {
       kind: '网络异常',
-      advice: '网络连接异常，检查网络或上游是否可用后重试。',
+      advice:
+        '网络连接异常，检查本机网络 / DNS 与上游域名是否可用后重试。' +
+        '若异地随意可达而本服务持续失败，多为长时间运行的后端进程内 DNS/连接池卡死，重启后端即可恢复。',
     };
   }
   if (/Traceback|Error|Exception|raise /i.test(text)) {

@@ -81,6 +81,27 @@ export function encodeURIComponentLoose(s: string): string {
   return out;
 }
 
+/**
+ * 网络错误的**完整**描述。
+ *
+ * Node 的 `fetch` 失败时只给笼统的 `fetch failed`，真正原因（DNS / TLS / 连接重置 / 超时）
+ * 挂在 `cause` 上。以前只拼 `message`，上层看到的就是一句 `登录页请求失败: fetch failed`，
+ * 既无法远程定位，也触发不了 `diagnose()` 的网络关键字匹配（详见 diagnostics.util.ts）。
+ * 这里把自身 code 与 cause 的 code/errno/message 一并展开。
+ */
+function describeNetError(prefix: string, ex: unknown): Error {
+  const e = ex as Error & {
+    code?: string;
+    errno?: number;
+    cause?: { code?: string; errno?: number; message?: string };
+  };
+  const stem = `${prefix}: ${e?.message || String(ex)}`;
+  const ownErrno = e?.code ? ` code=${e.code}` : '';
+  const c = e?.cause;
+  const cause = c ? ` cause=${c.code || c.errno || c.message || '未知'}` : '';
+  return new Error(`${stem}${ownErrno}${cause}`);
+}
+
 /** 模幂（平方-乘法）。 */
 function modPow(base: bigint, exp: bigint, mod: bigint): bigint {
   let r = 1n;
@@ -270,7 +291,7 @@ export class AeolusLoginService {
     try {
       html = await s.text(PAGE_URL);
     } catch (ex) {
-      throw new Error('登录页请求失败: ' + (ex as Error).message);
+      throw describeNetError('登录页请求失败', ex);
     }
     const pub = /'rsaPublicKey'\s*:\s*'([0-9a-fA-F]+)'/.exec(html)?.[1];
     if (!pub) throw new Error('未从登录页解析到 rsaPublicKey');
@@ -294,8 +315,9 @@ export class AeolusLoginService {
         throw new Error(`doLogin HTTPError ${res.status}: ${txt.slice(0, 300)}`);
       }
     } catch (ex) {
+      // HTTPError 是业务语义（自行构造），原样抛出；其余为网络层错误，展开 cause 再抛。
       const m = (ex as Error).message;
-      throw m.startsWith('doLogin HTTPError') ? ex : new Error('doLogin 请求异常: ' + m);
+      throw m.startsWith('doLogin HTTPError') ? ex : describeNetError('doLogin 请求异常', ex);
     }
 
     let content: Record<string, any>;
@@ -316,15 +338,17 @@ export class AeolusLoginService {
       : 'https://mozi-login.alibaba-inc.com' + rurl;
     try {
       await s.open(rurlAbs);
-    } catch {
-      /* 交接页状态码可能非 200，但 cookie 已在 jar 中建立 */
+    } catch (ex) {
+      // 交接页状态码可能非 200，但 cookie 已在 jar 中建立；这里只可能是网络层失败，记日志备查。
+      this.logger.warn(String(describeNetError('SSO 票据交接请求异常（已忽略）', ex).message));
     }
 
     // [5] 访问 aeolus 拿 AEOLUS_MOZI_TOKEN
     try {
       await s.open(BACK_URL);
-    } catch {
-      /* 同上 */
+    } catch (ex) {
+      // 同上：取 MOZI_TOKEN 这一跳失败会直接反映为「拿不到 token」，此处留痕便于分清网络与会话原因。
+      this.logger.warn(String(describeNetError('取 AEOLUS_MOZI_TOKEN 请求异常（已忽略）', ex).message));
     }
 
     const cookieStr = s.finalCookieString();
