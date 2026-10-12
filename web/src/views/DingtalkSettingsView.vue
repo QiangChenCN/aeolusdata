@@ -91,13 +91,6 @@
         <el-form-item label="前端地址">
           <el-input v-model="sso.frontendUrl" placeholder="留空则自动取请求来源（同域部署可留空）" />
         </el-form-item>
-        <el-form-item label="未绑定自动开户">
-          <el-select v-model="sso.autoProvisionRole" class="sso-select">
-            <el-option label="关闭（需先绑定）" value="" />
-            <el-option label="viewer（只读）" value="viewer" />
-            <el-option label="operator（操作）" value="operator" />
-          </el-select>
-        </el-form-item>
       </el-form>
 
       <div class="cfg-actions">
@@ -298,7 +291,6 @@ const sso = reactive({
   corpId: '',
   oauthRedirectUri: '',
   frontendUrl: '',
-  autoProvisionRole: '',
 });
 const ssoSaving = ref(false);
 async function loadSso() {
@@ -313,7 +305,6 @@ async function loadSso() {
     sso.corpId = c.corpId || '';
     sso.oauthRedirectUri = c.oauthRedirectUri || '';
     sso.frontendUrl = c.frontendUrl || '';
-    sso.autoProvisionRole = c.autoProvisionRole || '';
   } catch (e) { ElMessage.error(e.message || '加载钉钉 SSO 配置失败'); }
 }
 async function saveSso() {
@@ -326,7 +317,6 @@ async function saveSso() {
       corpId: sso.corpId,
       oauthRedirectUri: sso.oauthRedirectUri,
       frontendUrl: sso.frontendUrl,
-      autoProvisionRole: sso.autoProvisionRole,
     });
     if (r && r.ok) { ElMessage.success('已保存钉钉 SSO 配置'); await loadSso(); }
     else ElMessage.error((r && r.error) || '保存失败');
@@ -345,7 +335,6 @@ async function saveSso() {
 .blk-alert { margin-bottom: var(--sp-16); }
 .muted { color: var(--muted); }
 .sso-form { max-width: 720px; margin-top: var(--sp-8); }
-.sso-select { width: 220px; }
 .cfg-hint { display: block; margin-top: 4px; font-size: var(--el-font-size-extra-small); color: var(--muted); line-height: 1.4; }
 .ding-card { margin-top: var(--sp-16); border: 1px solid #ebeef5; border-radius: 8px; padding: var(--sp-16); }
 .ding-row { display: flex; align-items: center; gap: var(--sp-12); margin-bottom: var(--sp-12); }

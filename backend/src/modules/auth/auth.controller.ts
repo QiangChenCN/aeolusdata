@@ -85,7 +85,6 @@ export class AuthController {
         corpId: String(b?.corpId ?? ''),
         oauthRedirectUri: String(b?.oauthRedirectUri ?? ''),
         frontendUrl: String(b?.frontendUrl ?? ''),
-        autoProvisionRole: String(b?.autoProvisionRole ?? ''),
       });
       return { ok: true };
     } catch (e) {

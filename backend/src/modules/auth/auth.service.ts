@@ -10,7 +10,6 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { randomBytes, scryptSync, timingSafeEqual, createHash } from 'crypto';
 import { ALL_PERMS } from './permissions';
-import { DingtalkSsoService } from './dingtalk-sso.service';
 
 /**
  * RBAC 核心服务（端口自 core/auth.py，纯标准库实现，零第三方依赖）；
@@ -143,10 +142,7 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
   private auditFile = '';
   private sessionsFile = '';
 
-  constructor(
-    private readonly config: ConfigService,
-    private readonly ding: DingtalkSsoService,
-  ) {}
+  constructor(private readonly config: ConfigService) {}
 
   onModuleInit(): void {
     const dataDir = path.join(process.cwd(), 'data');
@@ -573,11 +569,12 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * 钉钉身份 → 本地账号 → 会话。三种结果：
-   *   - { token, role, expiresIn, user }  已绑定且启用 → 直接签发会话（免登/自动登录成功）
-   *   - { needBind:true, unionid, name }  未绑定 → 交由前端提示去绑定
-   * 配置 DT_AUTO_PROVISION_ROLE 后，未绑定用户会自动开户（按该角色），实现「首次访问即自动登录」；
-   * 该开关默认不设置，避免任意钉钉用户都能进系统。
+   * 钉钉身份 → 本地账号 → 会话。两种结果：
+   *   - { token, role, expiresIn, user }  已绑定且启用 → 直接签发会话（免登成功）
+   *   - { needBind:true, unionid, name }  未绑定 → 交由前端引导「先登录再绑定」
+   *
+   * 已移除「未绑定自动开户」：它会凭空造出 dt_<unionid> 这类无法记忆、无法管理的账号。
+   * 现在账号一律由管理员预先创建，用户首次在钉钉内用工号登录时自动完成绑定。
    */
   resolveDingtalkUser(
     unionid: string,
@@ -593,31 +590,6 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
       const r = this.issueSession(u.username, u.role, ip, remember);
       this.audit('login-dingtalk', true, u.username, ip, u.role);
       return { ...r, user: u.username };
-    }
-    // 取「设置页持久化 > 环境变量」的有效值：以前只读环境变量，导致 UI 上选的角色形同虚设。
-    const autoRole = this.ding.autoProvisionRole() || this.config.get<string>('DT_AUTO_PROVISION_ROLE') || '';
-    if (autoRole && !u) {
-      const roles = this.loadRoles();
-      if (roles[autoRole]) {
-        const username = 'dt_' + unionid;
-        users.push({
-          username,
-          // 自动开户无口令：仅允许钉钉登录，禁止账密登录（随机强口令且不可见）
-          pw_hash: this.hashPw(randomBytes(18).toString('hex')),
-          role: autoRole,
-          disabled: false,
-          created_at: nowStr(),
-          failed_attempts: 0,
-          locked_until: 0,
-          pw_history: [],
-          must_change: false,
-          dingtalk_unionid: unionid,
-        });
-        this.saveUsers(users);
-        const r = this.issueSession(username, autoRole, ip, remember);
-        this.audit('login-dingtalk-auto', true, username, ip, autoRole);
-        return { ...r, user: username };
-      }
     }
     if (u && u.disabled) this.audit('login-dingtalk', false, u.username, ip, 'disabled');
     return { needBind: true, unionid, name };

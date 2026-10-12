@@ -29,7 +29,6 @@ export interface DingtalkSsoConfig {
   corpId: string;
   oauthRedirectUri: string;
   frontendUrl: string;
-  autoProvisionRole: string;
 }
 
 export interface DingtalkIdentity {
@@ -69,21 +68,12 @@ export class DingtalkSsoService {
       corpId: (persisted.corpId ?? env('DT_CORP_ID')).trim(),
       oauthRedirectUri: (persisted.oauthRedirectUri ?? env('DT_OAUTH_REDIRECT_URI')).trim(),
       frontendUrl: (persisted.frontendUrl ?? env('DT_FRONTEND_URL')).trim(),
-      autoProvisionRole: (persisted.autoProvisionRole ?? env('DT_AUTO_PROVISION_ROLE')).trim(),
     };
     return this.configCache;
   }
 
   private invalidateCache() {
     this.configCache = null;
-  }
-
-  /**
-   * 「未绑定自动开户」的有效取值：设置页持久化优先，回退环境变量 DT_AUTO_PROVISION_ROLE。
-   * AuthService 此前只读环境变量，导致 UI 上选的角色不生效（历史遗留 bug）。
-   */
-  autoProvisionRole(): string {
-    return this.effectiveConfig().autoProvisionRole || '';
   }
 
   /** 开关 + 凭证双闸门：开关关闭 → 钉钉入口下线；凭证缺失同样不可用（沿用历史行为）。 */
@@ -113,7 +103,6 @@ export class DingtalkSsoService {
       corpId: c.corpId,
       oauthRedirectUri: c.oauthRedirectUri,
       frontendUrl: c.frontendUrl,
-      autoProvisionRole: c.autoProvisionRole,
     };
   }
 
@@ -130,13 +119,12 @@ export class DingtalkSsoService {
       corpId: patch.corpId !== undefined ? patch.corpId : cur.corpId,
       oauthRedirectUri: patch.oauthRedirectUri !== undefined ? patch.oauthRedirectUri : cur.oauthRedirectUri,
       frontendUrl: patch.frontendUrl !== undefined ? patch.frontendUrl : cur.frontendUrl,
-      autoProvisionRole: patch.autoProvisionRole !== undefined ? patch.autoProvisionRole : cur.autoProvisionRole,
     };
     // enabled 总是写入（含 false），其余字段沿用「空字符串表示清空」的约定
     const persist: Partial<DingtalkSsoConfig> = { enabled: next.enabled };
     // 只枚举字符串型字段（enabled 是布尔，上面已单独落盘）
     const keys: (keyof Omit<DingtalkSsoConfig, 'enabled'>)[] = [
-      'appKey', 'appSecret', 'corpId', 'oauthRedirectUri', 'frontendUrl', 'autoProvisionRole',
+      'appKey', 'appSecret', 'corpId', 'oauthRedirectUri', 'frontendUrl',
     ];
     for (const k of keys) {
       const v = (next[k] || '').trim();
