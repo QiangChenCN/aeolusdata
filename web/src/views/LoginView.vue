@@ -92,13 +92,16 @@
             @click="submit"
           >登录</el-button>
 
+          <!-- 钉钉内置浏览器（聊天链接进入）也必须保留这个入口：
+               那里没有工作台微应用上下文，JSAPI 免登会报「没有该域名微应用」，
+               唯一可用的是走 login.dingtalk.com 的 OAuth2 授权。 -->
           <el-button
-            v-if="dtEnabled && !inDingtalk"
+            v-if="dtEnabled"
             size="large"
             class="lf-btn"
             :icon="ChatDotRound"
             @click="openDingtalkOauth"
-          >使用钉钉扫码登录</el-button>
+          >{{ inDingtalk ? '使用钉钉登录' : '使用钉钉扫码登录' }}</el-button>
         </el-form>
 
         <p class="lf-hint">
@@ -180,6 +183,12 @@ function ensureDingtalkJsApi() {
   });
 }
 
+/** 从钉钉返回结果里取出免登码（兼容 {code} / {authCode} / 直接返回字符串三种形态）。 */
+function pickAuthCode(r) {
+  const v = typeof r === 'string' ? r : (r?.code ?? r?.authCode ?? '');
+  return v ? String(v) : '';
+}
+
 // 取免登授权码：优先新版 promise 风格 dd.getAuthCode，回退到经典回调风格
 function getAuthCode(corpId) {
   return new Promise((resolve, reject) => {
@@ -196,13 +205,14 @@ function getAuthCode(corpId) {
     if (typeof dd.getAuthCode === 'function') {
       const p = dd.getAuthCode({ corpId });
       if (p && typeof p.then === 'function') {
-        p.then((r) => resolve(r.code)).catch(fail);
+        // 不同版本 SDK 返回的字段名可能是 code / authCode，这里都兼容，避免取到空串
+        p.then(pickAuthCode).catch(fail);
         return;
       }
     }
     dd.runtime?.permission?.requestAuthCode({
       corpId,
-      onSuccess: (r) => resolve(r.code),
+      onSuccess: pickAuthCode,
       onFail: fail,
     });
   });
@@ -238,7 +248,9 @@ async function autoDingtalkLogin() {
     dtStatus.value = 'failed';
     // eslint-disable-next-line no-console
     console.error('[钉钉免登失败]', e);
-    dtMessage.value = '钉钉自动登录失败：' + errText(e) + '（可用账号密码登录）';
+    dtMessage.value =
+      '钉钉自动登录失败：' + errText(e) + '（可用账号密码登录' +
+      (dtAuthorizeUrl.value ? '，或点击下方「使用钉钉登录」走授权登录' : '') + '）';
     dtLoading.value = false;
   }
 }
@@ -252,6 +264,14 @@ function errText(e) {
 }
 
 onMounted(async () => {
+  // OAuth 回跳后未绑定 → 后端会重定向到 /login?dingtalk=needbind&unionid=…。
+  // 此前这里既不提示也不引导，用户看到的只是「点完登录没反应」，因此补一条明确说明：
+  // 账密登录成功会自动把当前钉钉身份绑定到本账号，下次即可免登。
+  if (route.query.dingtalk === 'needbind' && typeof route.query.unionid === 'string') {
+    dtStatus.value = 'unbound';
+    dtMessage.value =
+      '钉钉已认证成功，但该钉钉身份尚未绑定本系统账号。请用工号密码登录 —— 登录成功后会自动完成绑定，之后即可直接免登。';
+  }
   try {
     const cfg = await dingtalkConfig();
     if (cfg && cfg.enabled) {
