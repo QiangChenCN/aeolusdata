@@ -92,16 +92,15 @@
             @click="submit"
           >登录</el-button>
 
-          <!-- 钉钉内置浏览器（聊天链接进入）也必须保留这个入口：
-               那里没有工作台微应用上下文，JSAPI 免登会报「没有该域名微应用」，
-               唯一可用的是走 login.dingtalk.com 的 OAuth2 授权。 -->
+          <!-- 仅在非钉钉环境（普通浏览器）显示：钉钉容器内统一走 JSAPI 免登，
+               不再额外给出 OAuth2 授权入口（扫码登录按钮对手机端无意义）。 -->
           <el-button
-            v-if="dtEnabled"
+            v-if="dtEnabled && !inDingtalk"
             size="large"
             class="lf-btn"
             :icon="ChatDotRound"
             @click="openDingtalkOauth"
-          >{{ inDingtalk ? '使用钉钉登录' : '使用钉钉扫码登录' }}</el-button>
+          >使用钉钉扫码登录</el-button>
         </el-form>
 
         <p class="lf-hint">
@@ -177,8 +176,16 @@ function ensureDingtalkJsApi() {
     if (window.dd) return resolve();
     const s = document.createElement('script');
     s.src = 'https://g.alicdn.com/dingding/dingtalk-jsapi/3.0.25/dingtalk.open.js';
-    s.onload = () => resolve();
-    s.onerror = () => reject(new Error('钉钉 JSAPI 脚本加载失败'));
+    // 脚本既不 onload 也不 onerror 时（网络被静默拦截等）不能无限等，否则界面永远卡住
+    const timer = setTimeout(() => reject(new Error('钉钉 JSAPI 脚本加载超时')), 10000);
+    s.onload = () => {
+      clearTimeout(timer);
+      resolve();
+    };
+    s.onerror = () => {
+      clearTimeout(timer);
+      reject(new Error('钉钉 JSAPI 脚本加载失败'));
+    };
     document.head.appendChild(s);
   });
 }
@@ -189,32 +196,76 @@ function pickAuthCode(r) {
   return v ? String(v) : '';
 }
 
-// 取免登授权码：优先新版 promise 风格 dd.getAuthCode，回退到经典回调风格
-function getAuthCode(corpId) {
+// 取免登授权码：优先新版 promise 风格 dd.getAuthCode，回退到经典回调风格。
+//
+// 必须自带超时 + 能力检测：某些环境下 SDK 既不 resolve 也不 reject，或根本没有可用的
+// 免登 API（可选链会让调用静默变成 no-op），Promise 永不落定 → 页面一直卡在
+// 「正在通过钉钉自动登录……」。这两种情况都要变成明确失败，好让页面露出备用入口。
+function getAuthCode(corpId, timeoutMs = 8000) {
   return new Promise((resolve, reject) => {
     const dd = window.dd;
     if (!dd) return reject(new Error('钉钉 JSAPI 未就绪'));
+
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      reject(new Error('获取免登码超时（钉钉 JSAPI 无响应）'));
+    }, timeoutMs);
+
     // 把任意拒绝值（钉钉 SDK 常拒绝为 {errCode,errMsg} 对象而非 Error）统一转成可读字符串
-    const fail = (e) =>
+    const fail = (e) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
       reject(
         new Error(
           e?.errMsg || e?.errorMessage || e?.message ||
             (typeof e === 'string' ? e : JSON.stringify(e)) || '获取免登码失败',
         ),
       );
-    if (typeof dd.getAuthCode === 'function') {
-      const p = dd.getAuthCode({ corpId });
+    };
+    // 成功也做收敛：拿到空码视同失败，别把空串发到后端
+    const done = (r) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      const code = pickAuthCode(r);
+      if (code) resolve(code);
+      else fail({ errMsg: '钉钉返回的免登码为空' });
+    };
+
+    const hasNew = typeof dd.getAuthCode === 'function';
+    const hasOld = !!dd.runtime?.permission?.requestAuthCode;
+    if (!hasNew && !hasOld) {
+      settled = true;
+      clearTimeout(timer);
+      return reject(new Error('当前环境不支持钉钉免登（缺少 getAuthCode / requestAuthCode）'));
+    }
+
+    if (hasNew) {
+      let p = null;
+      try {
+        p = dd.getAuthCode({ corpId });
+      } catch (e) {
+        return fail(e);
+      }
       if (p && typeof p.then === 'function') {
-        // 不同版本 SDK 返回的字段名可能是 code / authCode，这里都兼容，避免取到空串
-        p.then(pickAuthCode).catch(fail);
+        p.then(done).catch(fail);
         return;
       }
+      // 非 promise 形态（老 SDK 可能直接返回 undefined）→ 继续尝试回调风格
     }
-    dd.runtime?.permission?.requestAuthCode({
-      corpId,
-      onSuccess: pickAuthCode,
-      onFail: fail,
-    });
+
+    if (hasOld) {
+      dd.runtime.permission.requestAuthCode({ corpId, onSuccess: done, onFail: fail });
+      return;
+    }
+
+    // 新版调用没产生 promise、又没有老接口 → 不能干等
+    settled = true;
+    clearTimeout(timer);
+    reject(new Error('钉钉免登调用未返回结果'));
   });
 }
 
@@ -250,7 +301,7 @@ async function autoDingtalkLogin() {
     console.error('[钉钉免登失败]', e);
     dtMessage.value =
       '钉钉自动登录失败：' + errText(e) + '（可用账号密码登录' +
-      (dtAuthorizeUrl.value ? '，或点击下方「使用钉钉登录」走授权登录' : '') + '）';
+      (!inDingtalk.value && dtAuthorizeUrl.value ? '，或点击下方「使用钉钉扫码登录」' : '') + '）';
     dtLoading.value = false;
   }
 }
