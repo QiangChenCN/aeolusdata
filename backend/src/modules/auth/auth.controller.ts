@@ -79,6 +79,7 @@ export class AuthController {
   dingtalkSsoSave(@Body() b: Record<string, any>) {
     try {
       this.ding.saveSettingsConfig({
+        enabled: b?.enabled === undefined ? undefined : b.enabled === true || b.enabled === 'true' || b.enabled === '1',
         appKey: String(b?.appKey ?? ''),
         appSecret: String(b?.appSecret ?? ''),
         corpId: String(b?.corpId ?? ''),

@@ -10,6 +10,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { randomBytes, scryptSync, timingSafeEqual, createHash } from 'crypto';
 import { ALL_PERMS } from './permissions';
+import { DingtalkSsoService } from './dingtalk-sso.service';
 
 /**
  * RBAC 核心服务（端口自 core/auth.py，纯标准库实现，零第三方依赖）；
@@ -142,7 +143,10 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
   private auditFile = '';
   private sessionsFile = '';
 
-  constructor(private readonly config: ConfigService) {}
+  constructor(
+    private readonly config: ConfigService,
+    private readonly ding: DingtalkSsoService,
+  ) {}
 
   onModuleInit(): void {
     const dataDir = path.join(process.cwd(), 'data');
@@ -590,7 +594,8 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
       this.audit('login-dingtalk', true, u.username, ip, u.role);
       return { ...r, user: u.username };
     }
-    const autoRole = this.config.get<string>('DT_AUTO_PROVISION_ROLE');
+    // 取「设置页持久化 > 环境变量」的有效值：以前只读环境变量，导致 UI 上选的角色形同虚设。
+    const autoRole = this.ding.autoProvisionRole() || this.config.get<string>('DT_AUTO_PROVISION_ROLE') || '';
     if (autoRole && !u) {
       const roles = this.loadRoles();
       if (roles[autoRole]) {

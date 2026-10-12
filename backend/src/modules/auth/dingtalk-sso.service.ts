@@ -19,6 +19,11 @@ import * as path from 'path';
  * false，相关端点返回友好提示，不影响既有的账密登录。
  */
 export interface DingtalkSsoConfig {
+  /**
+   * 前台开关：false 时即使 AppKey/AppSecret 齐全也不展示钉钉登录入口（保留已填凭证，便于灰度/临时下线）。
+   * 配置文件里没有该字段时（历史部署）沿用旧语义：凭证齐全即启用。
+   */
+  enabled: boolean;
   appKey: string;
   appSecret: string;
   corpId: string;
@@ -54,9 +59,13 @@ export class DingtalkSsoService {
       this.logger.warn('读取钉钉 SSO 配置失败，改用环境变量: ' + (e as Error).message);
     }
     const env = (k: string) => this.config.get<string>(k) || '';
+    const appKey = (persisted.appKey ?? env('DT_APP_KEY')).trim();
+    const appSecret = (persisted.appSecret ?? env('DT_APP_SECRET')).trim();
     this.configCache = {
-      appKey: (persisted.appKey ?? env('DT_APP_KEY')).trim(),
-      appSecret: (persisted.appSecret ?? env('DT_APP_SECRET')).trim(),
+      // enabled 未显式持久化（历史配置文件 / 纯环境变量部署）→ 沿用旧语义：凭证齐全即启用
+      enabled: typeof persisted.enabled === 'boolean' ? persisted.enabled : !!(appKey && appSecret),
+      appKey,
+      appSecret,
       corpId: (persisted.corpId ?? env('DT_CORP_ID')).trim(),
       oauthRedirectUri: (persisted.oauthRedirectUri ?? env('DT_OAUTH_REDIRECT_URI')).trim(),
       frontendUrl: (persisted.frontendUrl ?? env('DT_FRONTEND_URL')).trim(),
@@ -69,9 +78,18 @@ export class DingtalkSsoService {
     this.configCache = null;
   }
 
+  /**
+   * 「未绑定自动开户」的有效取值：设置页持久化优先，回退环境变量 DT_AUTO_PROVISION_ROLE。
+   * AuthService 此前只读环境变量，导致 UI 上选的角色不生效（历史遗留 bug）。
+   */
+  autoProvisionRole(): string {
+    return this.effectiveConfig().autoProvisionRole || '';
+  }
+
+  /** 开关 + 凭证双闸门：开关关闭 → 钉钉入口下线；凭证缺失同样不可用（沿用历史行为）。 */
   isEnabled(): boolean {
     const c = this.effectiveConfig();
-    return !!(c.appKey && c.appSecret);
+    return !!c.enabled && !!c.appKey && !!c.appSecret;
   }
 
   /** 给前端的公开配置：是否启用、corpId（JSAPI 免登需要）、OAuth 授权页地址。 */
@@ -85,7 +103,10 @@ export class DingtalkSsoService {
   getSettingsConfig(): Record<string, unknown> {
     const c = this.effectiveConfig();
     return {
-      enabled: this.isEnabled(),
+      // enabled = 开关本身的配置值（供设置页的 switch 回填）；active = 实际生效与否
+      enabled: !!c.enabled,
+      active: this.isEnabled(),
+      credReady: !!(c.appKey && c.appSecret),
       appKey: c.appKey,
       appSecretSet: !!c.appSecret,
       appSecret: '',
@@ -101,6 +122,8 @@ export class DingtalkSsoService {
   saveSettingsConfig(patch: Partial<DingtalkSsoConfig>): void {
     const cur = this.effectiveConfig();
     const next: DingtalkSsoConfig = {
+      // 开关是布尔值，必须原样承接（false 也是有效值，不能被「假值清空」吃掉）
+      enabled: typeof patch.enabled === 'boolean' ? patch.enabled : cur.enabled,
       appKey: patch.appKey !== undefined ? patch.appKey : cur.appKey,
       // appSecret 为空 => 保留当前值（UI 约定：未重填即不改）；非空 => 覆盖
       appSecret: patch.appSecret && patch.appSecret.trim() ? patch.appSecret : cur.appSecret,
@@ -109,8 +132,10 @@ export class DingtalkSsoService {
       frontendUrl: patch.frontendUrl !== undefined ? patch.frontendUrl : cur.frontendUrl,
       autoProvisionRole: patch.autoProvisionRole !== undefined ? patch.autoProvisionRole : cur.autoProvisionRole,
     };
-    const persist: Partial<DingtalkSsoConfig> = {};
-    const keys: (keyof DingtalkSsoConfig)[] = [
+    // enabled 总是写入（含 false），其余字段沿用「空字符串表示清空」的约定
+    const persist: Partial<DingtalkSsoConfig> = { enabled: next.enabled };
+    // 只枚举字符串型字段（enabled 是布尔，上面已单独落盘）
+    const keys: (keyof Omit<DingtalkSsoConfig, 'enabled'>)[] = [
       'appKey', 'appSecret', 'corpId', 'oauthRedirectUri', 'frontendUrl', 'autoProvisionRole',
     ];
     for (const k of keys) {
@@ -193,7 +218,9 @@ export class DingtalkSsoService {
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ authCode }),
+        // 注意：该接口的免登码参数名是 `code`（不是 authCode），名字写错会返回
+        // errcode=40 "Missing required arguments:code"。
+        body: JSON.stringify({ code: authCode }),
       },
     );
     const info = await infoRes.json().catch(() => ({}));
