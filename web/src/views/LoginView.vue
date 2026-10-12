@@ -136,6 +136,8 @@ const inDingtalk = ref(false);
 const dtLoading = ref(false);
 const dtStatus = ref(''); // idle | logging | unbound | failed
 const dtMessage = ref('');
+/** 免登返回「未绑定」时记住的钉钉身份，待账密登录成功后自动绑定。 */
+const pendingUnionid = ref('');
 
 const canGoBack = computed(() => window.history.length > 1);
 function goBack() { if (window.history.length > 1) router.back(); }
@@ -152,10 +154,23 @@ async function submit() {
   loading.value = true;
   try {
     await auth.signin(username.value, password.value, remember.value);
-    // 从钉钉内首次进入且未绑定：账密登录成功后自动把本账号绑定到该钉钉 ID，
-    // 之后再次进入即可 JSAPI 免登（无需管理员介入）。
-    if (route.query.dingtalk === 'needbind' && typeof route.query.unionid === 'string') {
-      try { await dingtalkBind(undefined, route.query.unionid); } catch (e) { /* 绑定失败不影响登录 */ }
+    // 登录成功后，若有「待绑定的钉钉身份」则自动绑定当前账号：
+    //   · 钉钉内免登未绑定（pendingUnionid）
+    //   · 浏览器 OAuth 回跳未绑定（URL 上带 dingtalk=needbind&unionid=…）
+    // 绑定后下次打开即可直接免登；失败不影响本次登录。
+    const uid =
+      pendingUnionid.value ||
+      (route.query.dingtalk === 'needbind' && typeof route.query.unionid === 'string'
+        ? route.query.unionid
+        : '');
+    if (uid) {
+      try {
+        await dingtalkBind(undefined, uid);
+      } catch (e) {
+        // 绑定失败不影响本次登录（下次仍会提示绑定，也可由管理员在账号管理中处理）
+        // eslint-disable-next-line no-console
+        console.warn('[钉钉绑定失败]', e);
+      }
     }
     router.replace(redirectTarget());
   } catch (e) {
@@ -286,9 +301,12 @@ async function autoDingtalkLogin() {
       }
     } else if (data && data.needBind) {
       dtStatus.value = 'unbound';
+      // 记住这个钉钉身份：用户用已分配的账号登录后会自动完成绑定，之后即可免登。
+      // 不再依赖管理员手工绑定，也不再自动开户（那样会造出 dt_<unionid> 这类无意义的账号）。
+      pendingUnionid.value = data.unionid || '';
       dtMessage.value =
-        `您的钉钉账号（ID: ${data.unionid}）尚未绑定本系统账号。` +
-        `请用工号密码登录后，由管理员在「账号管理」中绑定该钉钉 ID，之后即可免登。`;
+        '该钉钉身份尚未绑定本系统账号。请用你已分配的账号（工号）登录 —— ' +
+        '登录成功后会自动绑定当前钉钉，下次打开即可直接免登。';
       dtLoading.value = false;
       return;
     }
