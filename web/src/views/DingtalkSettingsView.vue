@@ -57,7 +57,6 @@
         <el-tag :type="sso.enabled ? 'success' : 'info'" size="small" effect="light" class="blk-tag">
           {{ sso.enabled ? '已启用' : '未启用' }}
         </el-tag>
-        <span class="blk-sub">配置后无需修改服务器 .env，保存即生效</span>
       </template>
 
       <el-alert
@@ -68,9 +67,9 @@
         title="AppKey / AppSecret 未填写时，钉钉登录入口不会显示，系统仅保留账密登录。"
       />
 
-      <el-form label-width="160px" class="sso-form">
+      <el-form label-width="160px" label-position="left" class="sso-form">
         <el-form-item label="AppKey">
-          <el-input v-model="sso.appKey" placeholder="钉钉企业内部应用的 AppKey" size="small" />
+          <el-input v-model="sso.appKey" placeholder="钉钉企业内部应用的 AppKey" />
         </el-form-item>
         <el-form-item label="AppSecret">
           <el-input
@@ -78,47 +77,42 @@
             :placeholder="sso.appSecretSet ? '已设置，修改请重填；留空保持不变' : '钉钉企业内部应用的 AppSecret'"
             type="password"
             show-password
-            size="small"
           />
         </el-form-item>
         <el-form-item label="CorpId">
-          <el-input v-model="sso.corpId" placeholder="企业 CorpId（JSAPI 免登需要）" size="small" />
+          <el-input v-model="sso.corpId" placeholder="企业 CorpId（JSAPI 免登需要）" />
         </el-form-item>
         <el-form-item label="OAuth2 回跳地址">
           <el-input
             v-model="sso.oauthRedirectUri"
             placeholder="https://你的域名/api/auth/dingtalk/oauth-callback"
-            size="small"
           />
           <span class="cfg-hint">浏览器独立访问扫码登录用，须在钉钉后台「登录与分享 → 回调域名」登记该域名。</span>
         </el-form-item>
         <el-form-item label="前端地址">
-          <el-input v-model="sso.frontendUrl" placeholder="留空则自动取请求来源（同域部署可留空）" size="small" />
+          <el-input v-model="sso.frontendUrl" placeholder="留空则自动取请求来源（同域部署可留空）" />
         </el-form-item>
         <el-form-item label="未绑定自动开户">
-          <el-select v-model="sso.autoProvisionRole" size="small" class="sso-select">
+          <el-select v-model="sso.autoProvisionRole" class="sso-select">
             <el-option label="关闭（需先绑定）" value="" />
             <el-option label="viewer（只读）" value="viewer" />
             <el-option label="operator（操作）" value="operator" />
           </el-select>
-          <span class="cfg-hint">开启后，钉钉内首次访问且未绑定的账号将按所选角色自动开户并登录。</span>
         </el-form-item>
       </el-form>
 
       <div class="cfg-actions">
         <el-button type="primary" :loading="ssoSaving" @click="saveSso">保存配置</el-button>
-        <span class="muted">保存后会即时写入服务器并生效，无需重启服务。</span>
       </div>
     </el-card>
 
     <!-- DWS 配置项 -->
     <el-card class="blk" shadow="never">
       <template #header>
-        <span class="blk-h">DWS 配置项</span>
-        <span class="blk-sub">基于 dws CLI，共 {{ items.length }} 项 · {{ categories.length }} 类</span>
+        <span class="blk-h">钉钉DWS 配置</span>
       </template>
 
-      <el-collapse v-model="activeGroups">
+      <el-collapse v-model="activeGroups" accordion>
         <el-collapse-item
           v-for="g in grouped"
           :key="g.cat"
@@ -136,14 +130,12 @@
               :placeholder="origSensitive[it.key] ? '已设置，修改请重填；留空保持不变' : '未设置'"
               type="password"
               show-password
-              size="small"
               class="cfg-input"
             />
             <el-input
               v-else
               v-model="form[it.key]"
               :placeholder="'默认：' + it.default"
-              size="small"
               class="cfg-input"
             />
           </div>
@@ -152,9 +144,6 @@
 
       <div class="cfg-actions">
         <el-button type="primary" :loading="saving" @click="save">保存配置</el-button>
-        <span class="muted">
-          修改后重新执行相关 dws 操作即生效；非敏感项留空将恢复 dws 内置默认，敏感项留空则保持不变。
-        </span>
       </div>
     </el-card>
   </div>
@@ -256,8 +245,8 @@ const items = ref([]);
 const form = reactive({});
 const origSensitive = reactive({});
 const saving = ref(false);
-// 默认全部折叠，用户按需展开；之前默认展开 8 类显得过长。
-const activeGroups = ref([]);
+// 手风琴模式：同时只展开一组，默认全部折叠。
+const activeGroups = ref('');
 
 const categories = computed(() => [...new Set(items.value.map((i) => i.category))]);
 const grouped = computed(() =>
@@ -359,12 +348,12 @@ async function saveSso() {
 .ding-row { display: flex; align-items: center; gap: var(--sp-12); margin-bottom: var(--sp-12); }
 .ding-k { width: 72px; color: var(--muted); flex: none; }
 .ding-code { font-size: 18px; letter-spacing: 2px; background: #f5f7fa; padding: 2px 8px; border-radius: 4px; }
-.cfg-row { display: flex; align-items: flex-start; gap: var(--sp-16); padding: var(--sp-8) 0; border-bottom: 1px dashed #f0f0f0; }
+.cfg-row { display: flex; flex-direction: column; align-items: stretch; gap: var(--sp-8); padding: var(--sp-12) 0; border-bottom: 1px dashed #f0f0f0; }
 .cfg-row:last-child { border-bottom: none; }
-.cfg-meta { flex: 1; min-width: 0; }
+.cfg-meta { min-width: 0; }
 .cfg-key { font-size: var(--el-font-size-small); color: var(--text); background: #f5f7fa; padding: 1px 6px; border-radius: 4px; }
 .cfg-desc { display: block; margin-top: 4px; font-size: var(--el-font-size-extra-small); color: var(--muted); line-height: 1.4; }
-.cfg-input { width: 360px; flex: none; }
+.cfg-input { width: 360px; max-width: 100%; }
 .cfg-actions { margin-top: var(--sp-16); display: flex; align-items: center; gap: var(--sp-12); flex-wrap: wrap; }
 .ding-ok { border: 1px solid #e1f3d8; background: #f0f9eb; border-radius: 8px; padding: var(--sp-16); }
 .ding-ok-head { display: flex; align-items: center; gap: var(--sp-12); margin-bottom: var(--sp-12); }

@@ -36,7 +36,6 @@
   /* 圆角 / 字号 / 控件高度 对齐令牌 */
   --el-border-radius-base: var(--r-xl);
   --el-border-radius-small: var(--r-md);
-  --el-component-size: var(--ctrl-h);
 
   /* 阴影 */
   --el-box-shadow-light: var(--shadow-2);
