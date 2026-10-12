@@ -54,17 +54,16 @@
     <el-card class="blk" shadow="never">
       <template #header>
         <span class="blk-h">钉钉单点登录 (SSO) 配置</span>
-        <el-tag :type="sso.enabled ? 'success' : 'info'" size="small" effect="light" class="blk-tag">
-          {{ sso.enabled ? '已启用' : '未启用' }}
-        </el-tag>
+        <el-switch v-model="sso.enabled" class="blk-switch" active-text="启用" inactive-text="停用" inline-prompt />
+        <span class="blk-sub">停用时不改变已填凭证，钉钉登录入口即刻下线</span>
       </template>
 
       <el-alert
-        v-if="!sso.enabled"
+        v-if="!sso.active"
         type="warning"
         :closable="false"
         class="blk-alert"
-        title="AppKey / AppSecret 未填写时，钉钉登录入口不会显示，系统仅保留账密登录。"
+        title="钉钉登录当前不会生效：需要 AppKey / AppSecret 齐全且上方开关为「启用」（关闭本开关即临时下线钉钉登录，系统仅保留账密登录）。"
       />
 
       <el-form label-width="160px" label-position="left" class="sso-form">
@@ -291,6 +290,8 @@ onUnmounted(stopDingPoll);
 /* ---------------- 钉钉 SSO 配置 ---------------- */
 const sso = reactive({
   enabled: false,
+  // 实际生效状态（开关开 且 AppKey/AppSecret 齐全）
+  active: false,
   appKey: '',
   appSecret: '',
   appSecretSet: false,
@@ -305,6 +306,7 @@ async function loadSso() {
     const r = await getSsoConfig();
     const c = (r && r.config) || {};
     sso.enabled = !!c.enabled;
+    sso.active = !!c.active;
     sso.appKey = c.appKey || '';
     sso.appSecret = '';
     sso.appSecretSet = !!c.appSecretSet;
@@ -318,6 +320,7 @@ async function saveSso() {
   ssoSaving.value = true;
   try {
     const r = await saveSsoConfig({
+      enabled: sso.enabled,
       appKey: sso.appKey,
       appSecret: sso.appSecret, // 留空 = 保持不变（已设置时）
       corpId: sso.corpId,
@@ -338,7 +341,7 @@ async function saveSso() {
 .blk { margin-bottom: var(--sp-16); }
 .blk-h { font-size: var(--el-font-size-medium); font-weight: var(--fw-semibold); }
 .blk-sub { margin-left: var(--sp-12); font-size: var(--el-font-size-extra-small); color: var(--muted); }
-.blk-tag { margin-left: var(--sp-8); }
+.blk-switch { margin-left: var(--sp-12); vertical-align: middle; }
 .blk-alert { margin-bottom: var(--sp-16); }
 .muted { color: var(--muted); }
 .sso-form { max-width: 720px; margin-top: var(--sp-8); }
