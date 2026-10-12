@@ -215,6 +215,10 @@ export function dingAuthLogout() { return request('/ding/auth/logout', j({})); }
 export function dingConfig() { return request('/ding/config'); }
 export function saveDingConfig(patch = {}) { return request('/ding/config', j({ patch })); }
 
+// 钉钉 SSO（免登 / OAuth2 扫码）配置：前端可持久化，无需改 .env
+export function getSsoConfig() { return request('/auth/dingtalk/sso-config'); }
+export function saveSsoConfig(patch = {}) { return request('/auth/dingtalk/sso-config', j(patch)); }
+
 /* ============ 风神账号配置（WebUI 系统设置） ============ */
 export function fetchAeolusCreds() { return request('/fetch/settings/aeolus'); }
 export function saveAeolusCreds({ account, password } = {}) {

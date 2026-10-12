@@ -78,6 +78,8 @@ backend/data/.pwpolicy.json
 # RBAC 会话快照（含活跃会话令牌，跨重启保留登录态；本地状态，绝不提交）
 backend/data/.sessions.json
 backend/data/.sessions.json.tmp
+# 钉钉 SSO 配置（AppKey/Secret 等凭据，由前端「钉钉设置」页持久化；本地状态，绝不提交）
+backend/data/.dingtalk_sso.json
 
 # 后端运行期数据 / 日志 / 截图（可重建，不提交）
 backend/runs/

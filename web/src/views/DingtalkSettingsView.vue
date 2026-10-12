@@ -50,6 +50,67 @@
       </div>
     </el-card>
 
+    <!-- 钉钉单点登录(SSO)配置 -->
+    <el-card class="blk" shadow="never">
+      <template #header>
+        <span class="blk-h">钉钉单点登录 (SSO) 配置</span>
+        <el-tag :type="sso.enabled ? 'success' : 'info'" size="small" effect="light" class="blk-tag">
+          {{ sso.enabled ? '已启用' : '未启用' }}
+        </el-tag>
+        <span class="blk-sub">配置后无需修改服务器 .env，保存即生效</span>
+      </template>
+
+      <el-alert
+        v-if="!sso.enabled"
+        type="warning"
+        :closable="false"
+        class="blk-alert"
+        title="AppKey / AppSecret 未填写时，钉钉登录入口不会显示，系统仅保留账密登录。"
+      />
+
+      <el-form label-width="160px" class="sso-form">
+        <el-form-item label="AppKey">
+          <el-input v-model="sso.appKey" placeholder="钉钉企业内部应用的 AppKey" size="small" />
+        </el-form-item>
+        <el-form-item label="AppSecret">
+          <el-input
+            v-model="sso.appSecret"
+            :placeholder="sso.appSecretSet ? '已设置，修改请重填；留空保持不变' : '钉钉企业内部应用的 AppSecret'"
+            type="password"
+            show-password
+            size="small"
+          />
+        </el-form-item>
+        <el-form-item label="CorpId">
+          <el-input v-model="sso.corpId" placeholder="企业 CorpId（JSAPI 免登需要）" size="small" />
+        </el-form-item>
+        <el-form-item label="OAuth2 回跳地址">
+          <el-input
+            v-model="sso.oauthRedirectUri"
+            placeholder="https://你的域名/api/auth/dingtalk/oauth-callback"
+            size="small"
+          />
+          <span class="cfg-hint">浏览器独立访问扫码登录用，须在钉钉后台「登录与分享 → 回调域名」登记该域名。</span>
+        </el-form-item>
+        <el-form-item label="前端地址">
+          <el-input v-model="sso.frontendUrl" placeholder="留空则自动取请求来源（同域部署可留空）" size="small" />
+        </el-form-item>
+        <el-form-item label="未绑定自动开户">
+          <el-select v-model="sso.autoProvisionRole" size="small" class="sso-select">
+            <el-option label="关闭（需先绑定）" value="" />
+            <el-option label="viewer（只读）" value="viewer" />
+            <el-option label="operator（操作）" value="operator" />
+          </el-select>
+          <span class="cfg-hint">开启后，钉钉内首次访问且未绑定的账号将按所选角色自动开户并登录。</span>
+        </el-form-item>
+      </el-form>
+
+      <div class="cfg-actions">
+        <el-button type="primary" :loading="ssoSaving" @click="saveSso">保存配置</el-button>
+        <span class="muted">保存后会即时写入服务器并生效，无需重启服务。</span>
+      </div>
+    </el-card>
+
     <!-- DWS 配置项 -->
     <el-card class="blk" shadow="never">
       <template #header>
@@ -108,6 +169,8 @@ import {
   dingAuthLogout,
   dingConfig,
   saveDingConfig,
+  getSsoConfig,
+  saveSsoConfig,
 } from '../api/dashboards.js';
 
 const app = useAppStore();
@@ -233,8 +296,51 @@ async function save() {
   finally { saving.value = false; }
 }
 
-onMounted(() => { dingRefresh(); loadConfig(); });
+onMounted(() => { dingRefresh(); loadConfig(); loadSso(); });
 onUnmounted(stopDingPoll);
+
+/* ---------------- 钉钉 SSO 配置 ---------------- */
+const sso = reactive({
+  enabled: false,
+  appKey: '',
+  appSecret: '',
+  appSecretSet: false,
+  corpId: '',
+  oauthRedirectUri: '',
+  frontendUrl: '',
+  autoProvisionRole: '',
+});
+const ssoSaving = ref(false);
+async function loadSso() {
+  try {
+    const r = await getSsoConfig();
+    const c = (r && r.config) || {};
+    sso.enabled = !!c.enabled;
+    sso.appKey = c.appKey || '';
+    sso.appSecret = '';
+    sso.appSecretSet = !!c.appSecretSet;
+    sso.corpId = c.corpId || '';
+    sso.oauthRedirectUri = c.oauthRedirectUri || '';
+    sso.frontendUrl = c.frontendUrl || '';
+    sso.autoProvisionRole = c.autoProvisionRole || '';
+  } catch (e) { ElMessage.error(e.message || '加载钉钉 SSO 配置失败'); }
+}
+async function saveSso() {
+  ssoSaving.value = true;
+  try {
+    const r = await saveSsoConfig({
+      appKey: sso.appKey,
+      appSecret: sso.appSecret, // 留空 = 保持不变（已设置时）
+      corpId: sso.corpId,
+      oauthRedirectUri: sso.oauthRedirectUri,
+      frontendUrl: sso.frontendUrl,
+      autoProvisionRole: sso.autoProvisionRole,
+    });
+    if (r && r.ok) { ElMessage.success('已保存钉钉 SSO 配置'); await loadSso(); }
+    else ElMessage.error((r && r.error) || '保存失败');
+  } catch (e) { ElMessage.error(e.message || '保存失败'); }
+  finally { ssoSaving.value = false; }
+}
 </script>
 
 <style scoped>
@@ -243,7 +349,12 @@ onUnmounted(stopDingPoll);
 .blk { margin-bottom: var(--sp-16); }
 .blk-h { font-size: var(--el-font-size-medium); font-weight: var(--fw-semibold); }
 .blk-sub { margin-left: var(--sp-12); font-size: var(--el-font-size-extra-small); color: var(--muted); }
+.blk-tag { margin-left: var(--sp-8); }
+.blk-alert { margin-bottom: var(--sp-16); }
 .muted { color: var(--muted); }
+.sso-form { max-width: 720px; margin-top: var(--sp-8); }
+.sso-select { width: 220px; }
+.cfg-hint { display: block; margin-top: 4px; font-size: var(--el-font-size-extra-small); color: var(--muted); line-height: 1.4; }
 .ding-card { margin-top: var(--sp-16); border: 1px solid #ebeef5; border-radius: 8px; padding: var(--sp-16); }
 .ding-row { display: flex; align-items: center; gap: var(--sp-12); margin-bottom: var(--sp-12); }
 .ding-k { width: 72px; color: var(--muted); flex: none; }

@@ -67,6 +67,31 @@ export class AuthController {
     return this.ding.getPublicConfig();
   }
 
+  /** 设置页读取钉钉 SSO 配置（脱敏；appSecret 不返回明文）。需 admin:bot。 */
+  @Get('dingtalk/sso-config')
+  dingtalkSsoConfig() {
+    return { ok: true, config: this.ding.getSettingsConfig() };
+  }
+
+  /** 设置页保存钉钉 SSO 配置（持久化到 backend/data/.dingtalk_sso.json）。需 admin:bot。 */
+  @Post('dingtalk/sso-config')
+  @HttpCode(200)
+  dingtalkSsoSave(@Body() b: Record<string, any>) {
+    try {
+      this.ding.saveSettingsConfig({
+        appKey: String(b?.appKey ?? ''),
+        appSecret: String(b?.appSecret ?? ''),
+        corpId: String(b?.corpId ?? ''),
+        oauthRedirectUri: String(b?.oauthRedirectUri ?? ''),
+        frontendUrl: String(b?.frontendUrl ?? ''),
+        autoProvisionRole: String(b?.autoProvisionRole ?? ''),
+      });
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, error: (e as Error).message };
+    }
+  }
+
   /**
    * 钉钉工作台内 JSAPI 免登：前端 `dd.getAuthCode` 取 authCode 后调用。
    * 成功返回 token（前端改用 X-Token 头携带，绕开 iframe 第三方 Cookie 限制）；

@@ -47,6 +47,8 @@ export const GET_ROUTE_PERMS: Record<string, string> = {
   '/api/ding/auth/status': 'admin:bot',
   // 钉钉 DWS 配置读取（系统设置页）：限管理员机器人配置权限，绕过 machine 前缀
   '/api/ding/config': 'admin:bot',
+  // 钉钉 SSO 配置读取（系统设置页）：限管理员机器人配置权限
+  '/api/auth/dingtalk/sso-config': 'admin:bot',
 };
 
 export const POST_ROUTE_PERMS: Record<string, string> = {
@@ -87,6 +89,8 @@ export const POST_ROUTE_PERMS: Record<string, string> = {
   '/api/ding/auth/logout': 'admin:bot',
   // 钉钉 DWS 配置保存（系统设置页）：限管理员机器人配置权限，绕过 machine 前缀
   '/api/ding/config': 'admin:bot',
+  // 钉钉 SSO 配置保存（系统设置页）：限管理员机器人配置权限
+  '/api/auth/dingtalk/sso-config': 'admin:bot',
   '/api/service-quality/targets': 'config:write',
   '/api/account/change-pw': 'self',
 };
