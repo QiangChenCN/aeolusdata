@@ -4,6 +4,7 @@ import { DataPermService } from './data-perm.service';
 import { AuthController } from './auth.controller';
 import { AccountController } from './account.controller';
 import { AdminController } from './admin.controller';
+import { DingtalkSsoService } from './dingtalk-sso.service';
 import { ComputeModule } from '../compute/compute.module';
 
 @Module({
@@ -11,7 +12,7 @@ import { ComputeModule } from '../compute/compute.module';
   // 因此经 ComputePort 复用 /api/teams 的取数结果。
   imports: [ComputeModule],
   controllers: [AuthController, AccountController, AdminController],
-  providers: [AuthService, DataPermService],
-  exports: [AuthService, DataPermService],
+  providers: [AuthService, DataPermService, DingtalkSsoService],
+  exports: [AuthService, DataPermService, DingtalkSsoService],
 })
 export class AuthModule {}

@@ -3,6 +3,14 @@
 // 不再由前端手动维护 X-Token 头或 sessionStorage（避免 XSS 窃取长时效令牌）。
 const API_BASE = '/api';
 
+// 钉钉工作台内嵌（跨站 iframe）场景下，HttpOnly 会话 Cookie 可能被浏览器拦截，
+// 此时登录接口会把 wb_token 直接返回前端，由这里以 X-Token 头统一携带，
+// 与后端 extractToken 的 X-Token 分支配套，保证 iframe 内会话不丢。
+let bearerToken = null;
+export function setBearerToken(t) { bearerToken = t || null; }
+export function getBearerToken() { return bearerToken; }
+export function clearBearerToken() { bearerToken = null; }
+
 let unauthorizedHandler = null;
 export function setUnauthorizedHandler(fn) { unauthorizedHandler = fn; }
 function emitUnauthorized() { if (unauthorizedHandler) unauthorizedHandler(); }
@@ -20,6 +28,8 @@ export class ApiError extends Error {
 export async function request(path, opts = {}) {
   const url = path.startsWith('http') ? path : API_BASE + path;
   const headers = Object.assign({}, opts.headers);
+  // 跨站 iframe 下 Cookie 可能被拦：统一带上 X-Token 头作为会话兜底
+  if (bearerToken) headers['X-Token'] = bearerToken;
 
   const ctrl = new AbortController();
   const timeout = opts.timeout ?? 15000;
@@ -67,6 +77,7 @@ export async function request(path, opts = {}) {
 export function requestRaw(path, opts = {}) {
   const url = path.startsWith('http') ? path : API_BASE + path;
   const headers = Object.assign({}, opts.headers);
+  if (bearerToken) headers['X-Token'] = bearerToken;
   return fetch(url, {
     method: opts.method || 'GET',
     headers,

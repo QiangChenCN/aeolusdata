@@ -149,13 +149,13 @@ async function dingLogout() {
   try {
     const r = await dingAuthLogout();
     if (r && r.ok) {
-      app.toast('已退出钉钉登录，可重新发起授权', 'success');
+      ElMessage.success('已退出钉钉登录，可重新发起授权');
       ding.profile = {};
       await dingRefresh();
     } else {
-      app.toast((r && (r.error || r.message)) || '退出登录失败', 'error');
+      ElMessage.error((r && (r.error || r.message)) || '退出登录失败');
     }
-  } catch (e) { app.toast(e.message || '退出登录失败', 'error'); }
+  } catch (e) { ElMessage.error(e.message || '退出登录失败'); }
   finally { ding.loggingOut = false; }
 }
 function fmt(iso) {
@@ -180,12 +180,12 @@ async function dingStart() {
     ding.info = { userCode: d.userCode, verificationUri: d.verificationUri };
     ding.expireAt = Date.now() + (Number(d.expiresInSeconds) || 900) * 1000;
     startDingPoll();
-    app.toast('已生成授权码，请在浏览器中完成授权', 'success');
-  } catch (e) { app.toast(e.message || '发起授权失败', 'error'); }
+    ElMessage.success('已生成授权码，请在浏览器中完成授权');
+  } catch (e) { ElMessage.error(e.message || '发起授权失败'); }
   finally { ding.loading = false; }
 }
 function copyText(t) {
-  try { navigator.clipboard?.writeText(t); app.toast('已复制', 'success'); } catch { /* ignore */ }
+  try { navigator.clipboard?.writeText(t); ElMessage.success('已复制'); } catch { /* ignore */ }
 }
 
 /* ---------------- DWS 配置项 ---------------- */
@@ -212,7 +212,7 @@ async function loadConfig() {
       form[it.key] = it.value || '';
       if (it.sensitive) origSensitive[it.key] = !!it.value;
     });
-  } catch (e) { app.toast(e.message || '加载 dws 配置失败', 'error'); }
+  } catch (e) { ElMessage.error(e.message || '加载 dws 配置失败'); }
 }
 async function save() {
   saving.value = true;
@@ -227,9 +227,9 @@ async function save() {
   });
   try {
     const r = await saveDingConfig(patch);
-    if (r && r.ok) { app.toast('已保存 dws 配置', 'success'); await loadConfig(); }
-    else app.toast('保存失败', 'error');
-  } catch (e) { app.toast(e.message || '保存失败', 'error'); }
+    if (r && r.ok) { ElMessage.success('已保存 dws 配置'); await loadConfig(); }
+    else ElMessage.error('保存失败');
+  } catch (e) { ElMessage.error(e.message || '保存失败'); }
   finally { saving.value = false; }
 }
 

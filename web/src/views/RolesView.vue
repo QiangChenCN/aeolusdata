@@ -64,7 +64,7 @@ async function loadRoles() {
     const r = await fetchRoles();
     roles.value = (r && r.roles) || [];
     allPerms.value = (r && r.all_perms) || [];
-  } catch (e) { app.toast(e.message || '加载角色失败', 'error'); }
+  } catch (e) { ElMessage.error(e.message || '加载角色失败'); }
 }
 function openRole(r) {
   Object.assign(roleForm, r
@@ -77,15 +77,15 @@ async function saveRole() {
     const op = roleForm._edit ? 'update' : 'create';
     await apiSaveRole(op, { name: roleForm.name, perms: roleForm.perms, parents: roleForm.parents });
     roleDlg.value = false;
-    app.toast('已保存', 'success');
+    ElMessage.success('已保存');
     await loadRoles();
-  } catch (e) { app.toast(e.message || '保存失败', 'error'); }
+  } catch (e) { ElMessage.error(e.message || '保存失败'); }
 }
 async function delRole(r) {
-  if (r.builtin || r.locked) { app.toast('内置/锁定角色不可删除', 'warning'); return; }
+  if (r.builtin || r.locked) { ElMessage.warning('内置/锁定角色不可删除'); return; }
   if (!(await app.confirmDialog({ message: `删除角色「${r.name}」？` }))) return;
-  try { await apiSaveRole('delete', { name: r.name }); app.toast('已删除', 'success'); await loadRoles(); }
-  catch (e) { app.toast(e.message || '删除失败', 'error'); }
+  try { await apiSaveRole('delete', { name: r.name }); ElMessage.success('已删除'); await loadRoles(); }
+  catch (e) { ElMessage.error(e.message || '删除失败'); }
 }
 onMounted(loadRoles);
 </script>

@@ -65,6 +65,8 @@ export interface RefreshState {
 export interface RefreshStatus extends RefreshState {
   server_time: string;
   elapsed_sec?: number | null;
+  /** 距下次可被放行还需等待的秒数（前端用于跨页面刷新恢复冷却倒计时）。 */
+  cooldown_sec?: number;
 }
 
 export interface RefreshStartResult {
@@ -157,9 +159,10 @@ export class RefreshRunnerService {
   }
 
   /** 进度快照（供前端轮询）。不暴露内部可变对象。 */
-  status(): RefreshStatus {
+  status(req?: Request): RefreshStatus {
     const snap = JSON.parse(JSON.stringify(this.state)) as RefreshStatus;
     snap.server_time = nowStr();
+    snap.cooldown_sec = req ? this.rateRemaining(req) : 0;
     if (snap.running && snap.started_at) {
       const t0 = Date.parse(snap.started_at.replace(' ', 'T') + '+08:00');
       snap.elapsed_sec = Number.isFinite(t0) ? Math.floor((Date.now() - t0) / 1000) : null;
@@ -260,7 +263,7 @@ export class RefreshRunnerService {
         ok: true,
         already_running: true,
         msg: '已有刷新任务在运行，已接入进度轮询',
-        status: this.status(),
+        status: this.status(req),
       };
     }
 
@@ -320,6 +323,26 @@ export class RefreshRunnerService {
     this.rateState.set(key, now);
     this.lastGlobalAt = now;
     return null;
+  }
+
+  /**
+   * 只读查询：当前距下次可被放行还需等待的秒数（**不消费放行时间戳**）。
+   * 与 `rateCheck` 同一套「用户窗口 + 全局间隔」判定，仅计算不写入，用于前端
+   * 跨页面刷新时恢复冷却倒计时。无任何限制返回 0。
+   */
+  rateRemaining(req: Request): number {
+    const now = Date.now();
+    const globalGapMs = REFRESH_ALL_GLOBAL_GAP_SEC * 1000;
+    if (this.lastGlobalAt && now - this.lastGlobalAt < globalGapMs) {
+      return Math.max(0, Math.ceil((globalGapMs - (now - this.lastGlobalAt)) / 1000));
+    }
+    const key = this.rateKey(req);
+    const winMs = RATE_LIMIT_SEC * 1000;
+    const last = this.rateState.get(key) || 0;
+    if (last && now - last < winMs) {
+      return Math.max(0, Math.ceil((winMs - (now - last)) / 1000));
+    }
+    return 0;
   }
 
   /** 频控的「用户维度」：优先登录用户名；系统/iframe（无会话）回落到令牌指纹 + IP。 */

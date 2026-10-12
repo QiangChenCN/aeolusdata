@@ -17,3 +17,22 @@ export async function signout() {
 export async function me() {
   return request('/auth/me');
 }
+
+// 钉钉登录相关（JSAPI 免登 / OAuth2 网页登录 / 绑定）
+export async function dingtalkConfig() {
+  return request('/auth/dingtalk/config');
+}
+export async function dingtalkJsapi(authCode) {
+  return request('/auth/dingtalk/jsapi', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ authCode }),
+  });
+}
+export async function dingtalkBind(username, unionid) {
+  return request('/auth/dingtalk/bind', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, unionid }),
+  });
+}

@@ -36,11 +36,9 @@
 
 <script setup>
 import { onMounted, ref } from 'vue';
-import { Search } from '@element-plus/icons-vue';
-import { useAppStore } from '../stores/app.js';
+import { Search } from '@element-plus/icons-vue';
 import { fetchGroups, markGroupUsed, forgetGroup } from '../api/dashboards.js';
-
-const app = useAppStore();
+
 const q = ref('');
 const groups = ref([]);
 const loading = ref(false);
@@ -52,7 +50,7 @@ async function doFetch() {
     const res = await fetchGroups(q.value);
     groups.value = (res && res.groups) || [];
   } catch (e) {
-    app.toast(e.message || '检索失败', 'error');
+    ElMessage.error(e.message || '检索失败');
     groups.value = [];
   } finally {
     loading.value = false;
@@ -66,16 +64,16 @@ function onInput() {
 async function useGroup(g) {
   try {
     await markGroupUsed(g.id, g.title);
-    app.toast('已记录群组：' + g.title, 'success');
+    ElMessage.success('已记录群组：' + g.title);
     if (!q.value) doFetch();
-  } catch (e) { app.toast(e.message || '记录失败', 'error'); }
+  } catch (e) { ElMessage.error(e.message || '记录失败'); }
 }
 async function forget(g) {
   try {
     await forgetGroup(g.id);
-    app.toast('已遗忘：' + g.title, 'info');
+    ElMessage.info('已遗忘：' + g.title);
     doFetch();
-  } catch (e) { app.toast(e.message || '操作失败', 'error'); }
+  } catch (e) { ElMessage.error(e.message || '操作失败'); }
 }
 onMounted(doFetch);
 </script>

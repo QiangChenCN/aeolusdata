@@ -75,10 +75,8 @@
 
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue';
-import { useAppStore } from '../stores/app.js';
 import { fetchAeolusCreds, saveAeolusCreds, logoutAeolus } from '../api/dashboards.js';
 
-const app = useAppStore();
 
 const masked = reactive({ ok: true, hasAccount: false, hasPassword: false, account: '', accountHint: undefined, source: 'none' });
 const form = reactive({ account: '', password: '' });
@@ -104,13 +102,13 @@ async function load() {
     // 尚未配置账号时自动展开表单，方便首次填写。
     editing.value = !masked.hasAccount;
   } catch (e) {
-    app.toast(e.message || '加载账号配置失败', 'error');
+    ElMessage.error(e.message || '加载账号配置失败');
   }
 }
 
 async function save() {
   if (!form.account || !form.account.trim()) {
-    app.toast('账号不能为空', 'error');
+    ElMessage.error('账号不能为空');
     return;
   }
   saving.value = true;
@@ -118,15 +116,15 @@ async function save() {
     const r = await saveAeolusCreds({ account: form.account.trim(), password: form.password || '' });
     const d = (r && r.data) || r || {};
     if (d && d.ok) {
-      app.toast('已保存账号', 'success');
+      ElMessage.success('已保存账号');
       form.password = ''; // 清空密码框，避免误留存
       editing.value = false;
       await load();
     } else {
-      app.toast(d?.error || '保存失败', 'error');
+      ElMessage.error(d?.error || '保存失败');
     }
   } catch (e) {
-    app.toast(e.message || '保存失败', 'error');
+    ElMessage.error(e.message || '保存失败');
   } finally {
     saving.value = false;
   }
@@ -138,12 +136,12 @@ async function logout() {
     const r = await logoutAeolus();
     const d = (r && r.data) || r || {};
     if (d && d.ok) {
-      app.toast('已退出登录，下次取数将自动重登', 'success');
+      ElMessage.success('已退出登录，下次取数将自动重登');
     } else {
-      app.toast(d?.error || '退出登录失败', 'error');
+      ElMessage.error(d?.error || '退出登录失败');
     }
   } catch (e) {
-    app.toast(e.message || '退出登录失败', 'error');
+    ElMessage.error(e.message || '退出登录失败');
   } finally {
     loggingOut.value = false;
   }

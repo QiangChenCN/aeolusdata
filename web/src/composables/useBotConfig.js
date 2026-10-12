@@ -1,5 +1,4 @@
-import { reactive, ref } from 'vue';
-import { useAppStore } from '../stores/app.js';
+import { reactive, ref } from 'vue';
 import {
   fetchBotConfig, saveBotConfig, reloadBot, fetchBotStatus,
   fetchBotCredentials, saveBotCredentials, patchBot,
@@ -24,8 +23,7 @@ const credForm = reactive({ id: '', label: '', clientId: '', secret: '', enabled
 let pollTimer = null;
 let consumerCount = 0;
 
-export function useBotConfig() {
-  const app = useAppStore();
+export function useBotConfig() {
 
   /* ── 加载 ─────────────────────────────────────────── */
   async function loadBot() {
@@ -33,7 +31,7 @@ export function useBotConfig() {
       const r = await fetchBotConfig();
       const c = (r && r.config) || {};
       bot.botEnabled = c.botEnabled !== false;
-    } catch (e) { app.toast(e.message || '加载机器人配置失败', 'error'); }
+    } catch (e) { ElMessage.error(e.message || '加载机器人配置失败'); }
   }
   async function loadStatus() {
     try {
@@ -43,14 +41,14 @@ export function useBotConfig() {
       status.bots = Array.isArray(r.bots) ? r.bots : [];
       status.connections = Array.isArray(r.connections) ? r.connections : [];
       lastUpdated.value = new Date().toLocaleTimeString();
-    } catch (e) { app.toast(e.message || '加载机器人状态失败', 'error'); }
+    } catch (e) { ElMessage.error(e.message || '加载机器人状态失败'); }
   }
   async function loadCredentials() {
     credsLoading.value = true;
     try {
       const r = await fetchBotCredentials();
       creds.value = Array.isArray(r.groups) ? r.groups : [];
-    } catch (e) { app.toast(e.message || '加载凭据分组失败', 'error'); }
+    } catch (e) { ElMessage.error(e.message || '加载凭据分组失败'); }
     finally { credsLoading.value = false; }
   }
   async function loadAll() { await Promise.all([loadBot(), loadStatus(), loadCredentials()]); }
@@ -62,12 +60,9 @@ export function useBotConfig() {
     try {
       const r = await saveBotConfig({ botEnabled: bot.botEnabled });
       if (r.reload) status.detail = r.reload.detail;
-      app.toast(
-        '总开关已更新' + (r.reload && r.reload.detail ? '（' + r.reload.detail + '）' : ''),
-        'success',
-      );
+      ElMessage.success('总开关已更新' + (r.reload && r.reload.detail ? '（' + r.reload.detail + '）' : ''));
       await loadStatus();
-    } catch (e) { app.toast(e.message || '保存失败', 'error'); }
+    } catch (e) { ElMessage.error(e.message || '保存失败'); }
     finally { savingBot.value = false; }
   }
   async function doReload() {
@@ -75,9 +70,9 @@ export function useBotConfig() {
     try {
       const r = await reloadBot();
       if (r.reload) status.detail = r.reload.detail;
-      app.toast((r.reload && r.reload.detail) ? r.reload.detail : '已重新连接', 'success');
+      ElMessage.success((r.reload && r.reload.detail) ? r.reload.detail : '已重新连接');
       await loadStatus();
-    } catch (e) { app.toast(e.message || '重连失败', 'error'); }
+    } catch (e) { ElMessage.error(e.message || '重连失败'); }
     finally { reloadingBot.value = false; }
   }
 
@@ -86,40 +81,40 @@ export function useBotConfig() {
     row._saving = true;
     try {
       const r = await patchBot(row.botId, { enabled: v });
-      if (!r.ok) app.toast(r.error || '操作失败', 'error');
-      else app.toast((v ? '已启用 ' : '已停用 ') + row.displayName, 'success');
-    } catch (e) { app.toast(e.message || '操作失败', 'error'); }
+      if (!r.ok) ElMessage.error(r.error || '操作失败');
+      else ElMessage.success((v ? '已启用 ' : '已停用 ') + row.displayName);
+    } catch (e) { ElMessage.error(e.message || '操作失败'); }
     finally { row._saving = false; await loadStatus(); }
   }
   async function bindBot(row, v) {
     row._binding = true;
     try {
       const r = await patchBot(row.botId, { credentialsRef: v });
-      if (!r.ok) app.toast(r.error || '绑定失败', 'error');
-      else app.toast('已绑定 ' + row.displayName + ' → ' + (v || '未绑定'), 'success');
-    } catch (e) { app.toast(e.message || '绑定失败', 'error'); }
+      if (!r.ok) ElMessage.error(r.error || '绑定失败');
+      else ElMessage.success('已绑定 ' + row.displayName + ' → ' + (v || '未绑定'));
+    } catch (e) { ElMessage.error(e.message || '绑定失败'); }
     finally { row._binding = false; await loadStatus(); }
   }
   async function renameInstance(row, name) {
     const n = (name || '').trim();
-    if (!n) { app.toast('名称不能为空', 'error'); return; }
+    if (!n) { ElMessage.error('名称不能为空'); return; }
     row._saving = true;
     try {
       const r = await patchBot(row.botId, { displayName: n });
-      if (!r.ok) app.toast(r.error || '重命名失败', 'error');
-      else app.toast('已更新实例名称', 'success');
-    } catch (e) { app.toast(e.message || '操作失败', 'error'); }
+      if (!r.ok) ElMessage.error(r.error || '重命名失败');
+      else ElMessage.success('已更新实例名称');
+    } catch (e) { ElMessage.error(e.message || '操作失败'); }
     finally { row._saving = false; await loadStatus(); }
   }
   async function setBotTimeout(row, v) {
     const n = Number(v);
-    if (!Number.isFinite(n) || n < 5 || n > 600) { app.toast('查询超时需在 5~600 秒之间', 'error'); return; }
+    if (!Number.isFinite(n) || n < 5 || n > 600) { ElMessage.error('查询超时需在 5~600 秒之间'); return; }
     row._saving = true;
     try {
       const r = await patchBot(row.botId, { queryTimeout: n });
-      if (!r.ok) app.toast(r.error || '操作失败', 'error');
-      else app.toast('已更新查询超时', 'success');
-    } catch (e) { app.toast(e.message || '操作失败', 'error'); }
+      if (!r.ok) ElMessage.error(r.error || '操作失败');
+      else ElMessage.success('已更新查询超时');
+    } catch (e) { ElMessage.error(e.message || '操作失败'); }
     finally { row._saving = false; await loadStatus(); }
   }
 
@@ -154,36 +149,36 @@ export function useBotConfig() {
     return ({ dingtalk: '钉钉', wecom: '企微' })[t] || (t ? t : '未设置');
   }
   async function saveCred() {
-    if (!credForm.id.trim()) { app.toast('分组ID不能为空', 'error'); return; }
-    if (!credForm.clientId.trim()) { app.toast('Client ID不能为空', 'error'); return; }
-    if (!credEditing.value && !credForm.secret.trim()) { app.toast('新增凭据必须填写 Secret', 'error'); return; }
+    if (!credForm.id.trim()) { ElMessage.error('分组ID不能为空'); return; }
+    if (!credForm.clientId.trim()) { ElMessage.error('Client ID不能为空'); return; }
+    if (!credEditing.value && !credForm.secret.trim()) { ElMessage.error('新增凭据必须填写 Secret'); return; }
     const next = credEditing.value
       ? creds.value.map((c) => (c.id === credForm.id ? credToPayload(credForm) : c))
       : [...creds.value, credToPayload(credForm)];
     savingCred.value = true;
     try {
       const r = await saveBotCredentials(next);
-      if (!r.ok) { app.toast(r.error || '保存失败', 'error'); return; }
+      if (!r.ok) { ElMessage.error(r.error || '保存失败'); return; }
       creds.value = r.groups || [];
       credDialog.value = false;
-      app.toast('凭据已保存', 'success');
+      ElMessage.success('凭据已保存');
       await loadStatus();
-    } catch (e) { app.toast(e.message || '保存失败', 'error'); }
+    } catch (e) { ElMessage.error(e.message || '保存失败'); }
     finally { savingCred.value = false; }
   }
   async function deleteCred(row) {
     if (status.bots.some((b) => b.credentialsRef === row.id)) {
-      app.toast('该凭据正被机器人实例引用，请先在实例中解绑', 'error');
+      ElMessage.error('该凭据正被机器人实例引用，请先在实例中解绑');
       return;
     }
     const next = creds.value.filter((c) => c.id !== row.id);
     try {
       const r = await saveBotCredentials(next);
-      if (!r.ok) { app.toast(r.error || '删除失败', 'error'); return; }
+      if (!r.ok) { ElMessage.error(r.error || '删除失败'); return; }
       creds.value = r.groups || [];
-      app.toast('凭据已删除', 'success');
+      ElMessage.success('凭据已删除');
       await loadStatus();
-    } catch (e) { app.toast(e.message || '删除失败', 'error'); }
+    } catch (e) { ElMessage.error(e.message || '删除失败'); }
   }
 
   /* ── 轮询（按引用计数，仅最后一个子页卸载时停） ───── */

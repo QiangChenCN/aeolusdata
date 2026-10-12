@@ -33,6 +33,8 @@ export interface UserRecord {
   locked_until?: number;
   pw_history?: string[];
   must_change?: boolean;
+  /** 钉钉 unionid：绑定后可用于钉钉免登 / OAuth2 自动登录。 */
+  dingtalk_unionid?: string;
 }
 
 export interface RoleRecord {
@@ -527,6 +529,18 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     u.failed_attempts = 0;
     u.locked_until = 0;
     this.saveUsers(users);
+    const r = this.issueSession(username, u.role, ip, remember);
+    this.audit('login', true, username, ip, u.role);
+    return r;
+  }
+
+  /** 签发会话（账密登录与钉钉登录共用）。 */
+  private issueSession(
+    username: string,
+    role: string,
+    ip: string,
+    remember: boolean,
+  ): { token: string; role: string; expiresIn: number } {
     const token = randomBytes(24).toString('hex');
     const fp = createHash('sha256').update(token).digest('hex').slice(0, 12);
     const ttl = remember ? SESSION_TTL_REMEMBER : SESSION_TTL;
@@ -534,7 +548,7 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     const nowSec = Date.now() / 1000;
     this.sessions.set(token, {
       user: username,
-      role: u.role,
+      role,
       ip,
       exp: nowSec + ttl,
       max_exp: nowSec + cap,
@@ -542,8 +556,7 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
       fp,
     });
     this.persistSessions(); // 登录立即落盘：立刻重启也要还活着
-    this.audit('login', true, username, ip, u.role);
-    return { token, role: u.role, expiresIn: ttl };
+    return { token, role, expiresIn: ttl };
   }
 
   logout(token?: string): void {
@@ -553,6 +566,74 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
       this.persistSessions(); // 登出立即落盘：否则重启后会话会「复活」
       this.audit('logout', true, s.user, s.ip, s.role);
     }
+  }
+
+  /**
+   * 钉钉身份 → 本地账号 → 会话。三种结果：
+   *   - { token, role, expiresIn, user }  已绑定且启用 → 直接签发会话（免登/自动登录成功）
+   *   - { needBind:true, unionid, name }  未绑定 → 交由前端提示去绑定
+   * 配置 DT_AUTO_PROVISION_ROLE 后，未绑定用户会自动开户（按该角色），实现「首次访问即自动登录」；
+   * 该开关默认不设置，避免任意钉钉用户都能进系统。
+   */
+  resolveDingtalkUser(
+    unionid: string,
+    name: string,
+    ip: string,
+    remember = false,
+  ):
+    | { token: string; role: string; expiresIn: number; user: string }
+    | { needBind: true; unionid: string; name: string } {
+    const users = this.loadUsers();
+    const u = users.find((x) => x.dingtalk_unionid && x.dingtalk_unionid === unionid);
+    if (u && !u.disabled) {
+      const r = this.issueSession(u.username, u.role, ip, remember);
+      this.audit('login-dingtalk', true, u.username, ip, u.role);
+      return { ...r, user: u.username };
+    }
+    const autoRole = this.config.get<string>('DT_AUTO_PROVISION_ROLE');
+    if (autoRole && !u) {
+      const roles = this.loadRoles();
+      if (roles[autoRole]) {
+        const username = 'dt_' + unionid;
+        users.push({
+          username,
+          // 自动开户无口令：仅允许钉钉登录，禁止账密登录（随机强口令且不可见）
+          pw_hash: this.hashPw(randomBytes(18).toString('hex')),
+          role: autoRole,
+          disabled: false,
+          created_at: nowStr(),
+          failed_attempts: 0,
+          locked_until: 0,
+          pw_history: [],
+          must_change: false,
+          dingtalk_unionid: unionid,
+        });
+        this.saveUsers(users);
+        const r = this.issueSession(username, autoRole, ip, remember);
+        this.audit('login-dingtalk-auto', true, username, ip, autoRole);
+        return { ...r, user: username };
+      }
+    }
+    if (u && u.disabled) this.audit('login-dingtalk', false, u.username, ip, 'disabled');
+    return { needBind: true, unionid, name };
+  }
+
+  /** 将钉钉 unionid 绑定到指定本地账号（防重复绑定）。unionid 为空表示解绑。 */
+  bindDingtalk(username: string, unionid: string): void {
+    const users = this.loadUsers();
+    const u = users.find((x) => x.username === username);
+    if (!u) throw new Error('用户不存在：' + username);
+    if (unionid) {
+      const clash = users.find(
+        (x) => x.dingtalk_unionid && x.dingtalk_unionid === unionid && x.username !== username,
+      );
+      if (clash) throw new Error('该钉钉账号已绑定到另一个用户：' + clash.username);
+      u.dingtalk_unionid = unionid;
+    } else {
+      delete u.dingtalk_unionid;
+    }
+    this.saveUsers(users);
+    this.audit('user:bind-dingtalk', true, username, '-', unionid || 'unbind');
   }
 
   getSession(token?: string): Session | null {
@@ -677,6 +758,7 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
       locked: (u.locked_until || 0) > now,
       created_at: u.created_at,
       must_change: !!u.must_change,
+      dingtalk_unionid: u.dingtalk_unionid || '',
     }));
   }
 

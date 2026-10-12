@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia';
 import { signin as apiSignin, signout as apiSignout, me as apiMe } from '../api/auth.js';
+import { setBearerToken, clearBearerToken } from '../api/request.js';
 
 // 由 App.vue 注入：将用户送到登录页（保留当前页用于登录后返回）。
 // store 不直接依赖 router，避免循环引用。
@@ -48,8 +49,23 @@ export const useAuthStore = defineStore('auth', {
     },
     async signout() {
       try { await apiSignout(); } catch (e) { /* ignore */ }
+      clearBearerToken(); // 清掉 iframe/JSAPI 场景下的 X-Token 内存态
       this.user = null; this.role = null;
       this.requireLogin();
+    },
+    /**
+     * 钉钉 JSAPI 免登成功后调用：后端把 wb_token 直接返回，这里存入内存并立即以 X-Token 头
+     * 发起一次 /auth/me 校验，填充用户信息（绕过跨站 iframe 可能拦截的会话 Cookie）。
+     */
+    async applyDingtalkSession(token) {
+      setBearerToken(token);
+      const data = await apiMe();
+      if (data && data.authenticated) {
+        this.user = data.user; this.role = data.role;
+        return true;
+      }
+      clearBearerToken();
+      return false;
     },
     // 401 或主动退出时触发：重定向到登录页（保留当前页用于登录后返回）。
     requireLogin() { if (loginRedirector) loginRedirector(); },

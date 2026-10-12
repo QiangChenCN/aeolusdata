@@ -6,10 +6,6 @@
         <el-option label="全部站点" value="__all__" />
         <el-option v-for="t in teams" :key="t.id" :label="t.name" :value="t.id" />
       </el-select>
-      <el-tag v-if="dataDate" type="info" effect="plain" class="dv-date-tag">数据日期：{{ dataDate }}</el-tag>
-      <el-tag v-if="lastUpdated" :type="autoRefresh ? 'success' : 'info'" effect="plain" class="dv-date-tag">
-        {{ autoRefresh ? '自动刷新中' : '已暂停自动刷新' }} · 最近更新 {{ lastUpdated }}
-      </el-tag>
       <span class="sp" />
       <el-select v-model="intervalSec" class="dv-sel" style="width: 110px" @change="restartPoll">
         <el-option label="15 秒" :value="15" />
@@ -18,21 +14,21 @@
       </el-select>
       <el-switch v-model="autoRefresh" inline-prompt active-text="自动" inactive-text="手动" @change="onAutoToggle" />
       <el-button :loading="loading" @click="load">
-        <el-icon><Refresh /></el-icon> 刷新
+        <el-icon><Refresh /></el-icon>刷新<small v-if="autoRefresh && countdown > 0" class="dv-cd">（{{ countdown }}s）</small>
       </el-button>
     </div>
+
+    <el-alert v-if="lastUpdated" type="info" :closable="false" show-icon class="dv-update-alert">
+      最近更新 {{ lastUpdated }}
+    </el-alert>
 
     <el-alert v-if="needRefresh" type="info" :closable="false" show-icon class="dv-hint">
       当前站点今日运单明细尚未落盘，请先在「标准达成」中点「刷新数据」拉取后，再来此查看实时数据。
     </el-alert>
     <el-alert v-else-if="dataNote" type="warning" :closable="false" show-icon class="dv-hint">{{ dataNote }}</el-alert>
 
-    <div v-if="loading" class="dv-state">
-      <el-icon class="is-loading"><Loading /></el-icon> 加载中…
-    </div>
-    <template v-else>
-      <!-- KPI 汇总卡片（随选中站点聚合，全部站点=各站求和后重算比率） -->
-      <div v-if="cards.length" class="dv-cards">
+    <!-- KPI 汇总卡片（随选中站点聚合，全部站点=各站求和后重算比率） -->
+    <div v-if="cards.length" class="dv-cards">
         <div v-for="c in cards" :key="c.label" class="dv-card">
           <span class="dv-card-num" :class="c.cls">{{ c.value }}</span>
           <span class="dv-card-label">{{ c.label }}</span>
@@ -41,6 +37,7 @@
 
       <!-- 站点明细对比表（列可排序，默认按推配送单量降序） -->
       <el-table
+        v-loading="loading"
         :data="rows"
         stripe
         border
@@ -74,29 +71,27 @@
           </template>
         </el-table-column>
       </el-table>
-    </template>
   </div>
 </template>
 
 <script setup>
-import { computed, onMounted, onUnmounted, ref } from 'vue';
-import { useAppStore } from '../stores/app.js';
+import { computed, onMounted, onUnmounted, ref } from 'vue';
 import { fetchTeams, fetchRealtimeStation } from '../api/dashboards.js';
-
-const app = useAppStore();
+
 const teams = ref([]);
 const teamSel = ref('__all__');
 const rows = ref([]);          // 有数据的站点行（已过滤 need_refresh）
 const loading = ref(false);
 const loaded = ref(false);
 const attempted = ref(0);      // 本次实际请求的站点数
-const dataDate = ref('');
 const lastUpdated = ref('');   // 最近一次成功取数时间（HH:MM:SS）
 
 /* —— 自动刷新（照搬 BotGlobalView 约定：setInterval + onUnmounted 清理）—— */
 const autoRefresh = ref(true);
 const intervalSec = ref(30);
+const countdown = ref(0);     // 距下次自动刷新的剩余秒数（仅自动刷新时有效）
 let pollTimer = null;
+let tickTimer = null;
 function fmtClock(d = new Date()) {
   const p = (n) => String(n).padStart(2, '0');
   return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
@@ -104,9 +99,20 @@ function fmtClock(d = new Date()) {
 function startPoll() {
   stopPoll();
   pollTimer = setInterval(() => void load(true), intervalSec.value * 1000);
+  startTick();
+  countdown.value = intervalSec.value;
 }
 function stopPoll() {
   if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+  stopTick();
+  countdown.value = 0;
+}
+function startTick() {
+  stopTick();
+  tickTimer = setInterval(() => { if (countdown.value > 0) countdown.value--; }, 1000);
+}
+function stopTick() {
+  if (tickTimer) { clearInterval(tickTimer); tickTimer = null; }
 }
 function restartPoll() {
   if (autoRefresh.value) startPoll();
@@ -182,7 +188,6 @@ async function load(silent = false) {
       ? teams.value.map((t) => t.id)
       : [teamSel.value];
     attempted.value = ids.length;
-    dataDate.value = '';
     const results = await Promise.all(
       ids.map((id) => fetchRealtimeStation({ team: id }).catch(() => null)),
     );
@@ -190,16 +195,16 @@ async function load(silent = false) {
     for (const res of results) {
       if (!res || !res.ok || !res.rows || !res.rows.length) continue;
       good.push(res.rows[0]);
-      if (res.start && !dataDate.value) dataDate.value = res.start;
     }
     rows.value = good;
     lastUpdated.value = fmtClock();
   } catch (e) {
-    if (!silent) app.toast(e.message || '加载失败', 'error');
+    if (!silent) ElMessage.error(e.message || '加载失败');
     if (!silent) rows.value = [];
   } finally {
     loaded.value = true;
     if (!silent) loading.value = false;
+    if (autoRefresh.value) countdown.value = intervalSec.value;
   }
 }
 
@@ -217,10 +222,10 @@ onUnmounted(stopPoll);
 .dv-bar { display: flex; align-items: center; gap: var(--sp-12); margin-bottom: var(--sp-16); flex-wrap: wrap; }
 .v-title { margin: 0; font-size: var(--el-font-size-extra-large); }
 .dv-sel { width: 160px; }
-.dv-date-tag { font-size: var(--el-font-size-small); }
 .dv-bar .sp { flex: 1; }
+.dv-update-alert { margin-bottom: var(--sp-12); }
 .dv-hint { margin-bottom: var(--sp-12); }
-.dv-state { padding: var(--sp-40); text-align: center; color: var(--muted); display: flex; gap: var(--sp-8); justify-content: center; align-items: center; }
+
 
 /* ── KPI 汇总卡片（对齐时段出勤看板的卡片风格）──── */
 .dv-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: var(--sp-12); margin-bottom: var(--sp-16); }
@@ -240,4 +245,5 @@ onUnmounted(stopPoll);
 .rt.is-none { color: var(--muted); font-weight: var(--fw-normal); }
 
 .dv-table { border-radius: var(--r-md); }
+.dv-cd { font-size: 12px; opacity: .75; margin-left: 2px; }
 </style>

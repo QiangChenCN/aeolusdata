@@ -27,7 +27,22 @@ import { extractToken } from '../token.util';
  * 数据权限（team 维度行级隔离）不在此处裁决，由 DataPermService + ProxyController 在
  * 委托 Python 计算前下发 x-scope（纵深防御：RBAC 管"能不能看"，数据权限管"看哪些"）。
  */
-const EXEMPT_MACHINE = new Set(['/api/auth/me', '/api/auth/signin', '/api/auth/logout', '/health']);
+// 钉钉登录端点同样豁免机器令牌闸门：它们是「无会话建会话」的入口（与 signin 同位），
+// 且免登/JSAPI 流程由前端在钉钉内拉起、OAuth 回调由钉钉浏览器跳转，都不可能预先持有机器令牌。
+//   · dingtalk/jsapi        —— 钉钉工作台内 JSAPI 免登（返回 token，前端走 X-Token 头）
+//   · dingtalk/oauth-callback —— 浏览器独立访问的钉钉 OAuth2 回跳（种 Cookie 后跳转前端）
+//   · dingtalk/bind         —— 绑定钉钉身份到本地账号（要求已登录会话，控制器内校验）
+//   · dingtalk/config       —— 前端探测是否启用钉钉登录 + corpId/授权地址
+const EXEMPT_MACHINE = new Set([
+  '/api/auth/me',
+  '/api/auth/signin',
+  '/api/auth/logout',
+  '/api/auth/dingtalk/jsapi',
+  '/api/auth/dingtalk/oauth-callback',
+  '/api/auth/dingtalk/bind',
+  '/api/auth/dingtalk/config',
+  '/health',
+]);
 
 @Injectable()
 export class AccessGuard implements CanActivate {

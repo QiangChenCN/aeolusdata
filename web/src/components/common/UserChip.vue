@@ -19,16 +19,14 @@
 <script setup>
 import { computed } from 'vue';
 import { useAuthStore } from '../../stores/auth.js';
-import { useAppStore } from '../../stores/app.js';
 
 const auth = useAuthStore();
-const app = useAppStore();
 const roleLabel = computed(() => (auth.role === 'admin' ? '管理员' : '用户'));
 
 function onCommand(cmd) {
   if (cmd === 'logout') {
     auth.signout().catch(() => {});
-    app.toast('已退出登录', 'success');
+    ElMessage.success('已退出登录');
   }
 }
 </script>

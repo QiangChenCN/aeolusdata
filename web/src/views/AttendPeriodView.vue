@@ -32,8 +32,6 @@
     <el-tabs v-model="activeTab" class="dv-tabs">
       <!-- ============ 站点看板（四张率值表） ============ -->
       <el-tab-pane label="站点看板" name="station">
-        <div v-if="loading" class="dv-state"><el-icon class="is-loading"><Loading /></el-icon> 加载中…</div>
-        <template v-else>
           <div v-if="stationCards.length" class="dv-cards">
             <div v-for="c in stationCards" :key="c.label" class="dv-card">
               <span class="dv-card-num">{{ c.value }}</span>
@@ -43,7 +41,7 @@
           <div v-for="(t, i) in stationRateTables" :key="i" class="dv-rate-block">
             <h4 class="dv-rate-title">{{ t.title }}</h4>
             <div class="dv-matrix-wrap">
-              <el-table :data="t.rows" stripe border class="dv-table" empty-text="暂无站点数据" :max-height="520">
+              <el-table v-loading="loading" :data="t.rows" stripe border class="dv-table" empty-text="暂无站点数据" :max-height="520">
                 <el-table-column prop="team_id" label="站点ID" min-width="120" show-overflow-tooltip />
                 <el-table-column prop="team_name" label="站点名称" min-width="220" show-overflow-tooltip />
                 <el-table-column label="全天" min-width="150" align="center">
@@ -76,13 +74,10 @@
               </el-table>
             </div>
           </div>
-        </template>
       </el-tab-pane>
 
       <!-- ============ 骑手看板 ============ -->
       <el-tab-pane label="骑手看板" name="rider">
-        <div v-if="loading" class="dv-state"><el-icon class="is-loading"><Loading /></el-icon> 加载中…</div>
-        <template v-else>
           <div v-if="riderCards.length" class="dv-cards">
             <div v-for="c in riderCards" :key="c.label" class="dv-card">
               <span class="dv-card-num">{{ c.value }}</span>
@@ -90,7 +85,7 @@
             </div>
           </div>
           <div class="dv-matrix-wrap">
-            <el-table :data="riderRowsSorted" stripe border class="dv-table" empty-text="暂无骑手数据" :max-height="520">
+            <el-table v-loading="loading" :data="riderRowsSorted" stripe border class="dv-table" empty-text="暂无骑手数据" :max-height="520">
               <el-table-column prop="rider_name" label="骑手" min-width="120" fixed>
                 <template #header>
                   <span class="sort-h" @click="toggleSort('rider_name')">
@@ -142,21 +137,18 @@
                 </template>
               </el-table-column>
             </el-table>
-          </div>
-        </template>
-      </el-tab-pane>
+            </div>
+            </el-tab-pane>
 
       <!-- ============ 骑手时段看板 ============ -->
       <el-tab-pane label="骑手时段看板" name="period">
-        <div v-if="loading" class="dv-state"><el-icon class="is-loading"><Loading /></el-icon> 加载中…</div>
-        <template v-else>
           <div v-if="tpSummaryCards.length" class="dv-cards">
             <div v-for="c in tpSummaryCards" :key="c.label" class="dv-card">
               <span class="dv-card-num">{{ c.value }}</span>
               <span class="dv-card-label">{{ c.label }}</span>
             </div>
           </div>
-          <el-table :data="tpRowsFiltered" stripe border class="dv-table" height="520" empty-text="暂无时段数据">
+          <el-table v-loading="loading" :data="tpRowsFiltered" stripe border class="dv-table" height="520" empty-text="暂无时段数据">
               <el-table-column prop="time_name" label="时段" min-width="120" fixed />
               <el-table-column prop="start_time" label="开始" min-width="90" />
               <el-table-column prop="end_time" label="结束" min-width="90" />
@@ -169,7 +161,6 @@
               <el-table-column prop="rate" label="达成率" min-width="90" />
               <el-table-column prop="valid_dur" label="有效时长" min-width="110" />
             </el-table>
-        </template>
       </el-tab-pane>
     </el-tabs>
 
@@ -187,10 +178,10 @@
 
 <script setup>
 import { computed, onMounted, ref } from 'vue';
-import { useAppStore } from '../stores/app.js';
+import { ElMessage } from 'element-plus';
 import { fetchAttendTeams, saveAttendTeams, fetchAttendDataset } from '../api/dashboards.js';
 
-const app = useAppStore();
+
 const teamsAll = ref([]);   // 全部可选站点 [{id, name}]
 const teamsCfg = ref([]);   // 当前已配置展示的站点 id 列表
 const teamSel = ref('__all__');
@@ -484,7 +475,7 @@ async function refresh() {
     const res = await fetchAttendDataset({ team: '__all__', date: date.value, refresh: true });
     if (res && res.dataset) {
       resp.value = res;
-      app.toast('数据已刷新', 'success');
+      ElMessage.success('数据已刷新');
     } else {
       dataError.value = (res && res.error) || '刷新失败';
     }
@@ -509,15 +500,15 @@ async function saveCfg() {
     const res = await saveAttendTeams(cfgSel.value);
     if (res && res.ok) {
       teamsCfg.value = res.teams || [...cfgSel.value];
-      app.toast('站点配置已保存', 'success');
+      ElMessage.success('站点配置已保存');
       cfgVisible.value = false;
       // 重新按新配置取数：读缓存不会应用新配置，必须刷新才能让看板反映所选站点
       await refresh();
     } else {
-      app.toast((res && res.error) || '保存失败', 'error');
+      ElMessage.error((res && res.error) || '保存失败');
     }
   } catch (e) {
-    app.toast(e.message || '保存失败', 'error');
+    ElMessage.error(e.message || '保存失败');
   } finally {
     cfgSaving.value = false;
   }
@@ -552,7 +543,7 @@ onMounted(async () => {
 .dv-rate-block { margin-bottom: var(--sp-16); }
 .dv-rate-title { margin: 0 0 var(--sp-8); font-size: var(--el-font-size-medium); font-weight: var(--fw-semibold); color: var(--text); }
 .dv-matrix-wrap { overflow: auto; border-radius: var(--r-md); max-height: 560px; }
-.dv-state { padding: var(--sp-40); text-align: center; color: var(--muted); display: flex; gap: var(--sp-8); justify-content: center; align-items: center; }
+
 .dv-cfg-group { display: flex; flex-direction: column; gap: var(--sp-8); }
 .dv-cell { display: flex; flex-direction: column; align-items: center; gap: 2px; line-height: 1.2; }
 .dv-cell-rate { font-size: 15px; font-weight: var(--fw-bold); }

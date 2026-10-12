@@ -1,7 +1,8 @@
-import { Body, Controller, Get, HttpCode, Post, Req, Res } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Post, Query, Req, Res, UnauthorizedException } from '@nestjs/common';
 import { Request, Response } from 'express';
 import { AuthService } from './auth.service';
 import { PERM_CATALOG } from './permissions';
+import { DingtalkSsoService } from './dingtalk-sso.service';
 import { extractToken } from '../../common/token.util';
 
 // 注意：此前把 auth/* 路由挂在 @Controller('api') 下作为 /api 路由表的嵌套子路径时，
@@ -11,7 +12,10 @@ import { extractToken } from '../../common/token.util';
 // 后问题消失。URL 路径保持 /api/auth/* 不变。详见重构记录。
 @Controller('api/auth')
 export class AuthController {
-  constructor(private readonly auth: AuthService) {}
+  constructor(
+    private readonly auth: AuthService,
+    private readonly ding: DingtalkSsoService,
+  ) {}
 
   // 登录成功返回 200：Nest 的 @Post 默认 201，而前端 api.js login() 严格校验 200，
   // 返回 201 会让浏览器判定「登录失败」。显式改回 200（与旧 server.py 一致）。
@@ -55,6 +59,90 @@ export class AuthController {
       perms: [...this.auth.effectivePerms(s.role)],
       catalog: PERM_CATALOG,
     };
+  }
+
+  /** 前端探测：钉钉登录是否启用 + corpId + OAuth 授权地址（公开，用于决定是否渲染钉钉登录）。 */
+  @Get('dingtalk/config')
+  dingtalkConfig() {
+    return this.ding.getPublicConfig();
+  }
+
+  /**
+   * 钉钉工作台内 JSAPI 免登：前端 `dd.getAuthCode` 取 authCode 后调用。
+   * 成功返回 token（前端改用 X-Token 头携带，绕开 iframe 第三方 Cookie 限制）；
+   * 同源也顺手种上 Cookie 作为兜底。未绑定返回 needBind（带 unionid 供管理员绑定）。
+   */
+  @Post('dingtalk/jsapi')
+  @HttpCode(200)
+  async dingtalkJsapi(
+    @Body() b: { authCode?: string },
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    if (!this.ding.isEnabled()) return { ok: false, error: '钉钉登录未启用' };
+    if (!b.authCode) return { ok: false, error: '缺少 authCode' };
+    try {
+      const id = await this.ding.exchangeJsapiCode(b.authCode);
+      const r = this.auth.resolveDingtalkUser(id.unionid, id.name || '', this.ip(req), false);
+      if ('needBind' in r) return { ok: false, needBind: true, unionid: r.unionid, name: r.name };
+      this.setSessionCookie(res, r.token, false, req.secure);
+      return { ok: true, token: r.token, user: r.user, role: r.role, expires_in: r.expiresIn };
+    } catch (e) {
+      return { ok: false, error: (e as Error).message };
+    }
+  }
+
+  /**
+   * 浏览器独立访问的钉钉 OAuth2 回跳：钉钉授权后带 code 跳转至此。
+   * 换取身份 → 解析本地账号 → 种会话 Cookie → 跳转前端首页（cookie 同源自动携带）。
+   * 未绑定则跳转登录页并带 unionid 提示。
+   */
+  @Get('dingtalk/oauth-callback')
+  async dingtalkOauthCallback(
+    @Query('code') code: string,
+    @Req() req: Request,
+    @Res() res: Response,
+  ) {
+    if (!this.ding.isEnabled()) {
+      res.redirect('/login?dingtalk=disabled');
+      return;
+    }
+    if (!code) {
+      res.redirect('/login?dingtalk=error');
+      return;
+    }
+    try {
+      const id = await this.ding.exchangeOauthCode(code);
+      const r = this.auth.resolveDingtalkUser(id.unionid, id.name || '', this.ip(req), false);
+      if ('needBind' in r) {
+        res.redirect('/login?dingtalk=needbind&unionid=' + encodeURIComponent(r.unionid));
+        return;
+      }
+      this.setSessionCookie(res, r.token, false, req.secure);
+      const base = this.ding.frontendUrl(req);
+      res.redirect(base ? base + '/' : '/');
+    } catch (e) {
+      res.redirect('/login?dingtalk=error&msg=' + encodeURIComponent((e as Error).message));
+    }
+  }
+
+  /**
+   * 绑定钉钉身份到本地账号：要求已登录会话。
+   * 管理员（admin:users）可绑定任意 username；普通用户只能绑定自己（忽略传入 username）。
+   */
+  @Post('dingtalk/bind')
+  @HttpCode(200)
+  dingtalkBind(@Body() b: { username?: string; unionid?: string }, @Req() req: Request) {
+    const s = this.auth.getSession(extractToken(req));
+    if (!s) throw new UnauthorizedException('请先登录');
+    const username = this.auth.hasPerm(s.role, 'admin:users') ? b.username || s.user : s.user;
+    if (b.unionid === undefined) return { ok: false, error: '缺少 unionid' };
+    this.auth.bindDingtalk(username, b.unionid);
+    return { ok: true };
+  }
+
+  private ip(req: Request): string {
+    return (req.ip as string) || req.socket?.remoteAddress || '';
   }
 
   private setSessionCookie(res: Response, token: string, remember: boolean, secure: boolean) {

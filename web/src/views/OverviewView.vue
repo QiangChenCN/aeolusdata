@@ -31,11 +31,9 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref } from 'vue';
-import { useAppStore } from '../stores/app.js';
+import { computed, onMounted, ref } from 'vue';
 import { fetchOverviewSiteOrders } from '../api/dashboards.js';
-
-const app = useAppStore();
+
 const range = ref([]);
 const data = ref(null);
 const loading = ref(false);
@@ -61,7 +59,7 @@ async function load() {
     const res = await fetchOverviewSiteOrders({ start: start(), end: end() });
     data.value = res || {};
   } catch (e) {
-    app.toast(e.message || '加载失败', 'error');
+    ElMessage.error(e.message || '加载失败');
     data.value = { sites: [] };
   } finally {
     loading.value = false;

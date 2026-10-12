@@ -143,7 +143,7 @@ async function load() {
     items.value = todo.items || [];
     if (!activeListId.value && lists.value.length) activeListId.value = lists.value[0].id;
   } catch (e) {
-    app.toast(e.message || '加载失败', 'error');
+    ElMessage.error(e.message || '加载失败');
   } finally {
     loading.value = false;
   }
@@ -159,7 +159,7 @@ function onListCmd(c, l) {
   else if (c === 'delete') removeList(l);
 }
 async function saveList() {
-  if (!listForm.value.name) { app.toast('请填写名称', 'warning'); return; }
+  if (!listForm.value.name) { ElMessage.warning('请填写名称'); return; }
   try {
     const op = listForm.value.id ? 'update' : 'create';
     const payload = listForm.value.id ? { id: listForm.value.id } : {};
@@ -167,17 +167,17 @@ async function saveList() {
       name: listForm.value.name, icon: listForm.value.icon, color: listForm.value.color,
     }));
     listDlg.value = false;
-    app.toast('已保存', 'success');
+    ElMessage.success('已保存');
     await load();
-  } catch (e) { app.toast(e.message || '保存失败', 'error'); }
+  } catch (e) { ElMessage.error(e.message || '保存失败'); }
 }
 async function removeList(l) {
   if (!(await app.confirmDialog({ message: `删除清单「${l.name}」？其下条目将一并删除。` }))) return;
   try {
     await postTodoList('delete', { id: l.id });
-    app.toast('已删除', 'success');
+    ElMessage.success('已删除');
     await load();
-  } catch (e) { app.toast(e.message || '删除失败', 'error'); }
+  } catch (e) { ElMessage.error(e.message || '删除失败'); }
 }
 
 function openItemDialog(it) {
@@ -187,7 +187,7 @@ function openItemDialog(it) {
   itemDlg.value = true;
 }
 async function saveItem() {
-  if (!itemForm.value.title) { app.toast('请填写标题', 'warning'); return; }
+  if (!itemForm.value.title) { ElMessage.warning('请填写标题'); return; }
   try {
     const op = itemForm.value.id ? 'update' : 'create';
     const payload = { title: itemForm.value.title, note: itemForm.value.note, listId: itemForm.value.listId };
@@ -195,23 +195,23 @@ async function saveItem() {
     if (itemForm.value.id) payload.id = itemForm.value.id;
     await postTodoItem(op, payload);
     itemDlg.value = false;
-    app.toast('已保存', 'success');
+    ElMessage.success('已保存');
     await load();
-  } catch (e) { app.toast(e.message || '保存失败', 'error'); }
+  } catch (e) { ElMessage.error(e.message || '保存失败'); }
 }
 async function toggle(it) {
   try { await postTodoItem('toggle', { id: it.id }); await load(); }
-  catch (e) { app.toast(e.message || '操作失败', 'error'); }
+  catch (e) { ElMessage.error(e.message || '操作失败'); }
 }
 async function removeItem(it) {
   if (!(await app.confirmDialog({ message: `删除条目「${it.title}」？` }))) return;
-  try { await postTodoItem('delete', { id: it.id }); app.toast('已删除', 'success'); await load(); }
-  catch (e) { app.toast(e.message || '删除失败', 'error'); }
+  try { await postTodoItem('delete', { id: it.id }); ElMessage.success('已删除'); await load(); }
+  catch (e) { ElMessage.error(e.message || '删除失败'); }
 }
 async function trigger(it) {
   it._running = true;
-  try { await triggerTodoItem(it.id); app.toast('已触发：' + it.title, 'success'); }
-  catch (e) { app.toast(e.message || '触发失败', 'error'); }
+  try { await triggerTodoItem(it.id); ElMessage.success('已触发：' + it.title); }
+  catch (e) { ElMessage.error(e.message || '触发失败'); }
   finally { it._running = false; }
 }
 

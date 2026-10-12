@@ -128,9 +128,7 @@ import { computed, onMounted, ref } from 'vue';
 import {
   fetchServiceQualityTargets, saveServiceQualityTargets,
 } from '../api/dashboards.js';
-import { useAppStore } from '../stores/app.js';
 
-const app = useAppStore();
 const TIERS = [
   { key: 't0', label: '0 分档' },
   { key: 't60', label: '60 分档' },
@@ -346,7 +344,7 @@ async function load() {
     updatedAt.value = fmtTime(res && res.updated_at);
     updatedBy.value = (res && res.updated_by) || '';
   } catch (e) {
-    app.toast(e.message || '加载服务质量设置失败', 'error');
+    ElMessage.error(e.message || '加载服务质量设置失败');
   }
 }
 
@@ -392,16 +390,16 @@ async function save() {
     }
     const res = await saveServiceQualityTargets(body);
     if (res && res.ok) {
-      app.toast('服务质量设置已保存', 'success');
+      ElMessage.success('服务质量设置已保存');
       savedInfo.value = true;
       configured.value = true;
       updatedAt.value = fmtTime(res.updated_at);
       updatedBy.value = res.updated_by || '';
     } else if (res && res.error) {
-      app.toast(res.error, 'error');
+      ElMessage.error(res.error);
     }
   } catch (e) {
-    app.toast(e.message || '保存失败', 'error');
+    ElMessage.error(e.message || '保存失败');
   } finally {
     saving.value = false;
   }

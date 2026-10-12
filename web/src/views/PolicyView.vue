@@ -24,20 +24,18 @@
 
 <script setup>
 import { onMounted, reactive, ref } from 'vue';
-import { useAppStore } from '../stores/app.js';
 import { fetchPolicy, savePolicy as postPolicy } from '../api/dashboards.js';
 
-const app = useAppStore();
 const policy = reactive({});
 const savingPolicy = ref(false);
 
 async function loadPolicy() {
-  try { const r = await fetchPolicy(); Object.assign(policy, r.policy || {}); } catch (e) { app.toast(e.message || '加载策略失败', 'error'); }
+  try { const r = await fetchPolicy(); Object.assign(policy, r.policy || {}); } catch (e) { ElMessage.error(e.message || '加载策略失败'); }
 }
 async function savePolicy() {
   savingPolicy.value = true;
-  try { await postPolicy(policy); app.toast('策略已保存', 'success'); }
-  catch (e) { app.toast(e.message || '保存失败', 'error'); }
+  try { await postPolicy(policy); ElMessage.success('策略已保存'); }
+  catch (e) { ElMessage.error(e.message || '保存失败'); }
   finally { savingPolicy.value = false; }
 }
 onMounted(loadPolicy);

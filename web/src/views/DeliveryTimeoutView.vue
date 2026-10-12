@@ -23,18 +23,13 @@
       </el-button>
     </div>
 
-    <el-alert v-if="refreshMsg" :type="refreshMsgType" :closable="false" show-icon class="dv-hint">{{ refreshMsg }}</el-alert>
-    <el-alert v-else-if="loadErrMsg" type="warning" :closable="false" show-icon class="dv-hint">{{ loadErrMsg }}</el-alert>
+    <el-alert v-if="loadErrMsg" type="warning" :closable="false" show-icon class="dv-hint">{{ loadErrMsg }}</el-alert>
     <el-alert v-else-if="needRefresh" type="info" :closable="false" show-icon class="dv-hint">
       当前站点今日运单明细尚未落盘{{ justRefreshed ? '（刚刷新过仍无数据：请确认该站今日确有接单，且「标准达成」看板也能正常出数）' : '，请点「刷新数据」拉取最新订单明细后查看配送超时' }}。
     </el-alert>
     <el-alert v-else-if="dataNote" type="warning" :closable="false" show-icon class="dv-hint">{{ dataNote }}</el-alert>
 
-    <div v-if="loading" class="dv-state">
-      <el-icon class="is-loading"><Loading /></el-icon> 加载中…
-    </div>
-    <template v-else>
-      <el-menu mode="horizontal" :default-active="activeTab" class="dv-menu" @select="(k) => (activeTab = k)">
+    <el-menu mode="horizontal" :default-active="activeTab" class="dv-menu" @select="(k) => (activeTab = k)">
         <el-menu-item index="station">站点数据</el-menu-item>
         <el-menu-item index="rider">骑手数据</el-menu-item>
         <el-menu-item index="order">运单明细</el-menu-item>
@@ -50,6 +45,7 @@
             </div>
           </div>
           <el-table
+            v-loading="loading"
             :data="rows"
             stripe
             border
@@ -85,6 +81,7 @@
         <!-- ② 骑手数据：跨所选站点聚合所有骑手（准时率未达100%），分页 + 全量排序后再分页 -->
         <div v-show="activeTab === 'rider'" class="dv-pane">
             <el-table
+              v-loading="loading"
               :data="pagedRiderRows"
               :height="riderH"
               stripe
@@ -122,6 +119,7 @@
         <!-- ③ 运单明细：跨所选站点聚合所有超时订单 -->
         <div v-show="activeTab === 'order'" class="dv-pane">
           <el-table
+            v-loading="loading"
             :data="pagedOrderRows"
             :height="orderH"
             stripe
@@ -173,7 +171,6 @@
           </div>
         </div>
       </div>
-    </template>
 
     <!-- 两级下钻抽屉：站点 → 准时率未达100%骑手 → 超时订单明细 -->
     <el-drawer v-model="drawerOpen" :title="drawerTitle" size="46%" :with-header="true">
@@ -233,14 +230,13 @@
 
 <script setup>
 import { computed, onMounted, onUnmounted, ref, watch, nextTick } from 'vue';
-import { Refresh, Loading, ArrowLeft, Setting } from '@element-plus/icons-vue';
-import { useAppStore } from '../stores/app.js';
+import { Refresh, ArrowLeft, Setting } from '@element-plus/icons-vue';
+import { ElMessage } from 'element-plus';
 import {
   fetchTeams, fetchRealtimeTimeout, refreshDeliveryTimeout,
   fetchTimeoutTeams, saveTimeoutTeams,
 } from '../api/dashboards.js';
 
-const app = useAppStore();
 const teams = ref([]);
 const teamSel = ref('__all__');
 /* 展示站点配置：teamsCfg = 已配置展示的站点 id；未配置任何站点时回落全部（teamOptions 兜底）。 */
@@ -262,15 +258,15 @@ async function saveCfg() {
     const res = await saveTimeoutTeams(cfgSel.value);
     if (res && res.ok) {
       teamsCfg.value = res.teams || [...cfgSel.value];
-      app.toast('站点配置已保存', 'success');
+      ElMessage.success('站点配置已保存');
       cfgVisible.value = false;
       teamSel.value = '__all__';   // 重置到全部站点，避免选中项被移出后下拉空白
       load();
     } else {
-      app.toast((res && res.error) || '保存失败', 'error');
+      ElMessage.error((res && res.error) || '保存失败');
     }
   } catch (e) {
-    app.toast(e.message || '保存失败', 'error');
+    ElMessage.error(e.message || '保存失败');
   } finally {
     cfgSaving.value = false;
   }
@@ -295,9 +291,7 @@ function measureTabs() {
   const w = el.clientWidth;
   if (w > 0) bodyW.value = w;
 }
-/* 诊断透出：刷新结果 / 各站加载错误 / 是否刚刷新过（用于区分「从未取数」与「取数了仍无数据」） */
-const refreshMsg = ref('');
-const refreshMsgType = ref('info');
+/* 各站加载错误 / 是否刚刷新过（用于区分「从未取数」与「取数了仍无数据」） */
 const loadErrMsg = ref('');
 const justRefreshed = ref(false);
 
@@ -643,9 +637,8 @@ async function load(silent = false) {
     }
     rows.value = good;
     loadErrMsg.value = errs.length ? '部分站点计算/请求失败：' + errs.join('；') : '';
-    if (good.length) refreshMsg.value = '';          // 有数据则清掉「刷新完成」提示
   } catch (e) {
-    if (!silent) app.toast(e.message || '加载失败', 'error');
+    if (!silent) ElMessage.error(e.message || '加载失败');
     if (!silent) rows.value = [];
   } finally {
     loaded.value = true;
@@ -657,34 +650,31 @@ async function load(silent = false) {
 async function onRefresh() {
   if (refreshing.value || cooldown.value > 0) return;
   refreshing.value = true;
+  loading.value = true;   // 刷新端点（拉运单落盘）耗时最长，覆盖此等待期让表格全程有 loading 反馈
   justRefreshed.value = true;
   try {
     // 独立端点按抓取回来的 teamId 分组落盘，覆盖账号可见全部站点（不受标准达成参与站点约束）。
     const res = await refreshDeliveryTimeout({});
     if (!res || !res.ok) {
-      refreshMsg.value = (res && res.error) || '刷新失败';
-      refreshMsgType.value = 'error';
-      app.toast(refreshMsg.value, 'error');
+      ElMessage.error((res && res.error) || '刷新失败');
       startCooldown(REFRESH_COOLDOWN_SEC);
+      loading.value = false;   // 失败分支不调用 load，手动复位表格 loading
       return;
     }
     const failed = (res.perTeam || []).filter((p) => !p.saved);
     if (failed.length) {
-      refreshMsg.value = `刷新完成，但以下站点未落盘（0 条或写入失败）：`
-        + failed.map((p) => `${p.team}（${p.rows} 条）`).join('；');
-      refreshMsgType.value = 'warning';
+      ElMessage.warning(`刷新完成，但以下站点未落盘（0 条或写入失败）：`
+        + failed.map((p) => `${p.team}（${p.rows} 条）`).join('；'));
     } else {
-      refreshMsg.value = `刷新完成：导出 ${res.total} 条，落盘 ${res.saved} 个站点`;
-      refreshMsgType.value = 'success';
+      ElMessage.success(`刷新完成：导出 ${res.total} 条，落盘 ${res.saved} 个站点`);
     }
     startCooldown(REFRESH_COOLDOWN_SEC);
     load();
   } catch (e) {
     const ra = e && e.data && e.data.retry_after;
     startCooldown(ra && ra > 0 ? ra : REFRESH_COOLDOWN_SEC);
-    refreshMsg.value = e.message || '刷新失败';
-    refreshMsgType.value = 'error';
-    app.toast(refreshMsg.value, 'error');
+    ElMessage.error(e.message || '刷新失败');
+    loading.value = false;   // 异常分支不调用 load，手动复位表格 loading
   } finally {
     refreshing.value = false;
   }
@@ -720,7 +710,6 @@ function backToRiders() {
 
 function onTeamChange() {
   justRefreshed.value = false;
-  refreshMsg.value = '';
   load();
 }
 
@@ -754,7 +743,7 @@ onUnmounted(() => {
 .dv-date-tag { font-size: var(--el-font-size-small); color: var(--muted); }
 .dv-bar .sp { flex: 1; }
 .dv-hint { margin-bottom: var(--sp-12); }
-.dv-state { padding: var(--sp-40); text-align: center; color: var(--muted); display: flex; gap: var(--sp-8); justify-content: center; align-items: center; }
+
 
 /* ── KPI 汇总卡片 ──── */
 .dv-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: var(--sp-12); margin-bottom: var(--sp-16); }

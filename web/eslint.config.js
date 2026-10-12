@@ -11,12 +11,19 @@ export default [
     languageOptions: {
       ecmaVersion: 2022,
       sourceType: "module",
-      globals: { ...globals.browser },
+      globals: {
+        ...globals.browser,
+        // ElMessage / ElNotification 在 main.js 挂到 window 全局暴露，
+        // 各文件以裸标识符调用（历史约定），这里声明为只读全局以通过 no-undef
+        ElMessage: "readonly",
+        ElNotification: "readonly",
+      },
     },
     plugins: { import: importPlugin },
     settings: {
-      // 解析 ./xxx.js 相对路径与 node_modules 裸包名（echarts / tabulator-tables）
-      "import/resolver": { node: { extensions: [".js"] } },
+      // 解析 ./xxx.js 相对路径与 node_modules 裸包名（echarts / tabulator-tables）；
+      // .mjs：element-plus 语言包（es/locale/lang/zh-cn）为 .mjs 文件，缺它会报 no-unresolved
+      "import/resolver": { node: { extensions: [".js", ".mjs"] } },
     },
     rules: {
       "no-undef": "error",

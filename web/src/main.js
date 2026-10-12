@@ -1,6 +1,6 @@
 import { createApp } from 'vue';
 import { createPinia } from 'pinia';
-import ElementPlus from 'element-plus';
+import ElementPlus, { ElMessage, ElNotification } from 'element-plus';
 import zhCn from 'element-plus/es/locale/lang/zh-cn';
 import 'element-plus/dist/index.css';
 import * as ElementPlusIconsVue from '@element-plus/icons-vue';
@@ -21,6 +21,12 @@ app.use(createPinia());
 app.use(router);
 // 中文语言包：月份选择器等组件显示中文（Jan → 1月）
 app.use(ElementPlus, { locale: zhCn });
+
+// 全局暴露 ElMessage / ElNotification：大量历史代码以「裸标识符」调用（未逐文件 import），
+// 若缺失会在运行时抛 ReferenceError —— 典型表现：操作已成功（API 先执行）却无提示、弹窗不关闭。
+// ES 模块严格模式下，裸标识符会沿作用域链解析到全局对象属性，故挂到 window 即可让所有裸调用生效。
+window.ElMessage = ElMessage;
+window.ElNotification = ElNotification;
 
 // 全局错误兜底：让失败可见（原 main.js 同款处理）
 window.addEventListener('error', (e) => {

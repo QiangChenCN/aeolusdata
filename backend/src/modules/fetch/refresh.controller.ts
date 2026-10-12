@@ -26,7 +26,7 @@ export class RefreshController {
   }
 
   @Get('standard/refresh-all-status')
-  status() {
-    return { ok: true, status: this.runner.status() };
+  status(@Req() req: Request) {
+    return { ok: true, status: this.runner.status(req) };
   }
 }

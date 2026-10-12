@@ -1,6 +1,7 @@
 import { useAppStore } from '../stores/app.js';
 import { useRunsStore } from '../stores/runs.js';
 import { useTasksStore } from '../stores/tasks.js';
+import { getBearerToken } from '../api/request.js';
 
 // SSE 实时事件：连接 / 指数退避重连 / 事件分发到 stores
 export function useSse() {
@@ -12,8 +13,11 @@ export function useSse() {
 
   function connect() {
     if (es) return;
-    // 同源 EventSource 自动携带会话 Cookie，无需手动拼 token。
-    const url = '/api/events';
+    // 同源 EventSource 自动携带会话 Cookie；跨站 iframe 下 Cookie 可能被拦，
+    // 此时改用 ?token= 查询参数携带 X-Token（extractToken 已支持）。
+    let url = '/api/events';
+    const tk = getBearerToken();
+    if (tk) url += (url.includes('?') ? '&' : '?') + 'token=' + encodeURIComponent(tk);
     es = new EventSource(url);
 
     es.onopen = () => { app.setConnected(true); app.setSseBroken(false); reconnectDelay = 1000; };

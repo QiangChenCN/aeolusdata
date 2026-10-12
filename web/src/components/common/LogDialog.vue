@@ -30,10 +30,8 @@
 <script setup>
 import { computed, ref, watch, nextTick, onBeforeUnmount } from 'vue';
 import { useRunsStore } from '../../stores/runs.js';
-import { useAppStore } from '../../stores/app.js';
 
 const runs = useRunsStore();
-const app = useAppStore();
 
 const visible = computed({
   get: () => !!runs.modalRunId,
@@ -89,9 +87,9 @@ function lineCls(l) {
 async function copy() {
   try {
     await navigator.clipboard.writeText(lines.value.join('\n'));
-    app.toast('已复制日志', 'success');
+    ElMessage.success('已复制日志');
   } catch (e) {
-    app.toast('复制失败，请手动选择', 'error');
+    ElMessage.error('复制失败，请手动选择');
   }
 }
 function download() {
@@ -108,9 +106,9 @@ async function stop() {
   stopping.value = true;
   try {
     await runs.stop(runs.modalRunId);
-    app.toast('已发送停止指令', 'info');
+    ElMessage.info('已发送停止指令');
   } catch (e) {
-    app.toast(e.message, 'error');
+    ElMessage.error(e.message);
   } finally {
     stopping.value = false;
   }

@@ -22,10 +22,8 @@
 import { ref, computed } from 'vue';
 import ParamForm from './ParamForm.vue';
 import { useTasksStore } from '../../stores/tasks.js';
-import { useAppStore } from '../../stores/app.js';
 
 const tasks = useTasksStore();
-const app = useAppStore();
 
 const visible = ref(false);
 const task = ref(null);
@@ -64,11 +62,11 @@ function save() {
     if (p.type === 'switch') v = !!v;
     tasks.setArg(t.id, p.flag, v);
   });
-  app.toast('已保存配置', 'success');
+  ElMessage.success('已保存配置');
   visible.value = false;
 }
 
-function reset() { build(); app.toast('已恢复默认（未保存）', 'info'); }
+function reset() { build(); ElMessage.info('已恢复默认（未保存）'); }
 
 defineExpose({ open });
 </script>

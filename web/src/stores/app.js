@@ -12,7 +12,6 @@ export const useAppStore = defineStore('app', {
     quark: null,     // { status, checked_at, reason, age_hours }
     navOpen: JSON.parse(localStorage.getItem(NAV_OPEN_KEY) || '{}'),
     sideOpen: JSON.parse(localStorage.getItem(SIDE_KEY) || 'false'),
-    toasts: [],      // { id, message, type }
     confirm: null,   // { id, message, title, okText, cancelText, resolve }
     _tid: 0,
   }),
@@ -34,11 +33,6 @@ export const useAppStore = defineStore('app', {
     toggleSide() {
       this.sideOpen = !this.sideOpen;
       localStorage.setItem(SIDE_KEY, JSON.stringify(this.sideOpen));
-    },
-    toast(message, type = 'info', timeout = 2600) {
-      const id = ++this._tid;
-      this.toasts.push({ id, message, type });
-      setTimeout(() => { this.toasts = this.toasts.filter((t) => t.id !== id); }, timeout);
     },
     // 返回一个 Promise，用户点确定→resolve(true)，取消/关闭→resolve(false)
     confirmDialog({ message, title = '请确认', okText = '确定', cancelText = '取消' }) {

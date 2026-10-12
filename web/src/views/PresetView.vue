@@ -27,13 +27,11 @@
 import { ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { useTasksStore } from '../stores/tasks.js';
-import { useRunsStore } from '../stores/runs.js';
-import { useAppStore } from '../stores/app.js';
+import { useRunsStore } from '../stores/runs.js';
 
 const router = useRouter();
 const tasks = useTasksStore();
-const runs = useRunsStore();
-const app = useAppStore();
+const runs = useRunsStore();
 const runningId = ref('');
 
 function groupName(g) { const x = tasks.groupById(g); return x ? x.name : g; }
@@ -51,8 +49,8 @@ async function runTask(t) {
     await runs.run(t.id, args);
     // 任务配置仅在本次运行中有效：运行一次后清空持久化参数，回到默认
     tasks.resetArgs(t.id);
-    app.toast('已启动：' + t.name + '（配置已恢复默认）', 'success');
-  } catch (e) { app.toast(e.message || '启动失败', 'error'); }
+    ElMessage.success('已启动：' + t.name + '（配置已恢复默认）');
+  } catch (e) { ElMessage.error(e.message || '启动失败'); }
   finally { runningId.value = ''; }
 }
 </script>

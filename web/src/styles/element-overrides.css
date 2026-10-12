@@ -49,3 +49,13 @@
 .el-dialog, .el-drawer {
   border-radius: var(--r-modal);
 }
+
+/* 所有 el-alert 回归 Element Plus 默认配色。
+   做法：仅在 alert 作用域内重置 Element Plus 自身引用的语义色变量（--el-color-* 与
+   --el-alert-bg-color），让 EP 自己的规则（文字/图标/描述/背景都用这些变量）自然取到默认值，
+   从而覆盖本文件顶部把 --el-color-info 等改写成主题色的影响。作用域限定，不影响 alert
+   之外的按钮、tag 等组件。 */
+.el-alert--success { --el-color-success: #67c23a; --el-alert-bg-color: #f0f9eb; }
+.el-alert--warning { --el-color-warning: #e6a23c; --el-alert-bg-color: #fdf6ec; }
+.el-alert--info    { --el-color-info:    #909399; --el-alert-bg-color: #f4f4f5; }
+.el-alert--error   { --el-color-error:   #f56c6c; --el-alert-bg-color: #fef0f0; }

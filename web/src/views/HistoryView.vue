@@ -39,15 +39,13 @@
 <script setup>
 import { onMounted, ref } from 'vue';
 import { useRunsStore } from '../stores/runs.js';
-import { useTasksStore } from '../stores/tasks.js';
-import { useAppStore } from '../stores/app.js';
+import { useTasksStore } from '../stores/tasks.js';
 import { useDrawerStore } from '../stores/drawer.js';
 import { fetchHistory } from '../api/dashboards.js';
 import { STATUS_TXT } from '../utils/tokens.js';
 
 const runs = useRunsStore();
-const tasks = useTasksStore();
-const app = useAppStore();
+const tasks = useTasksStore();
 const drawer = useDrawerStore();
 
 const rows = ref([]);
@@ -70,7 +68,7 @@ async function load() {
     rows.value = list;
     runs.history = list;
   } catch (e) {
-    app.toast(e.message || '加载失败', 'error');
+    ElMessage.error(e.message || '加载失败');
   } finally {
     loading.value = false;
   }

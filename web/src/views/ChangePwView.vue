@@ -17,18 +17,16 @@
 
 <script setup>
 import { reactive, ref } from 'vue';
-import { useAppStore } from '../stores/app.js';
 import { changePw } from '../api/dashboards.js';
 
-const app = useAppStore();
 const savingPw = ref(false);
 const pw = reactive({ old: '', next: '', confirm: '' });
 
 async function doChangePw() {
-  if (pw.next !== pw.confirm) { app.toast('两次输入的新密码不一致', 'warning'); return; }
+  if (pw.next !== pw.confirm) { ElMessage.warning('两次输入的新密码不一致'); return; }
   savingPw.value = true;
-  try { await changePw({ old_password: pw.old, new_password: pw.next }); app.toast('密码已修改', 'success'); pw.old = pw.next = pw.confirm = ''; }
-  catch (e) { app.toast(e.message || '修改失败', 'error'); }
+  try { await changePw({ old_password: pw.old, new_password: pw.next }); ElMessage.success('密码已修改'); pw.old = pw.next = pw.confirm = ''; }
+  catch (e) { ElMessage.error(e.message || '修改失败'); }
   finally { savingPw.value = false; }
 }
 </script>

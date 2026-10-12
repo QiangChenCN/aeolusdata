@@ -97,10 +97,8 @@
 
 <script setup>
 import { computed, onMounted, ref } from 'vue';
-import { fetchTeams, fetchStandardGradeGlobal, saveStandardGradeGlobal } from '../api/dashboards.js';
-import { useAppStore } from '../stores/app.js';
-
-const app = useAppStore();
+import { fetchTeams, fetchStandardGradeGlobal, saveStandardGradeGlobal } from '../api/dashboards.js';
+
 const LEVEL_NO = [1, 2, 3, 4, 5];
 /* 新增站点时的初始值（仅作填充，用户可随意改；不构成"默认档位"） */
 const FILL_LEVELS = [
@@ -189,7 +187,7 @@ async function load() {
     updatedAt.value = fmtTime(res && res.updated_at);
     updatedBy.value = (res && res.updated_by) || '';
   } catch (e) {
-    app.toast(e.message || '加载标准达成设置失败', 'error');
+    ElMessage.error(e.message || '加载标准达成设置失败');
   }
 }
 
@@ -220,16 +218,16 @@ async function save() {
     }
     const res = await saveStandardGradeGlobal(body);
     if (res && res.ok) {
-      app.toast('标准达成设置已保存', 'success');
+      ElMessage.success('标准达成设置已保存');
       savedInfo.value = true;
       configured.value = true;
       updatedAt.value = fmtTime(res.updated_at);
       updatedBy.value = res.updated_by || '';
     } else if (res && res.error) {
-      app.toast(res.error, 'error');
+      ElMessage.error(res.error);
     }
   } catch (e) {
-    app.toast(e.message || '保存失败', 'error');
+    ElMessage.error(e.message || '保存失败');
   } finally {
     saving.value = false;
   }

@@ -52,9 +52,8 @@
             <span class="dv-card-label">{{ c.label }}</span>
           </div>
         </div>
-        <div v-if="loading" class="dv-state"><el-icon class="is-loading"><Loading /></el-icon> 加载中…</div>
-        <div v-else class="dv-table-wrap">
-          <el-table :data="stationRows" stripe border class="dv-table" height="100%">
+        <div class="dv-table-wrap">
+          <el-table v-loading="loading" :data="stationRows" stripe border class="dv-table" height="100%">
             <el-table-column prop="team_name" label="站点" min-width="120" fixed sortable show-overflow-tooltip />
             <el-table-column prop="scale_target" label="天应排" min-width="90" align="center" sortable />
             <el-table-column label="门槛" min-width="90" align="center" sortable>
@@ -84,9 +83,6 @@
       </el-tab-pane>
 
       <el-tab-pane label="骑手看板" name="rider">
-        <div v-if="riderLoading" class="dv-state"><el-icon class="is-loading"><Loading /></el-icon> 加载中…</div>
-        <div v-else-if="!riderRows.length" class="dv-state">暂无骑手数据（如需实时数据请点「刷新数据」走全量刷新）</div>
-        <template v-else>
           <div class="dv-filter">
             <el-input v-model="riderFilter" clearable placeholder="筛选骑手姓名" class="dv-filter-input">
               <template #prefix><el-icon><Search /></el-icon></template>
@@ -114,7 +110,7 @@
           </div>
           <div class="dv-rider-body">
             <div class="dv-table-wrap">
-              <el-table :data="riderPagedRows" stripe border class="dv-table" height="100%" @sort-change="onRiderSort">
+              <el-table v-loading="riderLoading" :data="riderPagedRows" stripe border class="dv-table" height="100%" empty-text="暂无骑手数据" @sort-change="onRiderSort">
                 <el-table-column prop="rider_id" label="骑手ID" :min-width="riderColWidths['rider_id']" fixed sortable="custom" />
                 <el-table-column prop="rider_name" label="骑手姓名" :min-width="riderColWidths['rider_name']" fixed sortable="custom">
                   <template #default="{ row }">
@@ -158,11 +154,10 @@
             <el-pagination
               class="dv-pager" background layout="total, sizes, prev, pager, next, jumper"
               :total="riderTotal" :page-size="riderPageSize" :current-page="riderPage"
-              :page-sizes="[10, 20, 50, 100]"
+              :page-sizes="[25, 50, 75, 100]"
               @current-change="riderPage = $event" @size-change="onRiderSizeChange"
             />
           </div>
-        </template>
       </el-tab-pane>
     </el-tabs>
   </div>
@@ -171,15 +166,14 @@
 <script setup>
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
 import { Search, Refresh, Setting, Clock } from '@element-plus/icons-vue';
-import { useAppStore } from '../stores/app.js';
+import { ElMessage } from 'element-plus';
 import { filterRiders } from '../utils/riderFilter.js';
 import {
   fetchTeams, fetchStandardStationReport, fetchStandardRiders,
   refreshStandard, fetchRefreshStatus,
   fetchStandardGradeGlobal,
 } from '../api/dashboards.js';
-
-const app = useAppStore();
+
 const teams = ref([]);
 const teamSel = ref('__all__');
 /* 站点下拉严格按「标准达成设置」里当前月份的参与站点（partIds）显示，不回落全部站点、不回落默认站点 */
@@ -286,7 +280,7 @@ const riderRowsView = computed(() => filterRiders(riderRows.value, {
 
 /* ============ 骑手看板：自定义排序 + 前端分页 ============ */
 const riderPage = ref(1);
-const riderPageSize = ref(20);
+const riderPageSize = ref(25);
 const riderSortProp = ref('');
 const riderSortOrder = ref(''); // 'ascending' | 'descending' | ''
 function onRiderSort({ prop, order }) {
@@ -456,7 +450,7 @@ async function loadRiders() {
     riderRows.value = (res && res.rows) || [];
     riderLoaded.value = true;
   } catch (e) {
-    app.toast(e.message || '骑手数据加载失败', 'error');
+    ElMessage.error(e.message || '骑手数据加载失败');
     riderRows.value = [];
   } finally {
     riderLoading.value = false;
@@ -486,7 +480,7 @@ async function load() {
     const res = await fetchStandardStationReport({ team: teamSel.value, start: start(), end: end(), month: monthOf() });
     data.value = res || {};
   } catch (e) {
-    app.toast(e.message || '加载失败', 'error');
+    ElMessage.error(e.message || '加载失败');
     data.value = { rows: [] };
   } finally {
     loading.value = false;
@@ -509,19 +503,23 @@ watch(date, async () => {
 async function onRefresh() {
   if (refreshing.value || cooldown.value > 0) return;
   refreshing.value = true;
+  loading.value = true;          // 覆盖「后端刷新计算 + 轮询等待」这段最长空窗，使表格全程有 loading 反馈
+  riderLoading.value = true;
   try {
     const body = { start: start(), end: end() };
     if (teamSel.value !== '__all__') body.teams = [teamSel.value];
     const res = await refreshStandard(body);
     if (res && res.already_running) {
-      app.toast('已有刷新任务在进行', 'info');
+      ElMessage.info('已有刷新任务在进行');
       startCooldown(REFRESH_COOLDOWN_SEC);
       poll();
       return;
     }
     if (!res || !res.ok) {
-      app.toast((res && res.error) || '刷新启动失败', 'error');
+      ElMessage.error((res && res.error) || '刷新启动失败');
       refreshing.value = false;
+      loading.value = false;           // 启动失败不进入轮询，手动复位表格 loading
+      riderLoading.value = false;
       return;
     }
     // 后端已接受刷新：从此时起进入 60s 冷却（与 RATE_LIMIT_SEC 对齐）
@@ -531,8 +529,10 @@ async function onRefresh() {
     // 后端频控：429 + RATE_LIMITED，body.retry_after 为实际剩余秒数（≤60 或全局 15s 窗口剩余）
     const ra = e && e.data && e.data.retry_after;
     startCooldown(ra && ra > 0 ? ra : REFRESH_COOLDOWN_SEC);
-    app.toast(e.message || '刷新失败', 'error');
+    ElMessage.error(e.message || '刷新失败');
     refreshing.value = false;
+    loading.value = false;           // 异常不进入轮询，手动复位表格 loading
+    riderLoading.value = false;
   }
 }
 function poll() {
@@ -544,7 +544,7 @@ function poll() {
       if (!status || !status.running) {
         clearInterval(pollTimer); pollTimer = null;
         refreshing.value = false;
-        app.toast('刷新完成', 'success');
+        ElMessage.success('刷新完成');
         load();
         riderLoaded.value = false;
         if (tab.value === 'rider') loadRiders();
@@ -557,6 +557,14 @@ onMounted(async () => {
   try { const t = await fetchTeams(); teams.value = (t && t.teams) || []; } catch (e) { /* ignore */ }
   await load();
   await refreshParticipating();
+  // 刷新页面后从后端恢复刷新冷却：后端频控是进程级内存态（按用户 60s + 全局 15s），
+  // 跨页面刷新仍有效，但前端 cooldown 是内存态会丢失，故加载时查询剩余秒数并重建倒计时，
+  // 使「刷新页面也保持限制状态」。
+  try {
+    const st = await fetchRefreshStatus();
+    const sec = st && st.status && st.status.cooldown_sec;
+    if (sec && sec > 0) startCooldown(sec);
+  } catch (e) { /* 查询失败不影响首屏 */ }
 });
 
 onUnmounted(() => {
@@ -588,7 +596,7 @@ onUnmounted(() => {
 /* 骑手看板：表格 + 分页器纵向铺满 */
 .dv-rider-body { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .dv-pager { flex: none; padding: var(--sp-12) 0 0; display: flex; justify-content: flex-end; }
-.dv-state { flex: 1; min-height: 0; padding: var(--sp-40); text-align: center; color: var(--muted); display: flex; gap: var(--sp-8); justify-content: center; align-items: center; }
+
 /* tabs 占满 dv 剩余高度，内容区弹性填充，确保激活的表格填满可视区 */
 .dv-tabs { margin-top: var(--sp-4); flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .dv-tabs :deep(.el-tabs__header) { margin-bottom: var(--sp-12); flex: none; }
