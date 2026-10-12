@@ -185,17 +185,25 @@ function getAuthCode(corpId) {
   return new Promise((resolve, reject) => {
     const dd = window.dd;
     if (!dd) return reject(new Error('钉钉 JSAPI 未就绪'));
+    // 把任意拒绝值（钉钉 SDK 常拒绝为 {errCode,errMsg} 对象而非 Error）统一转成可读字符串
+    const fail = (e) =>
+      reject(
+        new Error(
+          e?.errMsg || e?.errorMessage || e?.message ||
+            (typeof e === 'string' ? e : JSON.stringify(e)) || '获取免登码失败',
+        ),
+      );
     if (typeof dd.getAuthCode === 'function') {
       const p = dd.getAuthCode({ corpId });
       if (p && typeof p.then === 'function') {
-        p.then((r) => resolve(r.code)).catch((e) => reject(e));
+        p.then((r) => resolve(r.code)).catch(fail);
         return;
       }
     }
     dd.runtime?.permission?.requestAuthCode({
       corpId,
       onSuccess: (r) => resolve(r.code),
-      onFail: (e) => reject(new Error(e?.errorMessage || '获取免登码失败')),
+      onFail: fail,
     });
   });
 }
@@ -224,13 +232,23 @@ async function autoDingtalkLogin() {
       return;
     }
     dtStatus.value = 'failed';
-    dtMessage.value = (data && data.error) || '钉钉自动登录未成功，请用账号密码登录。';
+    dtMessage.value = '钉钉自动登录未成功：' + errText(data && data.error) + '（可用账号密码登录）';
     dtLoading.value = false;
   } catch (e) {
     dtStatus.value = 'failed';
-    dtMessage.value = '钉钉自动登录失败：' + (e?.message || e) + '（可用账号密码登录）';
+    // eslint-disable-next-line no-console
+    console.error('[钉钉免登失败]', e);
+    dtMessage.value = '钉钉自动登录失败：' + errText(e) + '（可用账号密码登录）';
     dtLoading.value = false;
   }
+}
+
+/** 把错误信息统一转成可读字符串（兼容 Error / 普通对象 / 字符串）。 */
+function errText(e) {
+  if (!e) return '未知错误';
+  if (typeof e === 'string') return e;
+  if (e.message) return e.message;
+  try { return JSON.stringify(e); } catch { return String(e); }
 }
 
 onMounted(async () => {
