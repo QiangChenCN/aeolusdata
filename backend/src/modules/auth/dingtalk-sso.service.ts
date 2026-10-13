@@ -11,8 +11,9 @@ import * as path from 'path';
  * 本地账号并发放同一套 wb_token 会话：
  *   1) JSAPI 免登（钉钉工作台内嵌 H5）：前端 `dd.getAuthCode` 取 authCode → 本服务用应用
  *      access_token 调 getuserinfo 拿 userid → 通讯录接口拿 unionid。
- *   2) OAuth2 网页登录（浏览器独立访问）：前端跳转钉钉授权页拿 code → 本服务换 userAccessToken
- *      → contact/users/me 拿 unionid。
+ *   2) 钉钉登录(OAuth2 网页登录，浏览器独立访问)：前端跳转钉钉授权页拿 code → 本服务换
+ *      userAccessToken，再用这个「用户 AccessToken」调 contact/users/me 取 unionid
+ *      （需要 Contact.User.Read 权限）。这是内部应用浏览器登录的标准做法，并不依赖 openid scope。
  *
  * 凭证来源优先级：持久化配置（backend/data/.dingtalk_sso.json，由前端「钉钉设置」页维护）
  * 覆盖 环境变量（DT_APP_KEY / DT_APP_SECRET / DT_CORP_ID …）。二者皆未配置时 isEnabled() 为
@@ -140,20 +141,20 @@ export class DingtalkSsoService {
     }
   }
 
-  /** 浏览器独立访问的钉钉 OAuth2 授权地址（redirect_uri 需与钉钉后台配置一致且为 HTTPS）。 */
+  /** 浏览器独立访问的钉钉登录（钉钉登录 OAuth2 产品）授权地址。
+   *  内部应用浏览器登录：先用 userAccessToken 这个「用户 AccessToken」去调 contact/users/me
+   *  取 unionid，因此授权 scope 必须包含 Contact.User.Read（通讯录个人信息读权限）。
+   *  同时带上 openid 作为兜底——若令牌响应直接带回 unionId 则可省一次调用。 */
   private buildAuthorizeUrl(): string {
     const c = this.effectiveConfig();
+    const state = 'wb';
     return (
       'https://login.dingtalk.com/oauth2/auth?redirect_uri=' +
       encodeURIComponent(c.oauthRedirectUri) +
-      '&client_id=' +
-      encodeURIComponent(c.appKey) +
-      // 必须同时申请 openid 与 Contact.User.Read：
-      //   - openid 让换令牌的响应直接带 unionId（走捷径，省掉下面的通讯录接口）；
-      //   - Contact.User.Read 是回退路径 /users/me 所需的 scope。
-      // 注意「在控制台开通权限」≠「令牌带该 scope」——授权请求不申请，令牌就无权，
-      // 这是此前一直报「权限不足」却怎么开通都没用的根因。
-      '&response_type=code&scope=openid%20Contact.User.Read&state=wb'
+      '&client_id=' + encodeURIComponent(c.appKey) +
+      '&response_type=code&scope=' + encodeURIComponent('openid Contact.User.Read') +
+      '&state=' + state +
+      '&prompt=consent'
     );
   }
 
@@ -169,67 +170,87 @@ export class DingtalkSsoService {
     return '';
   }
 
-  /** OAuth2 网页登录：code → userAccessToken → 当前用户 unionid。 */
+  /**
+   * 钉钉登录（OAuth2 产品，浏览器独立访问）：code → userAccessToken → 用户身份。
+   *
+   * 内部应用的浏览器登录标准做法（即「用 AccessToken 取身份」，不依赖 openid）：
+   *   1) 用 code 换 userAccessToken（用户 AccessToken）；
+   *   2) 若令牌响应直接带 unionId/openid（openid scope 生效时）→ 直接用；
+   *   3) 否则用该 userAccessToken 调 contact/users/me 取当前登录用户的 unionId
+   *      （要求授权时用户授予了 Contact.User.Read，且应用在「钉钉登录」产品的权限范围里勾选了它）；
+   *   4) 再不行用 oauth2/userinfo 兜底。
+   */
   async exchangeOauthCode(code: string): Promise<DingtalkIdentity> {
     const c = this.effectiveConfig();
     const clientId = c.appKey;
     const clientSecret = c.appSecret;
+    this.logger.warn(
+      '[钉钉OAuth][STEP1] 用 code 换 userAccessToken：clientId=' + clientId +
+        ' code长度=' + (code ? code.length : 0) + ' scope(授权页)=openid Contact.User.Read',
+    );
     const tokRes = await fetch('https://api.dingtalk.com/v1.0/oauth2/userAccessToken', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ clientId, clientSecret, code, grantType: 'authorization_code' }),
     });
+    this.logger.warn('[钉钉OAuth][STEP2] 令牌端点 HTTP 状态=' + tokRes.status);
     const tok = await tokRes.json().catch(() => ({}));
     const accessToken = tok?.accessToken;
-    if (!accessToken) throw new Error('钉钉 OAuth 换取用户令牌失败：' + JSON.stringify(tok));
-
-    // 诊断用：把令牌响应的关键字段落日志（不含 accessToken 明文），用于确认是否直接带了 unionId、
-    // 以及是否真的申请到了 Contact.User.Read scope —— 这是此前「权限不足」争议的唯一定论依据。
+    if (!accessToken) {
+      this.logger.warn('[钉钉OAuth][STEP2-FAIL] 未拿到 accessToken；完整响应=' + JSON.stringify(tok).slice(0, 800));
+      throw new Error('钉钉 OAuth 换取用户令牌失败：' + JSON.stringify(tok));
+    }
     this.logger.warn(
-      '[钉talkOAuth] 令牌响应: hasToken=' + !!accessToken +
+      '[钉钉OAuth][STEP2-OK] 令牌响应: accessToken已得' +
         ' unionId=' + (tok?.unionId || tok?.unionid || '空') +
         ' openId=' + (tok?.openId || tok?.openid || '空') +
-        ' nick=' + (tok?.nick || '空') +
-        ' raw=' + JSON.stringify(tok).slice(0, 500),
+        ' nick=' + (tok?.nick || '空'),
     );
 
-    // 部分应用类型在换令牌的响应里就直接带 unionId —— 优先使用它，
-    // 可省掉下面这个需要 Contact.User.Read 权限的通讯录接口。
-    const direct = tok?.unionId || tok?.unionid;
-    if (direct) {
-      return { unionid: direct, openid: tok?.openId || tok?.openid, name: tok?.nick || tok?.name };
+    // 第 2 步：令牌响应直接带回 unionId/openid（openid scope 生效时）。
+    const unionidFromToken = tok?.unionId || tok?.unionid;
+    if (unionidFromToken) {
+      this.logger.warn('[钉钉OAuth][STEP3] 令牌直接带 unionId，返回（无需再调通讯录）');
+      return { unionid: unionidFromToken, openid: tok?.openId || tok?.openid, name: tok?.nick };
     }
 
-    this.logger.warn('[钉talkOAuth] 令牌未直接带 unionId，回退调用 /v1.0/contact/users/me');
+    // 第 3 步：用 userAccessToken（用户 AccessToken）调 contact/users/me 取当前用户 unionId。
+    this.logger.warn('[钉钉OAuth][STEP3] 令牌未直接带 unionId，用 userAccessToken 调 contact/users/me');
     const meRes = await fetch('https://api.dingtalk.com/v1.0/contact/users/me', {
       method: 'GET',
       headers: { 'x-acs-dingtalk-access-token': accessToken },
     });
+    this.logger.warn('[钉钉OAuth][STEP4] /contact/users/me(GET) HTTP 状态=' + meRes.status);
     const me = await meRes.json().catch(() => ({}));
-    const unionid = me?.unionId || me?.unionid;
-    if (!unionid) {
-      // 诊断用：原样记录 /users/me 的完整响应，看 errcode/requiredScopes，定论到底是缺权限还是令牌没带 scope。
-      this.logger.warn('[钉talkOAuth] /users/me 响应: ' + JSON.stringify(me).slice(0, 800));
-      // 权限不足是最常见原因，单独给出可执行的处理指引，别只丢一串英文给使用者。
-      const denied = /PermissionDenied|AccessDenied/i.test(String(me?.code || ''));
-      const scopes = me?.accessdenieddetail?.requiredScopes;
-      // 诊断信息：把「令牌实际返回的字段（除令牌本身）」与「/users/me 原始响应」塞进报错，
-      // 这样前端报错文案就能直接反映真相，无需查服务器日志。
-      const tokKeys = Object.keys(tok || {}).filter((k) => k !== 'accessToken').join(',');
-      const diag =
-        ' [诊断: 令牌字段=' + tokKeys +
-        '; me=' + JSON.stringify(me).slice(0, 300) + ']';
-      if (denied) {
-        throw new Error(
-          '钉钉接口权限不足：' + (Array.isArray(scopes) && scopes.length ? scopes.join(', ') : '未知scope') +
-            '。需满足两点：①开放平台「该应用→权限管理」已开通此权限；②本系统 OAuth 授权请求已申请该 scope' +
-            '（当前 scope 含 openid Contact.User.Read）。若都符合仍被拒，多半是「钉钉设置」里填的 AppKey 指向了' +
-            '另一个应用——请确认 AppKey/AppSecret 与本系统用的是同一个应用，然后重新发布。' + diag,
-        );
-      }
-      throw new Error('钉钉 OAuth 获取用户信息失败：' + JSON.stringify(me));
+    // 该接口可能把字段放在 result 下或直接在顶层，unionId 大小写两种都兼容。
+    const meUnion =
+      me?.result?.unionId || me?.result?.unionid || me?.unionId || me?.unionid;
+    if (meUnion) {
+      this.logger.warn('[钉钉OAuth][STEP4-OK] 通过 /contact/users/me 拿到 unionid=' + meUnion);
+      const meName = me?.result?.name || me?.name;
+      return { unionid: meUnion, name: meName };
     }
-    return { unionid, openid: me?.openId || me?.openid, name: me?.nick || me?.name };
+    this.logger.warn('[钉钉OAuth][STEP4-FAIL] /contact/users/me 未取得 unionId: ' + JSON.stringify(me).slice(0, 500));
+
+    // 第 4 步兜底：oauth2/userinfo（部分应用/区域不存在，会 404，仅作最后尝试）。
+    this.logger.warn('[钉钉OAuth][STEP5] 兜底尝试 /oauth2/userinfo');
+    const uiRes = await fetch('https://api.dingtalk.com/v1.0/oauth2/userinfo', {
+      method: 'POST',
+      headers: { 'x-acs-dingtalk-access-token': accessToken, 'Content-Type': 'application/json' },
+      body: '{}',
+    });
+    this.logger.warn('[钉钉OAuth][STEP6] /oauth2/userinfo(POST) HTTP 状态=' + uiRes.status);
+    const ui = await uiRes.json().catch(() => ({}));
+    const uiUnion = ui?.unionId || ui?.unionid;
+    if (uiUnion) {
+      this.logger.warn('[钉钉OAuth][STEP6-OK] 通过 /oauth2/userinfo 拿到 unionid=' + uiUnion);
+      return { unionid: uiUnion, openid: ui?.openId || ui?.openid, name: ui?.nick || ui?.name };
+    }
+    this.logger.warn('[钉钉OAuth][STEP6-FAIL] /oauth2/userinfo 未取得 unionId: ' + JSON.stringify(ui).slice(0, 500));
+    throw new Error(
+      '钉钉 OAuth 未能取得用户 unionId（令牌/contact/users/me/userinfo 均未返回身份）：' +
+        JSON.stringify(tok).slice(0, 200) + ' | ' + JSON.stringify(me).slice(0, 200) + ' | ' + JSON.stringify(ui).slice(0, 200),
+    );
   }
 
   /** JSAPI 免登：authCode → userid → unionid（需开通通讯录读取权限）。 */
