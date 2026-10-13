@@ -183,6 +183,16 @@ export class DingtalkSsoService {
     const accessToken = tok?.accessToken;
     if (!accessToken) throw new Error('钉钉 OAuth 换取用户令牌失败：' + JSON.stringify(tok));
 
+    // 诊断用：把令牌响应的关键字段落日志（不含 accessToken 明文），用于确认是否直接带了 unionId、
+    // 以及是否真的申请到了 Contact.User.Read scope —— 这是此前「权限不足」争议的唯一定论依据。
+    this.logger.warn(
+      '[钉talkOAuth] 令牌响应: hasToken=' + !!accessToken +
+        ' unionId=' + (tok?.unionId || tok?.unionid || '空') +
+        ' openId=' + (tok?.openId || tok?.openid || '空') +
+        ' nick=' + (tok?.nick || '空') +
+        ' raw=' + JSON.stringify(tok).slice(0, 500),
+    );
+
     // 部分应用类型在换令牌的响应里就直接带 unionId —— 优先使用它，
     // 可省掉下面这个需要 Contact.User.Read 权限的通讯录接口。
     const direct = tok?.unionId || tok?.unionid;
@@ -190,6 +200,7 @@ export class DingtalkSsoService {
       return { unionid: direct, openid: tok?.openId || tok?.openid, name: tok?.nick || tok?.name };
     }
 
+    this.logger.warn('[钉talkOAuth] 令牌未直接带 unionId，回退调用 /v1.0/contact/users/me');
     const meRes = await fetch('https://api.dingtalk.com/v1.0/contact/users/me', {
       method: 'GET',
       headers: { 'x-acs-dingtalk-access-token': accessToken },
@@ -197,15 +208,23 @@ export class DingtalkSsoService {
     const me = await meRes.json().catch(() => ({}));
     const unionid = me?.unionId || me?.unionid;
     if (!unionid) {
+      // 诊断用：原样记录 /users/me 的完整响应，看 errcode/requiredScopes，定论到底是缺权限还是令牌没带 scope。
+      this.logger.warn('[钉talkOAuth] /users/me 响应: ' + JSON.stringify(me).slice(0, 800));
       // 权限不足是最常见原因，单独给出可执行的处理指引，别只丢一串英文给使用者。
       const denied = /PermissionDenied|AccessDenied/i.test(String(me?.code || ''));
       const scopes = me?.accessdenieddetail?.requiredScopes;
+      // 诊断信息：把「令牌实际返回的字段（除令牌本身）」与「/users/me 原始响应」塞进报错，
+      // 这样前端报错文案就能直接反映真相，无需查服务器日志。
+      const tokKeys = Object.keys(tok || {}).filter((k) => k !== 'accessToken').join(',');
+      const diag =
+        ' [诊断: 令牌字段=' + tokKeys +
+        '; me=' + JSON.stringify(me).slice(0, 300) + ']';
       if (denied) {
         throw new Error(
           '钉钉接口权限不足：' + (Array.isArray(scopes) && scopes.length ? scopes.join(', ') : '未知scope') +
             '。需满足两点：①开放平台「该应用→权限管理」已开通此权限；②本系统 OAuth 授权请求已申请该 scope' +
             '（当前 scope 含 openid Contact.User.Read）。若都符合仍被拒，多半是「钉钉设置」里填的 AppKey 指向了' +
-            '另一个应用——请确认 AppKey/AppSecret 与本系统用的是同一个应用，然后重新发布。',
+            '另一个应用——请确认 AppKey/AppSecret 与本系统用的是同一个应用，然后重新发布。' + diag,
         );
       }
       throw new Error('钉钉 OAuth 获取用户信息失败：' + JSON.stringify(me));
