@@ -177,13 +177,32 @@ export class DingtalkSsoService {
     const tok = await tokRes.json().catch(() => ({}));
     const accessToken = tok?.accessToken;
     if (!accessToken) throw new Error('钉钉 OAuth 换取用户令牌失败：' + JSON.stringify(tok));
+
+    // 部分应用类型在换令牌的响应里就直接带 unionId —— 优先使用它，
+    // 可省掉下面这个需要 Contact.User.Read 权限的通讯录接口。
+    const direct = tok?.unionId || tok?.unionid;
+    if (direct) {
+      return { unionid: direct, openid: tok?.openId || tok?.openid, name: tok?.nick || tok?.name };
+    }
+
     const meRes = await fetch('https://api.dingtalk.com/v1.0/contact/users/me', {
       method: 'GET',
       headers: { 'x-acs-dingtalk-access-token': accessToken },
     });
     const me = await meRes.json().catch(() => ({}));
     const unionid = me?.unionId || me?.unionid;
-    if (!unionid) throw new Error('钉钉 OAuth 获取用户信息失败：' + JSON.stringify(me));
+    if (!unionid) {
+      // 权限不足是最常见原因，单独给出可执行的处理指引，别只丢一串英文给使用者。
+      const denied = /PermissionDenied|AccessDenied/i.test(String(me?.code || ''));
+      const scopes = me?.accessdenieddetail?.requiredScopes;
+      if (denied) {
+        throw new Error(
+          '钉钉接口权限不足：' + (Array.isArray(scopes) && scopes.length ? scopes.join(', ') : '未知scope') +
+            '。请到开放平台 → 该应用 → 权限管理开通对应权限，并确认 AppKey 就是本系统配置的那个应用，然后重新发布。',
+        );
+      }
+      throw new Error('钉钉 OAuth 获取用户信息失败：' + JSON.stringify(me));
+    }
     return { unionid, openid: me?.openId || me?.openid, name: me?.nick || me?.name };
   }
 
