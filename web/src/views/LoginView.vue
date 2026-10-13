@@ -333,13 +333,20 @@ function errText(e) {
 }
 
 onMounted(async () => {
-  // OAuth 回跳后未绑定 → 后端会重定向到 /login?dingtalk=needbind&unionid=…。
-  // 此前这里既不提示也不引导，用户看到的只是「点完登录没反应」，因此补一条明确说明：
-  // 账密登录成功会自动把当前钉钉身份绑定到本账号，下次即可免登。
-  if (route.query.dingtalk === 'needbind' && typeof route.query.unionid === 'string') {
+  // OAuth 回跳的三种结果都要落到界面上。此前只处理了 needbind，error / disabled 一律
+  // 被忽略 —— 一旦换取身份或读通讯录失败，用户看到的就是「回到登录页、毫无反应」。
+  const dt = route.query.dingtalk;
+  if (dt === 'needbind' && typeof route.query.unionid === 'string') {
     dtStatus.value = 'unbound';
     dtMessage.value =
       '钉钉已认证成功，但该钉钉身份尚未绑定本系统账号。请用工号密码登录 —— 登录成功后会自动完成绑定，之后即可直接免登。';
+  } else if (dt === 'error') {
+    dtStatus.value = 'failed';
+    const msg = typeof route.query.msg === 'string' ? route.query.msg : '';
+    dtMessage.value = '钉钉登录失败：' + (msg || '未知原因') + '（可用账号密码登录）';
+  } else if (dt === 'disabled') {
+    dtStatus.value = 'failed';
+    dtMessage.value = '钉钉登录未启用：请先在「钉钉设置」填写 AppKey / AppSecret 并开启开关。';
   }
   try {
     const cfg = await dingtalkConfig();
