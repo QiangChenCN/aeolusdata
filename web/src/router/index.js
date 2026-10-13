@@ -35,8 +35,9 @@ const routes = [
     path: '/',
     component: MainLayout,
     children: [
-      { path: '', redirect: '/home' },
-      { path: 'home', name: 'home', component: HomeView, meta: { title: '首页', kind: 'home' } },
+      // 根路径直接渲染首页（原重定向到 /home）；/home 反向重定向到 / 以兼容旧书签。
+      { path: '', name: 'home', component: HomeView, meta: { title: '首页', kind: 'home' } },
+      { path: 'home', redirect: '' },
       { path: 'tasks', name: 'tasks-all', component: TaskCenterView, meta: { title: '全部任务', kind: 'tasks', id: 'all' } },
       { path: 'tasks/:groupId', name: 'tasks-group', component: TaskCenterView, meta: { title: '任务中心', kind: 'tasks' }, props: true },
       { path: 'history', name: 'history', component: HistoryView, meta: { title: '运行记录', kind: 'history', id: '' } },

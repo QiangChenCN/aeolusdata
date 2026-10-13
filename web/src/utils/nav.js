@@ -5,7 +5,7 @@ import { useAppStore } from '../stores/app.js';
 
 export function navTo(it) {
   switch (it.kind) {
-    case 'home': return '/home';
+    case 'home': return '/';
     case 'tasks': return it.id === 'all' ? '/tasks' : '/tasks/' + encodeURIComponent(it.id);
     case 'history': return '/history';
     case 'standard': return '/standard';
@@ -24,7 +24,7 @@ export function navTo(it) {
     case 'sys-dingtalk': return '/settings/dingtalk';
     case 'sys-aeolus': return '/settings/aeolus';
     case 'botcfg': return '/bot/' + it.id;
-    default: return '/home';
+    default: return '/';
   }
 }
 
