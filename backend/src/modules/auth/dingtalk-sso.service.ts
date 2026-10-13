@@ -148,7 +148,12 @@ export class DingtalkSsoService {
       encodeURIComponent(c.oauthRedirectUri) +
       '&client_id=' +
       encodeURIComponent(c.appKey) +
-      '&response_type=code&scope=openid&state=wb'
+      // 必须同时申请 openid 与 Contact.User.Read：
+      //   - openid 让换令牌的响应直接带 unionId（走捷径，省掉下面的通讯录接口）；
+      //   - Contact.User.Read 是回退路径 /users/me 所需的 scope。
+      // 注意「在控制台开通权限」≠「令牌带该 scope」——授权请求不申请，令牌就无权，
+      // 这是此前一直报「权限不足」却怎么开通都没用的根因。
+      '&response_type=code&scope=openid%20Contact.User.Read&state=wb'
     );
   }
 
@@ -198,7 +203,9 @@ export class DingtalkSsoService {
       if (denied) {
         throw new Error(
           '钉钉接口权限不足：' + (Array.isArray(scopes) && scopes.length ? scopes.join(', ') : '未知scope') +
-            '。请到开放平台 → 该应用 → 权限管理开通对应权限，并确认 AppKey 就是本系统配置的那个应用，然后重新发布。',
+            '。需满足两点：①开放平台「该应用→权限管理」已开通此权限；②本系统 OAuth 授权请求已申请该 scope' +
+            '（当前 scope 含 openid Contact.User.Read）。若都符合仍被拒，多半是「钉钉设置」里填的 AppKey 指向了' +
+            '另一个应用——请确认 AppKey/AppSecret 与本系统用的是同一个应用，然后重新发布。',
         );
       }
       throw new Error('钉钉 OAuth 获取用户信息失败：' + JSON.stringify(me));
