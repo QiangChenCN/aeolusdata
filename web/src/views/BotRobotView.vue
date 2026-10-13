@@ -109,9 +109,9 @@ onUnmounted(deactivate);
 <style scoped>
 .bc { padding: var(--sp-20); }
 .v-title { margin: 0 0 var(--sp-16); font-size: var(--el-font-size-extra-large); }
-.bc-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg); padding: var(--sp-16) var(--sp-20); margin-bottom: var(--sp-16); }
+.bc-card { background: var(--surface); border: 1px solid var(--el-border-color); border-radius: var(--r-lg); padding: var(--sp-16) var(--sp-20); margin-bottom: var(--sp-16); }
 .bc-h { margin: 0 0 var(--sp-12); font-size: var(--el-font-size-medium); }
 .bc-table { margin-top: var(--sp-8); }
 .bc-tip { margin-top: var(--sp-8); }
-.muted { color: var(--muted); }
+.muted { color: var(--el-text-color-secondary); }
 </style>

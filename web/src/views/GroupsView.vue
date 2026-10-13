@@ -82,19 +82,19 @@ onMounted(doFetch);
 .grp { padding: var(--sp-20); max-width: 760px; margin: 0 auto; }
 .grp-bar { margin-bottom: var(--sp-16); }
 .v-title { margin: 0 0 var(--sp-6); font-size: var(--el-font-size-extra-large); }
-.v-sub { color: var(--muted); font-size: var(--el-font-size-base); }
+.v-sub { color: var(--el-text-color-secondary); font-size: var(--el-font-size-base); }
 .grp-search { margin-bottom: var(--sp-16); }
-.grp-state { padding: var(--sp-24); text-align: center; color: var(--muted); display: flex; gap: var(--sp-8); justify-content: center; align-items: center; }
+.grp-state { padding: var(--sp-24); text-align: center; color: var(--el-text-color-secondary); display: flex; gap: var(--sp-8); justify-content: center; align-items: center; }
 .grp-list { list-style: none; margin: 0; padding: 0; }
 .grp-item {
   display: flex; align-items: center; justify-content: space-between;
-  padding: var(--sp-12) var(--sp-14); border: 1px solid var(--border-soft);
-  border-radius: var(--r-md); margin-bottom: var(--sp-8); background: var(--white);
+  padding: var(--sp-12) var(--sp-14); border: 1px solid var(--el-border-color-lighter);
+  border-radius: var(--el-border-radius-base); margin-bottom: var(--sp-8); background: var(--el-bg-color);
 }
-.grp-item.recent { background: var(--brand-soft); }
+.grp-item.recent { background: var(--el-color-primary-light-9); }
 .grp-info { display: flex; align-items: center; gap: var(--sp-8); }
 .grp-title { font-weight: var(--fw-semibold); }
-.grp-flag { font-size: var(--el-font-size-extra-small); color: var(--brand); border: 1px solid var(--brand); border-radius: var(--r-xl); padding: 0 var(--sp-6); }
-.grp-score { font-size: var(--el-font-size-extra-small); color: var(--muted); }
+.grp-flag { font-size: var(--el-font-size-extra-small); color: var(--el-color-primary); border: 1px solid var(--el-color-primary); border-radius: var(--el-border-radius-base); padding: 0 var(--sp-6); }
+.grp-score { font-size: var(--el-font-size-extra-small); color: var(--el-text-color-secondary); }
 .grp-acts { display: flex; gap: var(--sp-6); }
 </style>

@@ -385,29 +385,29 @@ function openDingtalkOauth() {
   align-items: center;
   gap: var(--sp-6);
   padding: var(--sp-8) var(--sp-14);
-  border: 1px solid var(--border);
+  border: 1px solid var(--el-border-color);
   border-radius: var(--r-pill);
-  background: var(--white);
-  color: var(--text);
+  background: var(--el-bg-color);
+  color: var(--el-text-color-primary);
   font-size: var(--el-font-size-extra-small);
   cursor: pointer;
 }
-.login-back:hover { background: var(--surface-sunken); }
+.login-back:hover { background: var(--el-fill-color-light); }
 
 .login-card {
   width: min(880px, 100%);
   display: grid;
   grid-template-columns: 1fr 1fr;
-  background: var(--white);
-  border: 1px solid var(--border);
-  border-radius: var(--r-xl);
+  background: var(--el-bg-color);
+  border: 1px solid var(--el-border-color);
+  border-radius: var(--el-border-radius-base);
   overflow: hidden;
   box-shadow: 0 18px 50px rgba(20, 30, 60, 0.12);
 }
 .login-brand {
   padding: var(--sp-40);
-  color: var(--white);
-  background: linear-gradient(150deg, var(--brand) 0%, #4f6bff 100%);
+  color: var(--el-bg-color);
+  background: linear-gradient(150deg, var(--el-color-primary) 0%, #4f6bff 100%);
   display: flex;
   flex-direction: column;
 }
@@ -437,11 +437,11 @@ function openDingtalkOauth() {
   justify-content: center;
 }
 .lf-title { margin: 0; font-size: 22px; font-weight: var(--fw-bold); }
-.lf-sub { margin: var(--sp-8) 0 var(--sp-24); color: var(--muted); }
+.lf-sub { margin: var(--sp-8) 0 var(--sp-24); color: var(--el-text-color-secondary); }
 .lf-alert { margin-bottom: var(--sp-16); }
 .lf-btn { width: 100%; margin-top: var(--sp-8); }
 .lf-remember { margin: 0 0 var(--sp-4); }
-.lf-hint { margin: var(--sp-20) 0 0; font-size: 12px; line-height: 1.6; color: var(--muted); }
+.lf-hint { margin: var(--sp-20) 0 0; font-size: 12px; line-height: 1.6; color: var(--el-text-color-secondary); }
 
 @media (max-width: 720px) {
   .login-card { grid-template-columns: 1fr; }

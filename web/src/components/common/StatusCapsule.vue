@@ -1,33 +1,50 @@
 <template>
-  <span class="capsule" :title="title">
+  <el-tag
+    class="cap"
+    :type="tagType"
+    :size="size"
+    effect="plain"
+    :title="title"
+  >
     <span class="ui-dot" :class="'ui-dot--' + dot"></span>
-    <span class="cap-label">{{ label }}</span>
-    <span class="cap-text">{{ text }}</span>
-  </span>
+    <span v-if="label" class="cap-label">{{ label }}</span>
+    <span v-if="text" class="cap-text">{{ text }}</span>
+  </el-tag>
 </template>
 
 <script setup>
-defineProps({
+import { computed } from 'vue';
+
+const props = defineProps({
   label: { type: String, default: '' },
   dot: { type: String, default: 'muted' },   // ok | err | warn | info | muted
   text: { type: String, default: '' },
   title: { type: String, default: '' },
+  size: { type: String, default: 'default' },  // small | default | large（交给 Element 控制字号）
+});
+
+// 把圆点语义映射到 el-tag 的 type，让边框/底色也带状态色
+const tagType = computed(() => {
+  switch (props.dot) {
+    case 'ok': return 'success';
+    case 'err': return 'danger';
+    case 'warn': return 'warning';
+    case 'info':
+    case 'muted':
+    default: return 'info';
+  }
 });
 </script>
 
 <style scoped>
-.capsule {
+.cap {
   display: inline-flex;
   align-items: center;
   gap: var(--sp-6);
-  padding: var(--sp-4) var(--sp-10);
-  border: 1px solid var(--border-soft);
   border-radius: var(--r-pill);
-  background: var(--white);
-  font-size: var(--el-font-size-extra-small);
-  line-height: 1;
-  white-space: nowrap;
 }
-.cap-label { color: var(--muted); }
-.cap-text { color: var(--text); font-weight: var(--fw-semibold); }
+.cap-label { color: var(--el-text-color-secondary); }
+.ui-dot + .cap-label { margin-left: var(--sp-4); }
+.cap-label + .cap-text { margin-left: var(--sp-4); }
+.cap-text { font-weight: var(--fw-semibold); }
 </style>

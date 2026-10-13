@@ -65,9 +65,9 @@ function viewLog() {
 .rd-head { display: flex; align-items: center; gap: var(--sp-10); }
 .rd-name { font-weight: var(--fw-bold); font-size: var(--el-font-size-medium); }
 .rd-err {
-  background: var(--brand-soft); border-radius: var(--r-md); padding: var(--sp-12);
-  color: var(--text);
+  background: var(--el-color-primary-light-9); border-radius: var(--el-border-radius-base); padding: var(--sp-12);
+  color: var(--el-text-color-primary);
 }
-.rd-err p { margin: var(--sp-6) 0 0; color: var(--muted); font-size: var(--el-font-size-base); }
+.rd-err p { margin: var(--sp-6) 0 0; color: var(--el-text-color-secondary); font-size: var(--el-font-size-base); }
 .rd-actions { margin-top: var(--sp-8); }
 </style>

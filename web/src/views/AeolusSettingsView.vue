@@ -161,7 +161,7 @@ onMounted(load);
 .v-title { margin: 0 0 var(--sp-16); font-size: var(--el-font-size-extra-large); }
 .blk { margin-bottom: var(--sp-16); }
 .blk-h { font-size: var(--el-font-size-medium); font-weight: var(--fw-semibold); }
-.muted { color: var(--muted); font-size: var(--el-font-size-extra-small); }
+.muted { color: var(--el-text-color-secondary); font-size: var(--el-font-size-extra-small); }
 .status {
   display: flex; align-items: center; gap: var(--sp-8);
   padding: var(--sp-12) var(--sp-16); border-radius: 8px; margin-bottom: var(--sp-12);

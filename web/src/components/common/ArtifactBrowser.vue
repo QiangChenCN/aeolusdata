@@ -19,26 +19,29 @@
         </div>
       </div>
       <div class="ab-preview">
-        <img v-if="isImg(selected)" :src="url(selected)" class="ab-img" :alt="selected.name" />
-        <iframe v-else-if="isHtml(selected)" :src="url(selected)" class="ab-frame" />
-        <div v-else-if="isText(selected)" class="ab-text">
-          <div v-if="textLoading" class="ab-state"><el-icon class="is-loading"><Loading /></el-icon> 加载中…</div>
-          <template v-else>
-            <pre class="ab-pre">{{ textContent }}</pre>
-            <div class="ab-text-bar">
-              <el-button size="small" tag="a" :href="url(selected)" target="_blank" rel="noopener">
-                <el-icon><TopRight /></el-icon> 打开 / 下载
-              </el-button>
-            </div>
-          </template>
+        <div v-if="selected" class="ab-bar">
+          <span class="ab-bar-name" :title="selected.name">{{ selected.name }}</span>
+          <div class="ab-bar-acts">
+            <el-button size="small" tag="a" :href="url(selected)" target="_blank" rel="noopener">
+              <el-icon><TopRight /></el-icon> 打开
+            </el-button>
+            <el-button size="small" tag="a" :href="url(selected)" :download="selected.name">
+              <el-icon><Download /></el-icon> 下载
+            </el-button>
+          </div>
         </div>
-        <div v-else-if="selected" class="ab-other">
-          <p class="ab-other-tip">该类型不支持内联预览，可点击打开 / 下载：</p>
-          <el-button type="primary" tag="a" :href="url(selected)" target="_blank" rel="noopener">
-            <el-icon><TopRight /></el-icon> 打开 / 下载
-          </el-button>
+        <div class="ab-stage">
+          <img v-if="isImg(selected)" :src="url(selected)" class="ab-img" :alt="selected.name" />
+          <iframe v-else-if="isHtml(selected)" :src="url(selected)" class="ab-frame" />
+          <div v-else-if="isText(selected)" class="ab-text">
+            <div v-if="textLoading" class="ab-state"><el-icon class="is-loading"><Loading /></el-icon> 加载中…</div>
+            <pre v-else class="ab-pre">{{ textContent }}</pre>
+          </div>
+          <div v-else-if="selected" class="ab-other">
+            <p class="ab-other-tip">该类型不支持内联预览，可点击上方「打开 / 下载」。</p>
+          </div>
+          <div v-else class="ab-hint">← 选择左侧文件预览</div>
         </div>
-        <div v-else class="ab-hint">← 选择左侧文件预览</div>
       </div>
     </div>
   </el-dialog>
@@ -117,26 +120,29 @@ function fmtSize(b) {
 </script>
 
 <style scoped>
-.ab-state { padding: var(--sp-40); text-align: center; color: var(--muted); display: flex; align-items: center; justify-content: center; gap: var(--sp-8); }
+.ab-state { padding: var(--sp-40); text-align: center; color: var(--el-text-color-secondary); display: flex; align-items: center; justify-content: center; gap: var(--sp-8); }
 .ab { display: grid; grid-template-columns: 280px 1fr; gap: var(--sp-12); height: 60vh; }
-.ab-list { overflow: auto; border-right: 1px solid var(--border-soft); padding-right: var(--sp-8); }
+.ab-list { overflow: auto; border-right: 1px solid var(--el-border-color-lighter); padding-right: var(--sp-8); }
 .ab-item {
   display: flex; align-items: center; gap: var(--sp-10); padding: var(--sp-10) var(--sp-8);
-  border-radius: var(--r-md); cursor: pointer;
+  border-radius: var(--el-border-radius-base); cursor: pointer;
 }
-.ab-item:hover { background: var(--surface-sunken); }
-.ab-item.on { background: var(--brand-soft); }
-.ab-ic { font-size: 18px; color: var(--muted); flex: none; }
+.ab-item:hover { background: var(--el-fill-color-light); }
+.ab-item.on { background: var(--el-color-primary-light-9); }
+.ab-ic { font-size: 18px; color: var(--el-text-color-secondary); flex: none; }
 .ab-meta { display: flex; flex-direction: column; min-width: 0; }
 .ab-name { font-weight: var(--fw-semibold); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ab-sub { font-size: var(--el-font-size-extra-small); color: var(--muted); }
-.ab-preview { overflow: hidden; display: flex; align-items: center; justify-content: center; background: var(--surface-sunken); border-radius: var(--r-md); }
-.ab-img { max-width: 100%; max-height: 100%; object-fit: contain; }
-.ab-frame { width: 100%; height: 100%; border: 0; background: #fff; }
-.ab-text { width: 100%; height: 100%; display: flex; flex-direction: column; }
+.ab-sub { font-size: var(--el-font-size-extra-small); color: var(--el-text-color-secondary); }
+.ab-preview { display: flex; flex-direction: column; overflow: hidden; background: var(--el-fill-color-light); border-radius: var(--el-border-radius-base); }
+.ab-bar { flex: none; display: flex; align-items: center; gap: var(--sp-8); padding: var(--sp-8) var(--sp-12); background: var(--el-bg-color); border-bottom: 1px solid var(--el-border-color-lighter); }
+.ab-bar-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: var(--fw-semibold); }
+.ab-bar-acts { flex: none; display: flex; gap: var(--sp-8); }
+.ab-stage { position: relative; flex: 1 1 auto; min-height: 0; }
+.ab-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+.ab-frame { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: #fff; }
+.ab-text { position: absolute; inset: 0; display: flex; flex-direction: column; background: var(--el-bg-color); }
 .ab-pre { flex: 1; margin: 0; padding: var(--sp-12); overflow: auto; white-space: pre-wrap; word-break: break-all; font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace); font-size: 13px; line-height: 1.55; text-align: left; }
-.ab-text-bar { flex: none; padding: var(--sp-8) var(--sp-12); border-top: 1px solid var(--border-soft); text-align: right; background: var(--card); }
-.ab-other { text-align: center; }
-.ab-other-tip { color: var(--muted); margin-top: 0; }
-.ab-hint { color: var(--muted); }
+.ab-other { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: var(--sp-12); }
+.ab-other-tip { color: var(--el-text-color-secondary); margin: 0; }
+.ab-hint { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--el-text-color-secondary); }
 </style>

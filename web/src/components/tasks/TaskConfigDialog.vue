@@ -76,12 +76,12 @@ defineExpose({ open });
 .cfg-hd-ic {
   display: inline-flex; align-items: center; justify-content: center;
   width: var(--sz-36); height: var(--sz-36); flex: none;
-  border-radius: var(--r-xl); background: var(--brand-soft); color: var(--brand);
+  border-radius: var(--el-border-radius-base); background: var(--el-color-primary-light-9); color: var(--el-color-primary);
 }
 .cfg-hd-ic :deep(.el-icon) { font-size: 19px; }
 .cfg-hd-txt { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.cfg-hd-title { font-size: var(--el-font-size-large); font-weight: var(--fw-semibold); color: var(--text); }
-.cfg-hd-sub { font-size: var(--el-font-size-extra-small); color: var(--muted); }
+.cfg-hd-title { font-size: var(--el-font-size-large); font-weight: var(--fw-semibold); color: var(--el-text-color-primary); }
+.cfg-hd-sub { font-size: var(--el-font-size-extra-small); color: var(--el-text-color-secondary); }
 
 :deep(.el-dialog__footer .el-button) { display: inline-flex; align-items: center; gap: var(--sp-4); }
 </style>

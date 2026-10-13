@@ -75,12 +75,12 @@ const teamsList = computed(() =>
 
 <style scoped>
 .param-form { padding: var(--sp-4) 0; }
-.pf-label { display: inline-flex; align-items: center; gap: var(--sp-6); color: var(--text-body); font-weight: var(--fw-medium); }
-.pf-ic { color: var(--accent-neutral); font-size: 15px; }
+.pf-label { display: inline-flex; align-items: center; gap: var(--sp-6); color: var(--el-text-color-regular); font-weight: var(--fw-medium); }
+.pf-ic { color: var(--el-text-color-regular); font-size: 15px; }
 
 .pf-empty {
   display: flex; flex-direction: column; align-items: center; gap: var(--sp-8);
-  padding: var(--sp-32) var(--sp-20); color: var(--muted);
+  padding: var(--sp-32) var(--sp-20); color: var(--el-text-color-secondary);
 }
 .pf-empty :deep(.el-icon) { font-size: 30px; opacity: .55; }
 </style>

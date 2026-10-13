@@ -252,9 +252,9 @@ onMounted(load);
 .asv-month { width: 150px; }
 .asv-card { width: 100%; box-sizing: border-box; flex: 0 0 auto; }
 .asv-card-h { font-weight: 600; }
-.asv-warn { margin-left: var(--sp-12); font-size: var(--el-font-size-extra-small); color: var(--warn); }
+.asv-warn { margin-left: var(--sp-12); font-size: var(--el-font-size-extra-small); color: var(--el-color-warning); }
 .asv-add { width: 200px; margin-left: auto; }
-.asv-tip { font-size: var(--el-font-size-extra-small); color: var(--muted); }
+.asv-tip { font-size: var(--el-font-size-extra-small); color: var(--el-text-color-secondary); }
 /* 站点表格卡片：撑满剩余高度，表格内部滚动 */
 .asv-site-card { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
 .asv-site-card :deep(.el-card__header) { flex: 0 0 auto; }
@@ -276,12 +276,12 @@ onMounted(load);
 /* 行高：控件 32px + 上下各 11px 内边距 ≈ 54px，手工录入更从容 */
 .asv-team-table :deep(.el-table__cell) { padding: 11px 0; }
 .asv-team-table :deep(.el-table__header th) { padding: 8px 0; }
-.asv-empty { color: var(--muted); font-size: var(--el-font-size-extra-small); padding: var(--sp-12) 0; }
+.asv-empty { color: var(--el-text-color-secondary); font-size: var(--el-font-size-extra-small); padding: var(--sp-12) 0; }
 .asv-tname { font-weight: 600; }
 /* 门槛/封顶单元格内的百分号单位 */
-.asv-unit { color: var(--muted); font-size: 12px; margin-left: 2px; }
+.asv-unit { color: var(--el-text-color-secondary); font-size: 12px; margin-left: 2px; }
 /* 站点ID：等宽数字，两列并排时对齐更整齐 */
-.asv-tid { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; color: var(--muted); }
-.asv-updated { font-size: var(--el-font-size-extra-small); color: var(--muted); }
+.asv-tid { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; color: var(--el-text-color-secondary); }
+.asv-updated { font-size: var(--el-font-size-extra-small); color: var(--el-text-color-secondary); }
 .asv-saved { font-size: var(--el-font-size-extra-small); color: #1aac5a; }
 </style>

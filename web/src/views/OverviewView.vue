@@ -75,9 +75,9 @@ onMounted(load);
 .dv-range { width: 280px; }
 .dv-bar .sp { flex: 1; }
 .dv-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: var(--sp-12); margin-bottom: var(--sp-16); }
-.dv-card { background: var(--white); border: 1px solid var(--border-soft); border-radius: var(--r-md); padding: var(--sp-16); display: flex; flex-direction: column; gap: 4px; }
-.dv-card-num { font-size: 24px; font-weight: var(--fw-bold); color: var(--brand); }
-.dv-card-label { font-size: var(--el-font-size-extra-small); color: var(--muted); }
-.dv-table { border-radius: var(--r-md); }
-.dv-state { padding: var(--sp-40); text-align: center; color: var(--muted); display: flex; gap: var(--sp-8); justify-content: center; align-items: center; }
+.dv-card { background: var(--el-bg-color); border: 1px solid var(--el-border-color-lighter); border-radius: var(--el-border-radius-base); padding: var(--sp-16); display: flex; flex-direction: column; gap: 4px; }
+.dv-card-num { font-size: 24px; font-weight: var(--fw-bold); color: var(--el-color-primary); }
+.dv-card-label { font-size: var(--el-font-size-extra-small); color: var(--el-text-color-secondary); }
+.dv-table { border-radius: var(--el-border-radius-base); }
+.dv-state { padding: var(--sp-40); text-align: center; color: var(--el-text-color-secondary); display: flex; gap: var(--sp-8); justify-content: center; align-items: center; }
 </style>

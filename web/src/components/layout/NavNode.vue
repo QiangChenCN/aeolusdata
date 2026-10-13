@@ -66,8 +66,8 @@ function toggle() {
 .nv {
   display: flex; align-items: center; gap: var(--sp-10);
   padding: var(--sp-10) var(--sp-12);
-  border-radius: var(--r-xl);
-  color: var(--text-body); cursor: pointer;
+  border-radius: var(--el-border-radius-base);
+  color: var(--el-text-color-regular); cursor: pointer;
   text-decoration: none; font-size: var(--el-font-size-base);
   position: relative;
   transition: background 0.18s ease, color 0.18s ease, transform 0.18s ease;
@@ -77,30 +77,30 @@ function toggle() {
   content: '';
   position: absolute; left: 3px; top: 50%;
   width: 3px; height: 18px;
-  background: var(--brand); border-radius: var(--r-pill);
+  background: var(--el-color-primary); border-radius: var(--r-pill);
   transform: translateY(-50%) scaleY(0); opacity: 0;
   transition: transform 0.18s ease, opacity 0.18s ease;
 }
 .nv:hover {
-  background: color-mix(in srgb, var(--brand) 8%, transparent);
-  color: var(--text);
+  background: color-mix(in srgb, var(--el-color-primary) 8%, transparent);
+  color: var(--el-text-color-primary);
   transform: translateX(2px);
   box-shadow: 0 1px 6px rgba(0, 0, 0, 0.08);
 }
 .nv:hover::before, .nv.on::before {
   transform: translateY(-50%) scaleY(1); opacity: 1;
 }
-.nv.on { background: var(--brand-soft); color: var(--brand); font-weight: var(--fw-semibibold); }
+.nv.on { background: var(--el-color-primary-light-9); color: var(--el-color-primary); font-weight: var(--fw-semibibold); }
 .nv .ic { font-size: 17px; }
 .nv .nm { flex: 1; }
 .nv .ct {
-  font-size: 11px; color: var(--muted); background: var(--surface-sunken);
+  font-size: 11px; color: var(--el-text-color-secondary); background: var(--el-fill-color-light);
   padding: 1px var(--sp-8); border-radius: var(--r-pill); min-width: 20px; text-align: center;
 }
-.nv-parent .nv-arw { transition: transform 0.18s ease; color: var(--muted); }
+.nv-parent .nv-arw { transition: transform 0.18s ease; color: var(--el-text-color-secondary); }
 .nv-parent.open .nv-arw { transform: rotate(90deg); }
 /* 仅「含当前选中子项」的父菜单加粗 */
-.nv-parent.parent-on { color: var(--brand); font-weight: var(--fw-semibold); }
+.nv-parent.parent-on { color: var(--el-color-primary); font-weight: var(--fw-semibold); }
 /* 手风琴折叠动画：grid-template-rows 0fr→1fr，无需知道子项数量 */
 .nv-subs-wrap { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 0.22s ease; }
 .nv-subs-wrap.open { grid-template-rows: 1fr; }
@@ -108,7 +108,7 @@ function toggle() {
 .nv-subs-wrap.open .nv-subs { margin: 2px 0 var(--sp-4); }
 .nv-dot--busy {
   position: absolute; right: var(--sp-10); top: 50%; transform: translateY(-50%);
-  width: 7px; height: 7px; border-radius: 50%; background: var(--brand);
-  box-shadow: 0 0 0 3px var(--brand-soft);
+  width: 7px; height: 7px; border-radius: 50%; background: var(--el-color-primary);
+  box-shadow: 0 0 0 3px var(--el-color-primary-light-9);
 }
 </style>

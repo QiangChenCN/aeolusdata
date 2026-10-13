@@ -579,18 +579,18 @@ onUnmounted(() => {
 .v-title { margin: 0; font-size: var(--el-font-size-extra-large); }
 .dv-sel { width: 160px; }
 .dv-date { width: 160px; }
-.dv-data-time { display: inline-flex; align-items: center; gap: 4px; font-size: var(--el-font-size-extra-small); color: var(--muted); white-space: nowrap; }
-.dv-data-time.is-stale { color: var(--warn); font-weight: var(--fw-semibold); }
+.dv-data-time { display: inline-flex; align-items: center; gap: 4px; font-size: var(--el-font-size-extra-small); color: var(--el-text-color-secondary); white-space: nowrap; }
+.dv-data-time.is-stale { color: var(--el-color-warning); font-weight: var(--fw-semibold); }
 .dv-bar .sp { flex: 1; }
 .dv-hint { margin-bottom: var(--sp-12); }
 .dv-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: var(--sp-12); margin-bottom: var(--sp-16); }
 .dv-card {
-  background: var(--white); border: 1px solid var(--border-soft); border-radius: var(--r-md);
+  background: var(--el-bg-color); border: 1px solid var(--el-border-color-lighter); border-radius: var(--el-border-radius-base);
   padding: var(--sp-16); display: flex; flex-direction: column; gap: 4px;
 }
-.dv-card-num { font-size: 24px; font-weight: var(--fw-bold); color: var(--brand); }
-.dv-card-label { font-size: var(--el-font-size-extra-small); color: var(--muted); }
-.dv-table { border-radius: var(--r-md); width: 100%; }
+.dv-card-num { font-size: 24px; font-weight: var(--fw-bold); color: var(--el-color-primary); }
+.dv-card-label { font-size: var(--el-font-size-extra-small); color: var(--el-text-color-secondary); }
+.dv-table { border-radius: var(--el-border-radius-base); width: 100%; }
 /* 表格包裹层：占满标签页剩余高度，让 el-table(height=100%) 底部贴合视口 */
 .dv-table-wrap { flex: 1; min-height: 0; display: flex; }
 /* 骑手看板：表格 + 分页器纵向铺满 */
@@ -604,7 +604,7 @@ onUnmounted(() => {
 .dv-tabs :deep(.el-tab-pane) { height: 100%; display: flex; flex-direction: column; }
 .dv-filter { display: flex; align-items: center; gap: var(--sp-12); margin-bottom: var(--sp-12); }
 .dv-filter-input { width: 260px; }
-.dv-filter-count { font-size: var(--el-font-size-extra-small); color: var(--muted); }
+.dv-filter-count { font-size: var(--el-font-size-extra-small); color: var(--el-text-color-secondary); }
 .dv-filter-sel { width: 160px; }
 /* Req2：仅当前排序的列显示排序标识，其余列完全不占位（避免空隙与箭头错位） */
 .dv-table :deep(.caret-wrapper) { display: none; }
@@ -624,6 +624,6 @@ onUnmounted(() => {
 /* 列设置弹层：按指标分组勾选 */
 .col-set { display: flex; flex-direction: column; gap: 12px; }
 .col-set-group { display: flex; flex-direction: column; gap: 4px; }
-.col-set-gname { font-size: 12px; font-weight: 600; color: var(--muted); margin-bottom: 2px; }
-.col-set-tip { font-size: 12px; color: var(--muted); line-height: 1.4; }
+.col-set-gname { font-size: 12px; font-weight: 600; color: var(--el-text-color-secondary); margin-bottom: 2px; }
+.col-set-tip { font-size: 12px; color: var(--el-text-color-secondary); line-height: 1.4; }
 </style>

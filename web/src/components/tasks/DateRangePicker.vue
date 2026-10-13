@@ -29,8 +29,8 @@ function onEnd(v) { emit('update:modelValue', begin.value + '~' + (v || '')); }
 <style scoped>
 .drp { display: flex; align-items: center; gap: var(--sp-8); width: 100%; }
 .drp-sep {
-  flex: none; color: var(--muted); font-size: var(--el-font-size-extra-small);
+  flex: none; color: var(--el-text-color-secondary); font-size: var(--el-font-size-extra-small);
   padding: 2px var(--sp-6); border-radius: var(--r-pill);
-  background: var(--surface-sunken); border: 1px solid var(--border-soft);
+  background: var(--el-fill-color-light); border: 1px solid var(--el-border-color-lighter);
 }
 </style>

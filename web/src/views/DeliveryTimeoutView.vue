@@ -740,31 +740,31 @@ onUnmounted(() => {
 .dv-bar { display: flex; align-items: center; gap: var(--sp-12); margin-bottom: var(--sp-16); flex-wrap: wrap; }
 .v-title { margin: 0; font-size: var(--el-font-size-extra-large); }
 .dv-sel { width: 160px; }
-.dv-date-tag { font-size: var(--el-font-size-small); color: var(--muted); }
+.dv-date-tag { font-size: var(--el-font-size-small); color: var(--el-text-color-secondary); }
 .dv-bar .sp { flex: 1; }
 .dv-hint { margin-bottom: var(--sp-12); }
 
 
 /* ── KPI 汇总卡片 ──── */
 .dv-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: var(--sp-12); margin-bottom: var(--sp-16); }
-.dv-card { background: var(--white); border: 1px solid var(--border-soft); border-radius: var(--r-md); padding: var(--sp-16); display: flex; flex-direction: column; gap: 4px; }
-.dv-card-num { font-size: 24px; font-weight: var(--fw-bold); color: var(--brand); }
-.dv-card-label { font-size: var(--el-font-size-extra-small); color: var(--muted); }
+.dv-card { background: var(--el-bg-color); border: 1px solid var(--el-border-color-lighter); border-radius: var(--el-border-radius-base); padding: var(--sp-16); display: flex; flex-direction: column; gap: 4px; }
+.dv-card-num { font-size: 24px; font-weight: var(--fw-bold); color: var(--el-color-primary); }
+.dv-card-label { font-size: var(--el-font-size-extra-small); color: var(--el-text-color-secondary); }
 .dv-card-num.is-ok { color: var(--ok, #2e7d32); }
 .dv-card-num.is-warn { color: var(--warn, #ed6c02); }
 .dv-card-num.is-bad { color: var(--danger, #d32f2f); }
-.dv-card-num.is-none { color: var(--muted); }
+.dv-card-num.is-none { color: var(--el-text-color-secondary); }
 
 /* ── 比率单元格 ──────────────────────────────── */
 .rt { font-weight: var(--fw-bold); }
 .rt.is-ok { color: var(--ok, #2e7d32); }
 .rt.is-warn { color: var(--warn, #ed6c02); }
 .rt.is-bad { color: var(--danger, #d32f2f); }
-.rt.is-none { color: var(--muted); font-weight: var(--fw-normal); }
+.rt.is-none { color: var(--el-text-color-secondary); font-weight: var(--fw-normal); }
 .rt--bad { color: var(--danger, #d32f2f); }
 
 /* ── 下钻抽屉 ──────────────────────────────── */
-.dv-drill-hd { font-size: var(--el-font-size-small); color: var(--muted); margin: var(--sp-4) 0 var(--sp-12); }
+.dv-drill-hd { font-size: var(--el-font-size-small); color: var(--el-text-color-secondary); margin: var(--sp-4) 0 var(--sp-12); }
 .dv-drill-table { width: 100%; }
 .dv-link { padding: 0; }
 .dv-back { margin-bottom: var(--sp-12); }
@@ -773,7 +773,7 @@ onUnmounted(() => {
 .sev--mid { background: color-mix(in srgb, #f57c00 16%, transparent); color: #f57c00; }
 .sev--heavy { background: color-mix(in srgb, var(--danger, #d32f2f) 16%, transparent); color: var(--danger, #d32f2f); }
 
-.dv-table { border-radius: var(--r-md); }
+.dv-table { border-radius: var(--el-border-radius-base); }
 /* 表格行高：放宽单元格上下内边距与行内文字行高，避免内容过密、密密麻麻 */
 .dv-table :deep(.el-table th.el-table__cell),
 .dv-table :deep(.el-table td.el-table__cell) {

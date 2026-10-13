@@ -118,11 +118,11 @@ async function stop() {
 <style scoped>
 .log-toolbar { display: flex; align-items: center; gap: var(--sp-10); margin-bottom: var(--sp-10); flex-wrap: wrap; }
 .log-cmd {
-  font-family: var(--font-mono); font-size: 12px; color: var(--muted);
+  font-family: var(--font-mono); font-size: 12px; color: var(--el-text-color-secondary);
   max-width: 360px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .log-toolbar .sp { flex: 1; }
-.autoscroll { display: inline-flex; align-items: center; gap: var(--sp-6); color: var(--muted); font-size: var(--el-font-size-extra-small); }
+.autoscroll { display: inline-flex; align-items: center; gap: var(--sp-6); color: var(--el-text-color-secondary); font-size: var(--el-font-size-extra-small); }
 .log-term { height: 60vh; overflow: auto; padding: var(--sp-12); }
 .log-line { white-space: pre-wrap; word-break: break-all; }
 .log-empty { color: var(--term-dim); }

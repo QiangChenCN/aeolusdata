@@ -28,13 +28,13 @@ const app = useAppStore();
 
 <style scoped>
 .app-root { height: 100%; }
-.app-header { padding: 0; background: var(--white); border-bottom: 1px solid var(--border); }
+.app-header { padding: 0; background: var(--el-bg-color); border-bottom: 1px solid var(--el-border-color); }
 .app-body { height: calc(100% - 56px); }
 .app-aside {
-  background: var(--surface-sunken);
-  border-right: 1px solid var(--border);
+  background: var(--el-fill-color-light);
+  border-right: 1px solid var(--el-border-color);
   transition: width 0.18s ease;
   overflow: hidden;
 }
-.app-main { padding: 0; background: var(--bg); overflow: auto; }
+.app-main { padding: 0; background: var(--el-bg-color-page); overflow: auto; }
 </style>

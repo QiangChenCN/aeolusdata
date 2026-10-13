@@ -229,21 +229,21 @@ onUnmounted(stopPoll);
 
 /* ── KPI 汇总卡片（对齐时段出勤看板的卡片风格）──── */
 .dv-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: var(--sp-12); margin-bottom: var(--sp-16); }
-.dv-card { background: var(--white); border: 1px solid var(--border-soft); border-radius: var(--r-md); padding: var(--sp-16); display: flex; flex-direction: column; gap: 4px; }
-.dv-card-num { font-size: 24px; font-weight: var(--fw-bold); color: var(--brand); }
-.dv-card-label { font-size: var(--el-font-size-extra-small); color: var(--muted); }
+.dv-card { background: var(--el-bg-color); border: 1px solid var(--el-border-color-lighter); border-radius: var(--el-border-radius-base); padding: var(--sp-16); display: flex; flex-direction: column; gap: 4px; }
+.dv-card-num { font-size: 24px; font-weight: var(--fw-bold); color: var(--el-color-primary); }
+.dv-card-label { font-size: var(--el-font-size-extra-small); color: var(--el-text-color-secondary); }
 .dv-card-num.is-ok { color: var(--ok, #2e7d32); }
 .dv-card-num.is-warn { color: var(--warn, #ed6c02); }
 .dv-card-num.is-bad { color: var(--danger, #d32f2f); }
-.dv-card-num.is-none { color: var(--muted); }
+.dv-card-num.is-none { color: var(--el-text-color-secondary); }
 
 /* ── 比率单元格 ──────────────────────────────── */
 .rt { font-weight: var(--fw-bold); }
 .rt.is-ok { color: var(--ok, #2e7d32); }
 .rt.is-warn { color: var(--warn, #ed6c02); }
 .rt.is-bad { color: var(--danger, #d32f2f); }
-.rt.is-none { color: var(--muted); font-weight: var(--fw-normal); }
+.rt.is-none { color: var(--el-text-color-secondary); font-weight: var(--fw-normal); }
 
-.dv-table { border-radius: var(--r-md); }
+.dv-table { border-radius: var(--el-border-radius-base); }
 .dv-cd { font-size: 12px; opacity: .75; margin-left: 2px; }
 </style>

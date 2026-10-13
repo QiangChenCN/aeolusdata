@@ -96,6 +96,6 @@ onMounted(loadRoles);
 .adm-bar { display: flex; align-items: center; margin-bottom: var(--sp-12); }
 .adm-bar .sp { flex: 1; }
 .perm-tag { margin: 0 4px 4px 0; }
-.muted { color: var(--muted); }
+.muted { color: var(--el-text-color-secondary); }
 .role-perms { width: 100%; }
 </style>

@@ -164,7 +164,7 @@ onMounted(() => { loadUsers(); loadRoles(); });
 .v-title { margin: 0 0 var(--sp-16); font-size: var(--el-font-size-extra-large); }
 .adm-bar { display: flex; align-items: center; margin-bottom: var(--sp-12); }
 .adm-bar .sp { flex: 1; }
-.muted { color: var(--muted); }
-.dt-id { font-family: var(--font-mono, monospace); font-size: 12px; color: var(--text); word-break: break-all; }
-.bind-tip { margin: 0 0 var(--sp-16); color: var(--muted); line-height: 1.6; }
+.muted { color: var(--el-text-color-secondary); }
+.dt-id { font-family: var(--font-mono, monospace); font-size: 12px; color: var(--el-text-color-primary); word-break: break-all; }
+.bind-tip { margin: 0 0 var(--sp-16); color: var(--el-text-color-secondary); line-height: 1.6; }
 </style>

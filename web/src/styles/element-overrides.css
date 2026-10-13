@@ -1,60 +1,12 @@
-/* element-overrides.css —— 把 Element Plus 主题收敛到本项目设计令牌
-   不修改 Element Plus 源码，只在全局层覆盖其 CSS 变量。*/
+/* element-overrides.css —— 仅把 Element Plus 主色收敛为项目品牌色（主题色）。
+   其余全部回归 Element Plus 原生默认，不再用自定义令牌覆盖任何 --el-* 变量。 */
 :root {
-  /* 主色 = 品牌橙 #FF5000（含 hover/dark 与各级浅底） */
-  --el-color-primary: #FF5000;
+  /* 主题色 = 品牌橙 #FF5000（含 hover/dark 与各级浅底） */
+  --el-color-primary: var(--c-brand);
   --el-color-primary-light-3: #FF854D;
   --el-color-primary-light-5: #FFA880;
   --el-color-primary-light-7: #FFCBB3;
   --el-color-primary-light-8: #FFDCCC;
-  --el-color-primary-light-9: #FFEFE6;
-  --el-color-primary-dark-2: #D94400;
-
-  /* 语义色对齐 tokens */
-  --el-color-success: #0F9D58;
-  --el-color-warning: #F5A623;
-  --el-color-danger:  #E02020;
-  --el-color-error:   #E02020;
-  --el-color-info:    #1A73E8;
-
-  /* 中性面 / 文字 / 描边 对齐 tokens，减少视觉割裂 */
-  --el-bg-color: var(--white);
-  --el-bg-color-page: var(--bg);
-  --el-bg-color-overlay: var(--white);
-  --el-text-color-primary: var(--text);
-  --el-text-color-regular: var(--text-body);
-  --el-text-color-secondary: var(--muted);
-  --el-text-color-placeholder: var(--muted-2);
-  --el-border-color: var(--border);
-  --el-border-color-light: var(--border-soft);
-  --el-border-color-lighter: var(--border-soft);
-  --el-border-color-hover: var(--brand);
-  --el-fill-color-light: var(--surface-sunken);
-  --el-fill-color-blank: var(--white);
-  --el-fill-color: var(--surface-sunken);
-
-  /* 圆角 / 字号 / 控件高度 对齐令牌 */
-  --el-border-radius-base: var(--r-xl);
-  --el-border-radius-small: var(--r-md);
-
-  /* 阴影 */
-  --el-box-shadow-light: var(--shadow-2);
-
-  /* 弹窗层级：本项目浮层（登录/确认）需高于业务弹窗；
-     让 Element Plus 的 overlay 高于业务 el-dialog 之外的自有浮层即可，这里沿用其默认高位。 */
+  --el-color-primary-light-9: var(--c-brand-soft);
+  --el-color-primary-dark-2: var(--c-brand-dark);
 }
-
-/* 让 el-dialog / el-drawer 的圆角与令牌一致 */
-.el-dialog, .el-drawer {
-  border-radius: var(--r-modal);
-}
-
-/* 所有 el-alert 回归 Element Plus 默认配色。
-   做法：仅在 alert 作用域内重置 Element Plus 自身引用的语义色变量（--el-color-* 与
-   --el-alert-bg-color），让 EP 自己的规则（文字/图标/描述/背景都用这些变量）自然取到默认值，
-   从而覆盖本文件顶部把 --el-color-info 等改写成主题色的影响。作用域限定，不影响 alert
-   之外的按钮、tag 等组件。 */
-.el-alert--success { --el-color-success: #67c23a; --el-alert-bg-color: #f0f9eb; }
-.el-alert--warning { --el-color-warning: #e6a23c; --el-alert-bg-color: #fdf6ec; }
-.el-alert--info    { --el-color-info:    #909399; --el-alert-bg-color: #f4f4f5; }
-.el-alert--error   { --el-color-error:   #f56c6c; --el-alert-bg-color: #fef0f0; }

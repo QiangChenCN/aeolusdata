@@ -28,5 +28,5 @@ function cancel() { app.resolveConfirm(false); }
 </script>
 
 <style scoped>
-.cf-msg { margin: 0; color: var(--text-body); line-height: var(--lh-base); }
+.cf-msg { margin: 0; color: var(--el-text-color-regular); line-height: var(--lh-base); }
 </style>

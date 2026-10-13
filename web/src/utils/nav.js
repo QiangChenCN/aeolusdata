@@ -6,7 +6,7 @@ import { useAppStore } from '../stores/app.js';
 export function navTo(it) {
   switch (it.kind) {
     case 'home': return '/';
-    case 'tasks': return it.id === 'all' ? '/tasks' : '/tasks/' + encodeURIComponent(it.id);
+    case 'tasks': return '/tasks';
     case 'history': return '/history';
     case 'standard': return '/standard';
     case 'attendPeriod': return '/attend-period';

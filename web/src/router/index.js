@@ -39,7 +39,6 @@ const routes = [
       { path: '', name: 'home', component: HomeView, meta: { title: '首页', kind: 'home' } },
       { path: 'home', redirect: '' },
       { path: 'tasks', name: 'tasks-all', component: TaskCenterView, meta: { title: '全部任务', kind: 'tasks', id: 'all' } },
-      { path: 'tasks/:groupId', name: 'tasks-group', component: TaskCenterView, meta: { title: '任务中心', kind: 'tasks' }, props: true },
       { path: 'history', name: 'history', component: HistoryView, meta: { title: '运行记录', kind: 'history', id: '' } },
       { path: 'preset', name: 'preset', component: PresetView, meta: { title: '预设' } },
       { path: 'todo', name: 'todo', component: TodoView, meta: { title: '工作内容' } },

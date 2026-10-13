@@ -22,42 +22,21 @@
 
 /* ── 1. 原始色板 · 品牌色 ──────────────────────────────────────────────── */
   --c-brand:            #FF5000;   /* 淘宝闪购橙，品牌主色 */
-  --c-brand-dark:       #D94400;   /* 主色加深态（hover / active） */
-  --c-brand-soft:       #FFF1EA;   /* 主色浅底（选中面 / hover 面 / 聚焦环） */
+  --c-brand-dark:       #CC4000;   /* 主色加深态 = EP dark-2（主色 80% + 黑 20%） */
+  --c-brand-soft:       #FFEEE6;   /* 主色浅底 = EP light-9（主色 10% + 白 90%） */
 
 /* ── 2. 原始色板 · 中性面 ──────────────────────────────────────────────── */
-  --c-white:            #FFFFFF;   /* 卡片 / 面板 / 反色文字（源码 :root 用大写写法） */
-  --c-canvas:           #F5F6F8;   /* 页面画布 */
-  --c-sunken:           #FAFBFC;   /* 下沉块底（表头 / 参数区 / 面板头） */
-  --c-fill-cancel:      #F1F3F5;   /* 次要按钮底（取消） */
-  --c-fill-cancel-hover:#E6E9EC;   /* 次要按钮 hover 底 */
-  --c-fill-disabled:    #D8DBE0;   /* 禁用按钮底 */
+
   --c-scrollbar:        #DFE3E8;   /* 滚动条滑块 */
 
 /* ── 3. 原始色板 · 中性文字与描边 ──────────────────────────────────────── */
-  --c-text-strong:      #1F2328;   /* 主文字 / 标题 */
-  --c-text-body:        #404854;   /* 弹窗正文 */
-  --c-text-muted:       #6B7280;   /* 次级文字 */
+
   --c-text-faint:       #9AA1AC;   /* 辅助文字 / 占位 */
-  --c-text-neutral:     #5F6368;   /* 中性图标 / 中性视图强调（tool 分组同色） */
-  --c-line:             #E4E7EB;   /* 常规描边 / 分割 */
-  --c-line-soft:        #EEF0F3;   /* 极浅描边 / 组内分割 */
 
 /* ── 4. 原始色板 · 语义色 ──────────────────────────────────────────────── */
-  --c-ok:               #0F9D58;   /* 成功 */
-  --c-ok-soft:          #E9F7EF;   /* 成功浅底 */
-  --c-err:              #E02020;   /* 失败 / 危险 */
-  --c-err-soft:         #FDECEC;   /* 失败浅底 */
-  --c-err-line:         #F5C2C2;   /* 失败描边 */
-  --c-err-dark:         #B81818;   /* 失败加深态（hover） */
-  --c-err-deep:         #7A2020;   /* 失败正文（浅底上的可读红） */
-  --c-warn:             #F5A623;   /* 警告 */
-  --c-warn-soft:        #FEF6E7;   /* 警告浅底 */
-  --c-warn-line:        #F3D9A4;   /* 警告描边 */
-  --c-warn-deep:        #96650B;   /* 警告正文（浅底上的可读黄） */
-  --c-info:             #1A73E8;   /* 信息 / 进行中 */
-  --c-info-soft:        #EAF1FD;   /* 信息浅底 */
-  --c-info-line:        #B9D2FB;   /* 信息描边 */
+
+  /* 状态色（成功/危险/警告/信息）统一走 Element Plus 原生 --el-color-*，不在此自定义；
+     仅品牌主色 --c-brand 为自定义主题色。 */
   /* 品牌热度色阶（4 档，由浅到深）：首页达成度图例 / 评估堆叠条共用 ——
      此前两处各写一遍相同的 4 个字面值。第 5 档直接用 --c-brand。 */
 /* ── 尺寸族（图标 / 控件 / 微型尺寸）─────────────────────────────────────
@@ -99,18 +78,11 @@
   --c-heat-2:           #FFB27A;
   --c-heat-3:           #FF8A3D;
   --c-heat-4:           #FF6A1A;
-/* ── 视图态文本 / 图表色（2026-09-19 收敛） ─────────────────────────────────
-   这些色原先就地写在各视图 CSS 里（attend-period / home / realtime）。它们承担
-   的是「同一语义、不同场景」的角色，所以按**角色**建令牌，而不是让每个视图自带
-   色值。--*-text = 白底 / 浅底上可读的强调色；--*-bright = 进度条渐变的亮端
-   （深端复用既有的 --c-warn-deep / --c-err）。 */
-  --c-ok-text:          #16A34A;   /* ok 文本 / 图表绿（视图原用 #2a9d3a / #1a8a4a，差≤26，已归此） */
-  --c-err-text:         #C0392B;   /* err 文本红 */
-  --c-warn-text:        #B45309;   /* warn 文本琥珀（实时锁定态等） */
-  --c-info-text:        #2563EB;   /* info / 交互强调蓝（排序指示等） */
-  --c-text-disabled:    #94A3B8;   /* 不可选 / 未来项文字 */
-  --c-warn-bright:      #E0A33B;   /* 警告进度条渐变亮端 */
-  --c-err-bright:       #F0665F;   /* 失败进度条渐变亮端 */
+/* ── 分组色（数据驱动） ────────────────────────────────────────────────────
+   紫/青为任务分组 / 数据看板分组色，由 tasks.json 数据驱动，经 JS 内联到分组标签
+   与视图图标；改色需同步 tasks.json。其余「状态文本 / 进度条亮端」色已统一改为
+   Element Plus 原生 --el-color-*，不再在此自定义。 */
+  /* 分组色原始值（tasks.json → JS 消费） */
   --c-purple:           #7A5AF8;   /* 商站任务分组专用（tasks.json → JS 消费） */
   --c-purple-soft:      #F0ECFE;
   --c-cyan:             #0891B2;   /* 数据看板分组专用（tasks.json → JS 消费） */
@@ -133,20 +105,11 @@
   --c-term-dim:         #6E7681;   /* 异常堆栈（弱化） */
 
 /* ── 7. 原始色板 · 阴影基色 ────────────────────────────────────────────── */
-  --c-shadow-1:         rgba(16,24,40,.05);
-  --c-shadow-2:         rgba(16,24,40,.06);
-  --c-shadow-3:         rgba(16,24,40,.16);
 
 /* ══ 第二层：语义令牌（业务样式只引用这一层） ═══════════════════════════ */
 
 /* ── 8. 语义 · 背景与面 ────────────────────────────────────────────────── */
-  --bg:                 var(--c-canvas);   /* 页面画布 */
-  --card:               var(--c-white);    /* 卡片 / 面板底 */
-  --surface-sunken:     var(--c-sunken);   /* 下沉块底 */
-  --surface-cancel:     var(--c-fill-cancel);
-  --surface-cancel-hover:var(--c-fill-cancel-hover);
-  --surface-disabled:   var(--c-fill-disabled);
-  --white:              var(--c-white);    /* 反色文字 / 白底 */
+
   --glass:              var(--c-glass);
   --glass-strong:       var(--c-glass-strong);
   --scrim:              var(--c-scrim);
@@ -154,47 +117,21 @@
   --scrollbar-thumb:    var(--c-scrollbar);
 
 /* ── 9. 语义 · 文字 ────────────────────────────────────────────────────── */
-  --text:               var(--c-text-strong);
-  --text-body:          var(--c-text-body);
-  --muted:              var(--c-text-muted);
-  --muted-2:            var(--c-text-faint);
-  --accent-neutral:     var(--c-text-neutral);
 
 /* ── 10. 语义 · 描边 ───────────────────────────────────────────────────── */
-  --border:             var(--c-line);
-  --border-soft:        var(--c-line-soft);
+
   --bw:                 1px;               /* 常规描边宽度 */
 
 /* ── 11. 语义 · 品牌与状态 ─────────────────────────────────────────────── */
-  --brand:              var(--c-brand);
-  --brand-dark:         var(--c-brand-dark);
-  --brand-soft:         var(--c-brand-soft);
-  --ok:                 var(--c-ok);
-  --ok-soft:            var(--c-ok-soft);
-  --err:                var(--c-err);
-  --err-soft:           var(--c-err-soft);
-  --err-line:           var(--c-err-line);
-  --err-dark:           var(--c-err-dark);
-  --err-deep:           var(--c-err-deep);
+
   --heat-1:             var(--c-heat-1);
   --heat-2:             var(--c-heat-2);
   --heat-3:             var(--c-heat-3);
   --heat-4:             var(--c-heat-4);
-  --warn:               var(--c-warn);
-  --warn-soft:          var(--c-warn-soft);
-  --warn-line:          var(--c-warn-line);
-  --warn-deep:          var(--c-warn-deep);
-  --info:               var(--c-info);
-  --info-soft:          var(--c-info-soft);
-  --info-line:          var(--c-info-line);
-  /* 视图态文本 / 渐变亮端：视图用这些简名，别再用裸色值 */
-  --ok-text:            var(--c-ok-text);
-  --err-text:           var(--c-err-text);
-  --warn-text:          var(--c-warn-text);
-  --info-text:          var(--c-info-text);
-  --text-disabled:      var(--c-text-disabled);
-  --warn-bright:        var(--c-warn-bright);
-  --err-bright:         var(--c-err-bright);
+
+  /* 信息色跟随 Element Plus 原生 info（灰）；成功/危险/警告同理走 --el-color-* */
+  --info:               var(--el-color-info);
+
   --purple:             var(--c-purple);
   --purple-soft:        var(--c-purple-soft);
   --cyan:               var(--c-cyan);
@@ -242,9 +179,8 @@
   --term-dim:           var(--c-term-dim);
 
 /* ── 13. 字体 ──────────────────────────────────────────────────────────── */
-  --font-sans: "Helvetica Neue", Helvetica, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "微软雅黑", Arial, sans-serif;  /* 与 Element Plus --el-font-family 完全一致 */
-  --font-mono: "SFMono-Regular",Consolas,"Liberation Mono",Menlo,monospace;
 
+  --font-mono: "SFMono-Regular",Consolas,"Liberation Mono",Menlo,monospace;
 
 /* ── 15. 字重 ──────────────────────────────────────────────────────────── */
   --fw-regular:    400;     /* 正文 */
@@ -271,21 +207,15 @@
   /* 离格历史值（仅装饰/历史，新代码一律走 8pt 倍数：8/16/24/32/40/48/64）：--sp-18/22/34/88 */
 
 /* ── 18. 圆角 ──────────────────────────────────────────────────────────── */
-  --r-xs:    3px;      /* 滚动条滑块 */
-  --r-sm:    5px;      /* 徽标 / 分组标签 */
-  --r-md:    7px;      /* 小按钮 / 输入框 / 标签页 */      /* 列表首尾 / 内嵌块 */
-  --r-xl:    9px;      /* 按钮 / 导航项 / 卡片内块（最常用） */
-  --r-card:  6px;      /* 卡片 / 面板（2026-09-13 统一收紧为 6px） */
+
   --r-modal: 14px;     /* 弹窗 */
   --r-pill:  999px;    /* 胶囊 */
-  --r-circle:50%;      /* 圆形（图标底 / 状态点 / 序号） */
 
 /* ── 19. 阴影与聚焦环 ──────────────────────────────────────────────────── */
-  --shadow-1: 0 1px 2px var(--c-shadow-1),0 1px 3px var(--c-shadow-2);  /* 卡片 */
-  --shadow-2: 0 12px 32px var(--c-shadow-3);                            /* 浮层 / 抽屉 / 弹窗 */
-  --ring-brand:0 0 0 3px var(--brand-soft);   /* 聚焦 / 选中 */
-  --ring-ok:   0 0 0 3px var(--ok-soft);      /* 在线状态点 */
-  --ring-err:  0 0 0 3px var(--err-soft);     /* 离线状态点 */
+
+  --ring-brand:0 0 0 3px var(--el-color-primary-light-9);   /* 聚焦 / 选中 */
+  --ring-ok:   0 0 0 3px var(--el-color-success-light-9);      /* 在线状态点 */
+  --ring-err:  0 0 0 3px var(--el-color-danger-light-9);     /* 离线状态点 */
 
 /* ── 20. 动效时长（缓动统一用 ease，与浏览器默认一致） ─────────────────── */
   --dur-fast:   .14s;   /* 导航项 hover */

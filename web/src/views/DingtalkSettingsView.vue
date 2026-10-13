@@ -330,21 +330,21 @@ async function saveSso() {
 .v-title { margin: 0 0 var(--sp-16); font-size: var(--el-font-size-extra-large); }
 .blk { margin-bottom: var(--sp-16); }
 .blk-h { font-size: var(--el-font-size-medium); font-weight: var(--fw-semibold); }
-.blk-sub { margin-left: var(--sp-12); font-size: var(--el-font-size-extra-small); color: var(--muted); }
+.blk-sub { margin-left: var(--sp-12); font-size: var(--el-font-size-extra-small); color: var(--el-text-color-secondary); }
 .blk-switch { margin-left: var(--sp-12); vertical-align: middle; }
 .blk-alert { margin-bottom: var(--sp-16); }
-.muted { color: var(--muted); }
+.muted { color: var(--el-text-color-secondary); }
 .sso-form { max-width: 720px; margin-top: var(--sp-8); }
-.cfg-hint { display: block; margin-top: 4px; font-size: var(--el-font-size-extra-small); color: var(--muted); line-height: 1.4; }
+.cfg-hint { display: block; margin-top: 4px; font-size: var(--el-font-size-extra-small); color: var(--el-text-color-secondary); line-height: 1.4; }
 .ding-card { margin-top: var(--sp-16); border: 1px solid #ebeef5; border-radius: 8px; padding: var(--sp-16); }
 .ding-row { display: flex; align-items: center; gap: var(--sp-12); margin-bottom: var(--sp-12); }
-.ding-k { width: 72px; color: var(--muted); flex: none; }
+.ding-k { width: 72px; color: var(--el-text-color-secondary); flex: none; }
 .ding-code { font-size: 18px; letter-spacing: 2px; background: #f5f7fa; padding: 2px 8px; border-radius: 4px; }
 .cfg-row { display: flex; flex-direction: column; align-items: stretch; gap: var(--sp-8); padding: var(--sp-12) 0; border-bottom: 1px dashed #f0f0f0; }
 .cfg-row:last-child { border-bottom: none; }
 .cfg-meta { min-width: 0; }
-.cfg-key { font-size: var(--el-font-size-small); color: var(--text); background: #f5f7fa; padding: 1px 6px; border-radius: 4px; }
-.cfg-desc { display: block; margin-top: 4px; font-size: var(--el-font-size-extra-small); color: var(--muted); line-height: 1.4; }
+.cfg-key { font-size: var(--el-font-size-small); color: var(--el-text-color-primary); background: #f5f7fa; padding: 1px 6px; border-radius: 4px; }
+.cfg-desc { display: block; margin-top: 4px; font-size: var(--el-font-size-extra-small); color: var(--el-text-color-secondary); line-height: 1.4; }
 .cfg-input { width: 360px; max-width: 100%; }
 .cfg-actions { margin-top: var(--sp-16); display: flex; align-items: center; gap: var(--sp-12); flex-wrap: wrap; }
 .ding-ok { border: 1px solid #e1f3d8; background: #f0f9eb; border-radius: 8px; padding: var(--sp-16); }
@@ -354,7 +354,7 @@ async function saveSso() {
 .ding-info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-10) var(--sp-24); }
 .di { display: flex; align-items: baseline; gap: var(--sp-10); min-width: 0; }
 .di-wide { grid-column: 1 / -1; }
-.di-k { width: 64px; color: var(--muted); flex: none; font-size: var(--el-font-size-extra-small); }
+.di-k { width: 64px; color: var(--el-text-color-secondary); flex: none; font-size: var(--el-font-size-extra-small); }
 .di-v { font-size: var(--el-font-size-small); color: #303133; word-break: break-all; }
-.di-sub { color: var(--muted); margin-left: 4px; }
+.di-sub { color: var(--el-text-color-secondary); margin-left: 4px; }
 </style>

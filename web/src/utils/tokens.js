@@ -2,10 +2,6 @@
 export const STATUS_TXT = {
   running: '执行中', failed: '失败', success: '成功', stopped: '已停止', queued: '排队中',
 };
-// 任务风险等级文案（沿用旧 tokens.js：safe=只读 / external=会发钉钉 / caution=需前置 / danger=高危）
-export const RISK_LABEL = {
-  safe: '只读', external: '会发钉钉', caution: '需前置', danger: '高危',
-};
 export const STATUS_CLS = {
   running: 'is-run', failed: 'is-fail', success: 'is-ok', stopped: 'is-stop', queued: 'is-queued',
 };

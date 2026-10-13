@@ -25,7 +25,7 @@ import { useAppStore } from '../../stores/app.js';
 const app = useAppStore();
 
 const connDot = computed(() => (app.connected === true ? 'ok' : app.connected === false ? 'err' : 'muted'));
-const connText = computed(() => (app.connected === true ? '服务已连接' : app.connected === false ? '服务已断开' : '连接中'));
+const connText = computed(() => (app.connected === true ? '已连接' : app.connected === false ? '已断开' : '连接中'));
 const connTitle = computed(() =>
   '本地工作台服务（Nest 后端）。' + (app.connected === false ? '已与事件流断开，正在自动重连。' : ''));
 
@@ -38,8 +38,8 @@ const cookieDot = computed(() => {
 });
 const cookieText = computed(() => {
   const c = cookie.value; if (!c) return '待校验';
-  if (c.status === 'valid') return 'Cookie 有效';
-  if (c.status === 'invalid') return 'Cookie 已失效';
+  if (c.status === 'valid') return '有效';
+  if (c.status === 'invalid') return '已失效';
   return c._net ? '校验异常' : '未知';
 });
 const cookieTitle = computed(() => {
@@ -55,8 +55,8 @@ const quarkDot = computed(() => {
 });
 const quarkText = computed(() => {
   const q = quark.value; if (!q) return '待校验';
-  if (q.status === 'valid') return 'Quark 有效';
-  if (q.status === 'invalid') return 'Quark 已失效';
+  if (q.status === 'valid') return '有效';
+  if (q.status === 'invalid') return '已失效';
   if (q.status === 'nocache') return '未兑换';
   return '未知';
 });
@@ -79,11 +79,11 @@ const quarkTitle = computed(() => {
   align-items: center;
   justify-content: center;
   width: 36px; height: 36px;
-  border: none; border-radius: var(--r-md);
-  background: transparent; color: var(--text);
+  border: none; border-radius: var(--el-border-radius-base);
+  background: transparent; color: var(--el-text-color-primary);
   cursor: pointer;
 }
-.hd-menu:hover { background: var(--surface-sunken); }
+.hd-menu:hover { background: var(--el-fill-color-light); }
 .hd-brand { display: flex; align-items: center; gap: var(--sp-8); }
 .hd-logo { font-size: 20px; }
 .hd-title { font-weight: var(--fw-bold); font-size: var(--el-font-size-medium); }

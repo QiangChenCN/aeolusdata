@@ -1,10 +1,15 @@
 <template>
   <el-dropdown trigger="click" @command="onCommand">
-    <span class="user-chip">
-      <span class="ui-dot ui-dot--ok"></span>
-      <span class="uc-name">{{ auth.user || '未登录' }}</span>
-      <span class="uc-role" v-if="auth.role">{{ roleLabel }}</span>
-      <el-icon><ArrowDown /></el-icon>
+    <span class="uc-trigger">
+      <el-avatar class="uc-avatar" size="small">
+        <template v-if="auth.user">{{ auth.user.charAt(0).toUpperCase() }}</template>
+        <el-icon v-else><User /></el-icon>
+      </el-avatar>
+      <span class="uc-meta">
+        <span class="uc-name">{{ auth.user || '未登录' }}</span>
+        <span class="uc-role" v-if="auth.role">{{ roleLabel }}</span>
+      </span>
+      <el-icon class="uc-arrow"><ArrowDown /></el-icon>
     </span>
     <template #dropdown>
       <el-dropdown-menu>
@@ -32,17 +37,34 @@ function onCommand(cmd) {
 </script>
 
 <style scoped>
-.user-chip {
+.uc-trigger {
   display: inline-flex;
   align-items: center;
-  gap: var(--sp-6);
+  gap: var(--sp-12);
   padding: var(--sp-4) var(--sp-10);
-  border: 1px solid var(--border-soft);
+  border: 1px solid var(--el-border-color-lighter);
   border-radius: var(--r-pill);
-  background: var(--white);
+  background: var(--el-bg-color);
   cursor: pointer;
-  font-size: var(--el-font-size-extra-small);
+  outline: none;
 }
-.uc-name { font-weight: var(--fw-semibold); color: var(--text); }
-.uc-role { color: var(--brand); font-size: 11px; }
+.uc-trigger:hover { border-color: var(--el-color-primary); }
+.uc-avatar {
+  flex: none;
+  background-color: var(--el-color-primary);
+  color: #fff;
+}
+.uc-meta {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.15;
+  text-align: left;
+}
+.uc-name {
+  font-weight: var(--fw-semibold);
+  color: var(--el-text-color-primary);
+  font-size: var(--el-font-size-small);
+}
+.uc-role { color: var(--el-color-primary); font-size: 11px; }
+.uc-arrow { margin-left: var(--sp-4); color: var(--el-text-color-secondary); }
 </style>

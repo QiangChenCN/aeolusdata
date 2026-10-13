@@ -27,17 +27,17 @@
 <style scoped>
 .sys { padding: var(--sp-20); max-width: 980px; }
 .v-title { margin: 0 0 var(--sp-16); font-size: var(--el-font-size-extra-large); }
-.muted { color: var(--muted); }
+.muted { color: var(--el-text-color-secondary); }
 .cards { display: flex; flex-direction: column; gap: var(--sp-12); margin-top: var(--sp-12); }
 .card {
   display: flex; align-items: center; justify-content: space-between; gap: var(--sp-12);
   max-width: 420px;
   padding: var(--sp-16); border: 1px solid #ebeef5; border-radius: 8px;
-  text-decoration: none; color: var(--text);
+  text-decoration: none; color: var(--el-text-color-primary);
   transition: border-color .15s, box-shadow .15s;
 }
-.card:hover { border-color: var(--brand); box-shadow: 0 2px 12px rgba(0,0,0,.06); }
+.card:hover { border-color: var(--el-color-primary); box-shadow: 0 2px 12px rgba(0,0,0,.06); }
 .card-t { font-weight: var(--fw-semibold); font-size: var(--el-font-size-medium); }
-.card-d { font-size: var(--el-font-size-extra-small); color: var(--muted); margin-top: 4px; }
-.card-arw { font-size: 18px; color: var(--muted); }
+.card-d { font-size: var(--el-font-size-extra-small); color: var(--el-text-color-secondary); margin-top: 4px; }
+.card-arw { font-size: 18px; color: var(--el-text-color-secondary); }
 </style>

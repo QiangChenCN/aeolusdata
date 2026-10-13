@@ -426,18 +426,18 @@ onMounted(load);
 .asq-card :deep(.el-card__header) { flex: 0 0 auto; }
 .asq-card :deep(.el-card__body) { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
 .asq-card-h { font-weight: 600; }
-.asq-warn { margin-left: var(--sp-12); font-size: var(--el-font-size-extra-small); color: var(--warn); }
+.asq-warn { margin-left: var(--sp-12); font-size: var(--el-font-size-extra-small); color: var(--el-color-warning); }
 /* 权重项合计提示（需 100%） */
-.asq-sum { margin-left: var(--sp-12); font-size: var(--el-font-size-extra-small); color: var(--muted); }
+.asq-sum { margin-left: var(--sp-12); font-size: var(--el-font-size-extra-small); color: var(--el-text-color-secondary); }
 .asq-sum.is-bad { color: var(--el-color-danger); font-weight: 600; }
 /* 分层方式下拉 */
 .asq-layer { width: 112px; }
 .asq-legend { margin-left: auto; display: flex; gap: var(--sp-12); }
-.asq-legend-item { display: inline-flex; align-items: center; gap: 4px; font-size: var(--el-font-size-extra-small); color: var(--muted); }
+.asq-legend-item { display: inline-flex; align-items: center; gap: 4px; font-size: var(--el-font-size-extra-small); color: var(--el-text-color-secondary); }
 .asq-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
 .asq-dot.is-pos { background: var(--el-color-success); }
 .asq-dot.is-neg { background: var(--el-color-danger); }
-.asq-tip { font-size: var(--el-font-size-extra-small); color: var(--muted); }
+.asq-tip { font-size: var(--el-font-size-extra-small); color: var(--el-text-color-secondary); }
 .asq-table { flex: 1 1 auto; min-height: 0; --el-component-size: 28px; }
 .asq-table :deep(.el-table__cell) { padding: 6px 0; }
 /* 全部列用 min-width（flex 列）→ fit 时剩余宽度按各列 min-width 比例分配；
@@ -446,7 +446,7 @@ onMounted(load);
 .asq-table :deep(.el-table__header th) { padding: 8px 0; }
 .asq-cell { display: flex; align-items: center; justify-content: center; gap: 4px; }
 .asq-cell :deep(.el-input-number) { width: 68px; }
-.asq-unit { color: var(--muted); font-size: 12px; }
+.asq-unit { color: var(--el-text-color-secondary); font-size: 12px; }
 .asq-metric { display: flex; flex-direction: column; gap: 4px; align-items: center; }
 .asq-metric-name { font-weight: 600; }
 /* 计分方式下拉 */
@@ -457,11 +457,11 @@ onMounted(load);
 }
 .asq-weight-cell :deep(.el-input-number) { width: 64px; }
 .asq-range-cell :deep(.el-input-number) { width: 52px; }
-.asq-tilde { color: var(--muted); font-size: 12px; }
-.asq-tier { font-size: 12px; color: var(--muted); }
+.asq-tilde { color: var(--el-text-color-secondary); font-size: 12px; }
+.asq-tier { font-size: 12px; color: var(--el-text-color-secondary); }
 .asq-tier.is-t100 { color: var(--el-color-success); }
 .asq-tier.is-t0 { color: var(--el-color-danger); }
-.asq-note { margin: var(--sp-8) 0 0; font-size: var(--el-font-size-extra-small); color: var(--muted); }
-.asq-updated { font-size: var(--el-font-size-extra-small); color: var(--muted); }
+.asq-note { margin: var(--sp-8) 0 0; font-size: var(--el-font-size-extra-small); color: var(--el-text-color-secondary); }
+.asq-updated { font-size: var(--el-font-size-extra-small); color: var(--el-text-color-secondary); }
 .asq-saved { font-size: var(--el-font-size-extra-small); color: #1aac5a; }
 </style>

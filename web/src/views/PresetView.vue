@@ -27,11 +27,13 @@
 import { ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { useTasksStore } from '../stores/tasks.js';
-import { useRunsStore } from '../stores/runs.js';
+import { useRunsStore } from '../stores/runs.js';
+
 
 const router = useRouter();
 const tasks = useTasksStore();
-const runs = useRunsStore();
+const runs = useRunsStore();
+
 const runningId = ref('');
 
 function groupName(g) { const x = tasks.groupById(g); return x ? x.name : g; }
@@ -40,7 +42,7 @@ function groupStyle(g) {
   return x && x.color ? { background: x.color + '22', color: x.color, borderColor: x.color + '55' } : {};
 }
 function goTasks() { router.push('/tasks'); }
-function goConfig(t) { router.push('/tasks/' + (t.group || 'all')); }
+function goConfig(t) { router.push('/tasks'); }
 
 async function runTask(t) {
   runningId.value = t.id;
@@ -59,13 +61,13 @@ async function runTask(t) {
 .preset { padding: var(--sp-20); }
 .preset-bar { display: flex; align-items: baseline; gap: var(--sp-12); margin-bottom: var(--sp-16); flex-wrap: wrap; }
 .v-title { margin: 0; font-size: var(--el-font-size-extra-large); }
-.v-sub { color: var(--muted); font-size: var(--el-font-size-base); }
+.v-sub { color: var(--el-text-color-secondary); font-size: var(--el-font-size-base); }
 .preset-bar .sp { flex: 1; }
 .preset-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: var(--sp-12); }
 .preset-card { margin-bottom: 0; }
 .preset-card-h { display: flex; flex-direction: column; gap: var(--sp-6); margin-bottom: var(--sp-12); }
-.preset-group { align-self: flex-start; font-size: var(--el-font-size-extra-small); border: 1px solid var(--border-soft); border-radius: var(--r-xl); padding: 1px var(--sp-8); }
+.preset-group { align-self: flex-start; font-size: var(--el-font-size-extra-small); border: 1px solid var(--el-border-color-lighter); border-radius: var(--el-border-radius-base); padding: 1px var(--sp-8); }
 .preset-name { font-weight: var(--fw-semibold); font-size: var(--el-font-size-medium); }
 .preset-card-f { display: flex; gap: var(--sp-8); }
-.preset-state { padding: var(--sp-40); text-align: center; color: var(--muted); }
+.preset-state { padding: var(--sp-40); text-align: center; color: var(--el-text-color-secondary); }
 </style>

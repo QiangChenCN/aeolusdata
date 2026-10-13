@@ -8,11 +8,11 @@ html, body, #app {
 }
 
 body {
-  font-family: var(--font-sans);
+  font-family: var(--el-font-family);
   font-size: var(--el-font-size-base);
   line-height: var(--lh-base);
-  color: var(--text);
-  background: var(--bg);
+  color: var(--el-text-color-primary);
+  background: var(--el-bg-color-page);
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
@@ -21,30 +21,30 @@ body {
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-thumb {
   background: var(--scrollbar-thumb);
-  border-radius: var(--r-xs);
+  border-radius: var(--el-border-radius-small);
 }
 ::-webkit-scrollbar-thumb:hover { background: var(--c-text-faint); }
 ::-webkit-scrollbar-track { background: transparent; }
 
-a { color: var(--info); text-decoration: none; }
+a { color: var(--el-color-primary); text-decoration: none; }
 
 /* 通用工具类（仅语义化、无业务） */
-.u-muted { color: var(--muted); }
-.u-strong { color: var(--text); font-weight: var(--fw-semibold); }
+.u-muted { color: var(--el-text-color-secondary); }
+.u-strong { color: var(--el-text-color-primary); font-weight: var(--fw-semibold); }
 .u-row { display: flex; align-items: center; gap: var(--sp-8); }
 .u-col { display: flex; flex-direction: column; }
 .u-spacer { flex: 1 1 auto; }
 
 /* 状态圆点（胶囊 / 列表共用） */
 .ui-dot {
-  width: var(--sz-8); height: var(--sz-8); border-radius: var(--r-circle);
+  width: var(--sz-8); height: var(--sz-8); border-radius: var(--el-border-radius-circle);
   display: inline-block; flex: none;
 }
-.ui-dot--ok   { background: var(--ok); }
-.ui-dot--err  { background: var(--err); }
-.ui-dot--warn { background: var(--warn); }
+.ui-dot--ok   { background: var(--el-color-success); }
+.ui-dot--err  { background: var(--el-color-danger); }
+.ui-dot--warn { background: var(--el-color-warning); }
 .ui-dot--info { background: var(--info); }
-.ui-dot--muted{ background: var(--muted-2); }
+.ui-dot--muted{ background: var(--el-text-color-placeholder); }
 
 /* 暗色日志终端（在 el-dialog 内使用，沿用 tokens 的终端色） */
 .term {
@@ -53,7 +53,7 @@ a { color: var(--info); text-decoration: none; }
   line-height: var(--lh-term);
   background: var(--term-bg);
   color: var(--term-fg);
-  border-radius: var(--r-md);
+  border-radius: var(--el-border-radius-base);
 }
 .term .l-sys { color: var(--term-sys); }
 .term .l-cmd { color: var(--term-cmd); }
