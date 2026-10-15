@@ -341,10 +341,10 @@ const typeLabel = (code) =>
 const siteOf = (r) => String(r?.teamName ?? '');
 const siteLabel = (v) => v || '—';
 const distinctOf = (rows, fn) => [...new Set((rows || []).map(fn))];
-// 数据刷新后：保留仍存在的旧选择，否则（首次加载）全选
+// 数据刷新后：保留仍存在的旧选择；若此前未选择（含首次加载）则保持为空，默认不筛选
 const mergeSel = (prev, available) => {
-  const kept = (prev || []).filter((c) => available.includes(c));
-  return kept.length ? kept : available;
+  if (!prev || prev.length === 0) return [];
+  return (prev || []).filter((c) => available.includes(c));
 };
 
 // 违规分类

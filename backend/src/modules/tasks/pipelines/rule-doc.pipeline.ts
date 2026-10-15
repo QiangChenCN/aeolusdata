@@ -583,46 +583,194 @@ const HEAD_MD: Record<string, string> = {
   h6: '###### ',
 };
 
-function mdLines(children: any[]): string[] {
-  const out: string[] = [];
-  const walk = (nodes: unknown): void => {
-    if (!Array.isArray(nodes)) return;
-    for (const ch of nodes) {
-      if (typeof ch === 'string') {
-        const t = ch.trim();
-        if (t) out.push(t);
-        continue;
+/** Markdown 渲染上下文：listCounters 维护有序列表多级计数器（与 HTML renderListItem 同级语义）。 */
+interface MdCtx {
+  counters: Map<string, number[]>;
+}
+
+/** 行内（叶子/span/img）转 Markdown：加粗包 **，图片转 ![alt](src)。 */
+function mdInline(node: any, ctx: MdCtx): string {
+  if (typeof node === 'string') return node;
+  if (!isSlateNode(node)) return '';
+  const type = node[0];
+  const attrs =
+    node.length > 1 && typeof node[1] === 'object' && node[1] !== null && !Array.isArray(node[1])
+      ? node[1]
+      : {};
+  const children = node.slice(2);
+  if (type === 'span') {
+    const inner = mdInlineChildren(children, ctx);
+    return attrs.bold ? `**${inner}**` : inner;
+  }
+  if (type === 'img' || type === 'image' || type === 'picture') {
+    const src = attrs.src || attrs.url || attrs.dataUrl || '';
+    if (!src) return '';
+    return `![${attrs.name || attrs.alt || 'image'}](${src})`;
+  }
+  return mdInlineChildren(children, ctx);
+}
+
+function mdInlineChildren(children: any, ctx: MdCtx): string {
+  if (children === null || children === undefined) return '';
+  if (typeof children === 'string') return children;
+  if (!Array.isArray(children)) return '';
+  return children.map((c) => mdInline(c, ctx)).join('');
+}
+
+/**
+ * 列表项 Markdown 前缀（与 HTML renderListItem 同语义）：
+ * 有序列表按 listId+level 维护计数器，套用 listStyle.text 模板（%k 取第 k 级）与 format
+ * （decimal/lowerLetter/lowerRoman…）；无序列表取 listStyle.text 或默认 •。
+ * 缩进按 level 每级 2 空格（Markdown 嵌套列表惯例），对应原生 padding-left 层级递进。
+ */
+function listPrefixMd(
+  list: Record<string, any>,
+  ctx: MdCtx,
+): { symbol: string; pad: number } {
+  const level = typeof list.level === 'number' ? list.level : 0;
+  const pad = level * 2;
+  let symbol = '';
+  if (!list.hideSymbol) {
+    const ls = list.listStyle && typeof list.listStyle === 'object' ? list.listStyle : {};
+    if (list.isOrdered) {
+      const listId = String(list.listId || '');
+      const key = `ol:${listId}`;
+      let arr = ctx.counters.get(key);
+      if (!Array.isArray(arr)) {
+        arr = [];
+        ctx.counters.set(key, arr);
       }
-      if (!isSlateNode(ch)) continue;
-      const type = ch[0];
-      if (type === 'img' || type === 'image' || type === 'picture') {
-        const a = (ch.length > 1 && typeof ch[1] === 'object' && ch[1] !== null ? ch[1] : {}) as Record<string, any>;
-        const src = a.src || a.url || a.dataUrl || '';
-        if (src) out.push(`![${H(a.name || a.alt || 'image')}](${src})`);
-        continue;
+      arr[level] = (arr[level] || 0) + 1;
+      for (let i = level + 1; i < arr.length; i++) arr[i] = 0;
+      const fmt = ls.text && typeof ls.text === 'string' ? String(ls.text) : '';
+      const fmtType = ls.format && typeof ls.format === 'string' ? String(ls.format) : 'decimal';
+      if (fmt.includes('%')) {
+        symbol = fmt.replace(/%(\d+)/g, (_m, k) => {
+          const idx = Number(k) - 1;
+          const v = idx >= 0 && idx < arr.length && arr[idx] ? arr[idx] : arr[level] || 1;
+          return formatListNumber(v, fmtType);
+        });
+      } else {
+        symbol = fmt || `${formatListNumber(arr[level], fmtType)}.`;
       }
-      if (type === 'table') {
-        for (const tr of ch.slice(2)) {
-          if (!isSlateNode(tr) || tr[0] !== 'tr') continue;
-          let cells = tr
-            .slice(2)
-            .filter((tc: unknown) => isSlateNode(tc))
-            .map((tc: any) => extractText(tc.slice(2)).trim());
-          cells = cells.filter((c: string) => c);
-          if (cells.length) out.push(cells.join(' | '));
-        }
-        continue;
-      }
-      // 标题整行输出，不再递归其文本；其余节点（p/div/span…）递归找文本与嵌套图片。
-      if (HEAD_MD[type]) {
-        const line = extractText(ch.slice(2)).trim();
-        if (line) out.push(HEAD_MD[type] + line);
-        continue;
-      }
-      walk(ch.slice(2));
+    } else {
+      symbol = String(ls.text || '•');
     }
+  }
+  return { symbol, pad };
+}
+
+/** 单元格内联文本（转义管道符与换行，避免破坏 GFM 表格）。 */
+function mdCellText(node: any, ctx: MdCtx): string {
+  const a = node.length > 1 && typeof node[1] === 'object' && node[1] !== null ? node[1] : {};
+  if (a.hidden) return '';
+  return mdInlineChildren(node.slice(2), ctx)
+    .replace(/\|/g, '\\|')
+    .replace(/\r?\n/g, ' ')
+    .trim();
+}
+
+/** 表格转 GFM：首行作表头并补分隔行；保留中间空单元格维持列对齐，仅裁行尾空单元格。 */
+function mdTable(node: any, ctx: MdCtx): string[] {
+  const rows = (node.slice(2) || []).filter((c: any) => isSlateNode(c) && c[0] === 'tr');
+  if (!rows.length) return [];
+  const rowCells = (tr: any): string[] => {
+    const cells = (tr.slice(2) || [])
+      .filter((c: any) => isSlateNode(c) && (c[0] === 'td' || c[0] === 'tc'))
+      .map((c: any) => mdCellText(c, ctx));
+    while (cells.length && cells[cells.length - 1] === '') cells.pop();
+    return cells;
   };
-  walk(children);
+  const all = rows.map(rowCells);
+  let ncols = 0;
+  for (const r of all) ncols = Math.max(ncols, r.length);
+  const renderRow = (cells: string[]): string => {
+    const padded: string[] = [];
+    for (let i = 0; i < ncols; i++) padded.push(cells[i] ?? '');
+    return `| ${padded.join(' | ')} |`;
+  };
+  const out: string[] = [];
+  all.forEach((cells: string[], idx: number) => {
+    out.push(renderRow(cells));
+    if (idx === 0) out.push(`| ${Array(ncols).fill('---').join(' | ')} |`);
+  });
+  return out;
+}
+
+/**
+ * Slate 树 → Markdown 行数组（与 HTML 结构对齐：标题 / 列表编号符号 / 表格 / 加粗 / 图片）。
+ * 块级之间用空行分隔，保证 Markdown 把相邻段落正确拆开、表格被识别为表格。
+ */
+/** 块级节点类型（与行内 span/字符串区分）：命中则递归展开其子块。 */
+const BLOCK_TYPES = new Set<string>([
+  'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'div', 'table', 'tr', 'td', 'tc',
+  'ul', 'ol', 'li', 'img', 'image', 'picture',
+]);
+
+function mdBlocks(nodes: any[], ctx: MdCtx, out: string[] = []): string[] {
+  const sep = (): void => {
+    if (out.length && out[out.length - 1] !== '') out.push('');
+  };
+  if (!Array.isArray(nodes)) return out;
+  for (const ch of nodes) {
+    if (typeof ch === 'string') {
+      const t = ch.trim();
+      if (t) {
+        sep();
+        out.push(t);
+      }
+      continue;
+    }
+    if (!isSlateNode(ch)) continue;
+    const type = ch[0];
+    const attrs =
+      ch.length > 1 && typeof ch[1] === 'object' && ch[1] !== null && !Array.isArray(ch[1])
+        ? ch[1]
+        : {};
+    const children = ch.slice(2);
+    if (type === 'img' || type === 'image' || type === 'picture') {
+      const src = attrs.src || attrs.url || attrs.dataUrl || '';
+      if (src) {
+        sep();
+        out.push(`![${attrs.name || attrs.alt || 'image'}](${src})`);
+      }
+      continue;
+    }
+    if (type === 'table') {
+      sep();
+      out.push(...mdTable(ch, ctx));
+      continue;
+    }
+    // 列表项优先于标题判断：HTML 把带 list 属性的块（含标题标签）渲染为 list-item。
+    const list = attrs.list && typeof attrs.list === 'object' ? attrs.list : null;
+    if (list) {
+      const { symbol, pad } = listPrefixMd(list, ctx);
+      const content = mdInlineChildren(children, ctx).trim();
+      const indent = ' '.repeat(Math.max(0, pad));
+      sep();
+      out.push(`${indent}${symbol}${symbol ? ' ' : ''}${content}`);
+      continue;
+    }
+    if (HEAD_MD[type]) {
+      const line = mdInlineChildren(children, ctx).trim();
+      if (line) {
+        sep();
+        out.push(HEAD_MD[type] + line);
+      }
+      continue;
+    }
+    // 普通段落 / 容器：若子节点里含块级节点（标题/段落/表格/列表项等）则递归展开，
+    // 否则取行内文本为一段（含加粗）。避免把多段内容挤成一行而与 HTML 错位。
+    if ((children as any[]).some((c) => isSlateNode(c) && BLOCK_TYPES.has(c[0]))) {
+      mdBlocks(children, ctx, out);
+    } else {
+      const text = mdInlineChildren(children, ctx).trim();
+      if (text) {
+        sep();
+        out.push(text);
+      }
+    }
+  }
   return out;
 }
 
@@ -736,7 +884,8 @@ export class RuleDocPipeline implements TaskHandler {
       for (const [label, v] of pairs) lines.push(`${label}：${v}`);
       lines.push('');
     }
-    lines.push(...mdLines(tree.slice(2)));
+    const mdCtx: MdCtx = { counters: new Map() };
+    lines.push(...mdBlocks(tree.slice(2), mdCtx));
 
     const atts = (data.attachments || []).filter((a: Record<string, any>) => a.url && a.name);
     if (atts.length) {
