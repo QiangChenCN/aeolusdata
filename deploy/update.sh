@@ -7,7 +7,11 @@ cd /opt/aeolusdata
 echo "== 拉取最新代码 =="
 git pull --ff-only
 
-echo "== 同步 Python 依赖 =="
+echo "== 同步 Python 依赖（venv 缺失则创建，支持全新部署）=="
+if [ ! -d python/.venv ]; then
+  python3 -m venv python/.venv
+fi
+python/.venv/bin/python -m pip install --upgrade pip
 python/.venv/bin/python -m pip install -r python/requirements.txt
 
 echo "== 安装后端依赖并构建（--omit=dev 仅排除 jest/ts-jest 等测试工具；构建工具 @nestjs/cli/typescript 已列入 dependencies，故服务器可独立完成 nest build）=="
