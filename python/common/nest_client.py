@@ -61,8 +61,8 @@ def _backend_auth_token():
     t = (os.environ.get("NEST_AUTH_TOKEN") or "").strip()
     if t:
         return t
-    # 尝试从 backend/.env 读取 AUTH_TOKEN（与 Nest 共用同一机器令牌）。
-    env_path = os.path.join(ROOT, "backend", ".env")
+    # 尝试从仓库根 .env 读取 AUTH_TOKEN（与 Nest 共用同一机器令牌；单一配置来源）。
+    env_path = os.path.join(ROOT, ".env")
     try:
         with open(env_path, "r", encoding="utf-8") as f:
             for line in f:

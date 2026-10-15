@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import * as path from 'path';
 import { ScheduleModule } from '@nestjs/schedule';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { APP_GUARD } from '@nestjs/core';
@@ -26,7 +27,17 @@ import { AssessmentModule } from './modules/assessment/assessment.module';
 @Module({
   imports: [
     // 全局配置：启动时校验 env
-    ConfigModule.forRoot({ isGlobal: true, validationSchema: envValidationSchema }),
+    // 单一配置来源 = 仓库根 .env（如 /opt/aeolusdata/.env）。systemd 的 EnvironmentFile 注入同一份，
+    // 这里显式读取它，不再读 backend/.env，避免两份漂移。数组第二项是本地开发的优雅回退
+    // （若根 .env 缺席、仍有 backend/.env 时可用），根 .env 存在时它永不生效。
+    ConfigModule.forRoot({
+      isGlobal: true,
+      validationSchema: envValidationSchema,
+      envFilePath: [
+        path.resolve(process.cwd(), '..', '.env'),
+        path.resolve(process.cwd(), '.env'),
+      ],
+    }),
     ScheduleModule.forRoot(),
     // 频控（内存态；多实例需换 Redis 存储）
     ThrottlerModule.forRoot({ throttlers: [{ ttl: 60000, limit: 60 }] }),

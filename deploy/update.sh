@@ -21,14 +21,11 @@ echo "== 重建前端 =="
 cd web && npm install && npm run build && cd ..
 
 echo "== 生成环境文件（.env 被 gitignore，全新部署需从模板生成；含密钥项请运维补全）=="
-# 两个后端相关单元都用 EnvironmentFile=/opt/aeolusdata/.env；该文件缺失会导致 systemd
-# 直接拒绝启动（Failed to load environment files）。故缺失时必须从 backend/.env.example 生成。
+# 单一配置来源 = 仓库根 /opt/aeolusdata/.env（Nest 显式读它，Python 回读它兜底）；该文件缺失会导致
+# systemd 直接拒绝启动（Failed to load environment files）。故缺失时必须从 backend/.env.example 生成。
 if [ ! -f /opt/aeolusdata/.env ]; then
   cp backend/.env.example /opt/aeolusdata/.env
-  echo "已根据 backend/.env.example 生成 /opt/aeolusdata/.env，请按需补全 AUTH_TOKEN 等密钥项后重启服务"
-fi
-if [ ! -f backend/.env ]; then
-  cp backend/.env.example backend/.env
+  echo "已根据 backend/.env.example 生成 /opt/aeolusdata/.env（单一配置来源），请按需补全 AUTH_TOKEN / NEST_AUTH_TOKEN 后重启服务"
 fi
 
 echo "== 同步 systemd 单元并重启服务 =="

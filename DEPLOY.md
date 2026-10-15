@@ -179,8 +179,8 @@ curl -X POST -H "X-Token: $TOKEN" -H "Content-Type: application/json" \
 | 本地 `git push` 公钥拒绝 | SSH key 没进 agent | 用 HTTPS remote + GCM（见第 3 节） |
 | 提交里混入一堆 `*.json` | 缓存文件被跟踪且反复变 | 暂存时排除（见第 2 节），或 `git rm --cached` 后加进 `.gitignore` |
 | `send` 钉钉报群名匹配不明确 | 目标群名歧义或群不存在，NestJS 侧 `dingtalk` 模块按群名解析失败（匹配度不足/并列） | 在调用处传更准确的群名，或传 `openConversationId`（cid 开头）；群名解析逻辑全在 `backend/src/modules/dingtalk/dingtalk.service.ts` 的 `resolveGroup` |
-| 钉钉发送提示 `dws` 相关路径错误 | dws 由 **NestJS** 调用（Python 不再直调）；`DING_DWS_JS`/`DING_DWS_BIN` 在 `backend/.env` 配置 | `npm i -g dingtalk-workspace-cli` 让 dws 进 PATH，或确认 `backend/.env` 的 `DING_DWS_JS` 指向正确路径 |
-| Python job 钉钉调用 401 | job 经 `python/common/nest_client` 回調 NestJS 需要机器令牌 `NEST_AUTH_TOKEN`（由 TaskRunner 自动从 `AUTH_TOKEN` 注入）；未配置则被 AccessGuard 拒绝 | 确认 `backend/.env` 有 `AUTH_TOKEN`，且任务由 Nest 的 TaskRunner 拉起（而非手动裸跑 Python） |
+| 钉钉发送提示 `dws` 相关路径错误 | dws 由 **NestJS** 调用（Python 不再直调）；`DING_DWS_JS`/`DING_DWS_BIN` 在仓库根 `.env`（`/opt/aeolusdata/.env`）配置 | `npm i -g dingtalk-workspace-cli` 让 dws 进 PATH，或确认仓库根 `.env` 的 `DING_DWS_JS` 指向正确路径 |
+| Python job 钉钉调用 401 | job 经 `python/common/nest_client` 回調 NestJS 需要机器令牌 `NEST_AUTH_TOKEN`（由 TaskRunner 自动从 `AUTH_TOKEN` 注入）；未配置则被 AccessGuard 拒绝 | 确认仓库根 `.env` 的 `AUTH_TOKEN` 与 `NEST_AUTH_TOKEN` 一致，且任务由 Nest 的 TaskRunner 拉起（而非手动裸跑 Python） |
 
 ---
 

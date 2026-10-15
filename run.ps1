@@ -109,19 +109,19 @@ if (Test-Path $pidFile) {
 if ($pidRecords -is [System.Management.Automation.PSCustomObject]) { $pidRecords = @($pidRecords) }
 
 # ===================== 为 Python 计算服务注入 NEST_AUTH_TOKEN =====================
-# 计算服务调 Nest 取数时，nest_client 优先用 NEST_AUTH_TOKEN（机器令牌兜底），
-# 缺失时回退读 backend/.env 的 AUTH_TOKEN。这里显式注入，避免依赖隐式回退。
-$envFile = Join-Path $root 'backend/.env'
+# 单一配置来源 = 仓库根 .env（与 systemd / Nest 同一份）。nest_client 优先用 NEST_AUTH_TOKEN，
+# 缺失时回退读仓库根 .env 的 AUTH_TOKEN。这里显式注入，避免依赖隐式回退。
+$envFile = Join-Path $root '.env'
 if (Test-Path $envFile) {
     $tokLine = Get-Content -Path $envFile | Where-Object { $_ -match '^AUTH_TOKEN=' } | Select-Object -First 1
     if ($tokLine) {
         $env:NEST_AUTH_TOKEN = $tokLine.Substring($tokLine.IndexOf('=') + 1).Trim()
-        Write-Host ("  [env] NEST_AUTH_TOKEN injected from backend/.env (len=" + $env:NEST_AUTH_TOKEN.Length + ")") -ForegroundColor DarkGray
+        Write-Host ("  [env] NEST_AUTH_TOKEN injected from .env (len=" + $env:NEST_AUTH_TOKEN.Length + ")") -ForegroundColor DarkGray
     } else {
-        Write-Host "  [env] backend/.env 未找到 AUTH_TOKEN，Python 计算服务将走 nest_client 回退" -ForegroundColor Yellow
+        Write-Host "  [env] 仓库根 .env 未找到 AUTH_TOKEN，Python 计算服务将走 nest_client 回退" -ForegroundColor Yellow
     }
 } else {
-    Write-Host "  [env] backend/.env 不存在，Python 计算服务将走 nest_client 回退" -ForegroundColor Yellow
+    Write-Host "  [env] 仓库根 .env 不存在，Python 计算服务将走 nest_client 回退" -ForegroundColor Yellow
 }
 
 Write-Host "`n=== Starting services (background) ===" -ForegroundColor Cyan
