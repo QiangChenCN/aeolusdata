@@ -20,6 +20,17 @@ cd backend && npm ci --omit=dev && npm run build && cd ..
 echo "== 重建前端 =="
 cd web && npm install && npm run build && cd ..
 
+echo "== 生成环境文件（.env 被 gitignore，全新部署需从模板生成；含密钥项请运维补全）=="
+# 两个后端相关单元都用 EnvironmentFile=/opt/aeolusdata/.env；该文件缺失会导致 systemd
+# 直接拒绝启动（Failed to load environment files）。故缺失时必须从 backend/.env.example 生成。
+if [ ! -f /opt/aeolusdata/.env ]; then
+  cp backend/.env.example /opt/aeolusdata/.env
+  echo "已根据 backend/.env.example 生成 /opt/aeolusdata/.env，请按需补全 AUTH_TOKEN 等密钥项后重启服务"
+fi
+if [ ! -f backend/.env ]; then
+  cp backend/.env.example backend/.env
+fi
+
 echo "== 同步 systemd 单元并重启服务 =="
 # 单元文件随代码一起版本化，但 systemd 实际读的是 /etc/systemd/system/ 下的副本，
 # 只 git pull 不会生效 —— 必须重新拷贝 + daemon-reload。

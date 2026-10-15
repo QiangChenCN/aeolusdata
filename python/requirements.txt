@@ -6,4 +6,11 @@
 # 因此原先只为已删除模块服务的两项依赖一并移除：
 #   · Pillow  —— 原 common/report_render.py（PNG 渲染）→ backend/src/modules/render/（@napi-rs/canvas）
 #   · minio   —— 原 common/minio_common.py（图床上传）→ backend/src/modules/media/minio.service.ts
+#
+# 注意：uvicorn / fastapi 是 compute_api 服务的运行基座（入口 `uvicorn compute_api.main:app`），
+# numpy 是 analytics/* 聚合计算的硬依赖；这些此前靠手动装进 venv、未入版本库，导致全新部署后
+# 计算服务起不来。2026-10-15 起显式声明，保证 `pip install -r requirements.txt` 自洽。
+uvicorn==0.54.0
+fastapi==0.143.2
+numpy==2.5.4
 openpyxl==3.1.5
