@@ -1,0 +1,56 @@
+name: Deploy Backend (NestJS)
+
+# 主流部署方式：代码推到 main 后，由 GitHub Actions 负责
+#   1. 安装依赖并编译（npm ci && npm run build）→ 产出 dist/
+#   2. 仅把 dist/ rsync 到 ECS（构建产物不进 git 仓库）
+#   3. 重启后端 systemd 服务
+# 服务器不再安装 jest/ts-jest/typescript/@nestjs/cli 等 devDependencies，
+# 只通过 `npm ci --omit=dev` 装运行依赖（见 deploy/update.sh）。
+#
+# 需要在仓库 Settings → Secrets and variables → Actions 中配置：
+#   ECS_HOST      服务器 IP 或域名
+#   ECS_USER      SSH 登录用户（需有 /opt/aeolusdata 写权限与 systemctl 权限）
+#   ECS_SSH_KEY   登录用的私钥（对应服务器 ~/.ssh/authorized_keys 里的公钥）
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'backend/**'
+      - '.github/workflows/**'
+  workflow_dispatch: {}
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install & Build
+        working-directory: backend
+        run: |
+          npm ci
+          npm run build
+
+      - name: Deploy dist & Restart
+        env:
+          ECS_HOST: ${{ secrets.ECS_HOST }}
+          ECS_USER: ${{ secrets.ECS_USER }}
+          ECS_SSH_KEY: ${{ secrets.ECS_SSH_KEY }}
+        run: |
+          eval "$(ssh-agent -s)"
+          echo "$ECS_SSH_KEY" | tr -d '\r' | ssh-add -
+          rsync -az --delete \
+            -e "ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null" \
+            backend/dist/ \
+            "$ECS_USER@$ECS_HOST:/opt/aeolusdata/backend/dist/"
+          ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+            "$ECS_USER@$ECS_HOST" 'systemctl restart aeolus-backend'

@@ -5,7 +5,7 @@ After=network.target
 [Service]
 Type=simple
 WorkingDirectory=/opt/aeolusdata/backend
-# 构建产物由 setup.sh / update.sh 生成：cd backend && npm ci && npm run build
+# 构建产物 dist/ 由 GitHub Actions 预编译并 rsync 下发到本机；服务器仅 npm ci --omit=dev 安装运行依赖后 node dist/src/main
 ExecStart=/usr/bin/node dist/src/main
 # 优雅停止：先 TERM 给主进程，最多等 15s，避免停服时进程残留占住 8787
 ExecStop=/bin/kill -TERM $MAINPID
