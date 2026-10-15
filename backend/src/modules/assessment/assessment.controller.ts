@@ -85,7 +85,10 @@ export class AssessmentController {
       // 取数落盘后必须通知 Python 失效考核看板的结果缓存，否则 Python 一直返回
       // 进程内旧缓存（build_one 命中即返回），表现就是「刷新了但数字没变」。
       if (r.ok) {
-        await this.notifyInvalidate(teams, date);
+        // 违规明细是全站合并的全局单文件（fetchAndLand 忽略 teams 参数全站拉取），
+        // 取数成功后必须失效当天全部站点的考核看板结果缓存，与运单取数保持一致；
+        // 否则仅失效传入子集时，未被失效的站点仍命中 Python 进程内旧缓存，表现即「刷新了但数字没变」。
+        await this.notifyInvalidate(this.allTeamIds(), date);
         if (manual) this.cooldownSvc.mark();
       }
       return {
