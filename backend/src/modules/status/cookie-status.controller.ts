@@ -1,5 +1,5 @@
 import { Controller, Get } from '@nestjs/common';
-import { CookieStatusService } from '../fetch/cookie-status.service';
+import { CookieStatusService } from '../../../fetch/cookie-status.service';
 
 /**
  * `GET /api/cookies/status` —— 登录态探针（顶部胶囊）。

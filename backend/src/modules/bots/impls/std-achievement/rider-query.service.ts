@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { AeolusCookieService } from '../../../fetch/aeolus-cookie.service';
-import { AttendanceFetchService } from '../../../fetch/attendance-fetch.service';
+import { AeolusCookieService } from '../../../../../fetch/aeolus-cookie.service';
+import { AttendanceFetchService } from '../../../../../fetch/attendance-fetch.service';
 
 /** std-achievement bot 的运行时配置（来自环境变量，默认值与旧 Python 版一致）。 */
 export interface StdAchievementConfig {

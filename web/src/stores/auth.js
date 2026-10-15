@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia';
-import { signin as apiSignin, signout as apiSignout, me as apiMe } from '../api/auth.js';
+import { signin as apiSignin, signout as apiSignout, me as apiMe, updateAvatar as apiUpdateAvatar, updateProfile as apiUpdateProfile } from '../api/auth.js';
 import { setBearerToken, clearBearerToken } from '../api/request.js';
 
 // 由 App.vue 注入：将用户送到登录页（保留当前页用于登录后返回）。
@@ -18,6 +18,10 @@ export const useAuthStore = defineStore('auth', {
   state: () => ({
     user: null,
     role: null,
+    avatar: null,
+    name: null,
+    phone: null,
+    email: null,
   }),
   getters: {
     authenticated: (s) => !!s.user,
@@ -33,6 +37,10 @@ export const useAuthStore = defineStore('auth', {
             const data = await apiMe();
             if (data && data.authenticated) {
               this.user = data.user; this.role = data.role;
+              this.avatar = data.avatar ?? null;
+              this.name = data.name ?? null;
+              this.phone = data.phone ?? null;
+              this.email = data.email ?? null;
             }
           } catch (e) { /* 未登录 / 网络异常：保持 user=null，等待守卫重定向 */ }
         })();
@@ -43,6 +51,10 @@ export const useAuthStore = defineStore('auth', {
       const data = await apiSignin(username, password, remember);
       if (data && data.token) {
         this.user = data.user; this.role = data.role;
+        this.avatar = data.avatar ?? null;
+        this.name = data.name ?? null;
+        this.phone = data.phone ?? null;
+        this.email = data.email ?? null;
         return data;
       }
       throw new Error((data && data.error) || '登录失败');
@@ -50,7 +62,8 @@ export const useAuthStore = defineStore('auth', {
     async signout() {
       try { await apiSignout(); } catch (e) { /* ignore */ }
       clearBearerToken(); // 清掉 iframe/JSAPI 场景下的 X-Token 内存态
-      this.user = null; this.role = null;
+      this.user = null; this.role = null; this.avatar = null;
+      this.name = null; this.phone = null; this.email = null;
       this.requireLogin();
     },
     /**
@@ -62,6 +75,10 @@ export const useAuthStore = defineStore('auth', {
       const data = await apiMe();
       if (data && data.authenticated) {
         this.user = data.user; this.role = data.role;
+        this.avatar = data.avatar ?? null;
+        this.name = data.name ?? null;
+        this.phone = data.phone ?? null;
+        this.email = data.email ?? null;
         return true;
       }
       clearBearerToken();
@@ -69,5 +86,25 @@ export const useAuthStore = defineStore('auth', {
     },
     // 401 或主动退出时触发：重定向到登录页（保留当前页用于登录后返回）。
     requireLogin() { if (loginRedirector) loginRedirector(); },
+    // 更新个人头像（data URI），成功后同步本地 avatar 展示。
+    async updateAvatar(avatar) {
+      const data = await apiUpdateAvatar(avatar);
+      if (data && data.ok) {
+        this.avatar = data.avatar ?? avatar;
+        return true;
+      }
+      throw new Error((data && data.error) || '头像更新失败');
+    },
+    // 更新个人资料（姓名 / 手机号 / 邮箱），成功后同步本地展示。
+    async updateProfile(profile) {
+      const data = await apiUpdateProfile(profile);
+      if (data && data.ok) {
+        if (data.name !== undefined) this.name = data.name ?? null;
+        if (data.phone !== undefined) this.phone = data.phone ?? null;
+        if (data.email !== undefined) this.email = data.email ?? null;
+        return true;
+      }
+      throw new Error((data && data.error) || '资料更新失败');
+    },
   },
 });

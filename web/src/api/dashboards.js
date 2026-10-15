@@ -143,20 +143,39 @@ export function fetchOverviewAssessment({ date } = {}) {
   return request('/overview/assessment' + (p.length ? '?' + p.join('&') : ''));
 }
 
-/* ============ 实时数据 ============ */
-export function fetchRealtimeStation({ team, start, end } = {}) {
+/* ============ 考核看板 ============ */
+export function fetchAssessmentStation({ team, start, end } = {}) {
   const p = [];
   if (team) p.push('team=' + enc(team));
   if (start) p.push('start=' + enc(start));
   if (end) p.push('end=' + enc(end));
-  return request('/realtime/station' + (p.length ? '?' + p.join('&') : ''));
+  return request('/assessment/station' + (p.length ? '?' + p.join('&') : ''));
 }
 
 /* ============ 配送超时看板 ============ */
-export function fetchRealtimeTimeout({ team } = {}) {
+export function fetchAssessmentTimeout({ team } = {}) {
   const p = [];
   if (team) p.push('team=' + enc(team));
-  return request('/realtime/timeout' + (p.length ? '?' + p.join('&') : ''));
+  return request('/assessment/timeout' + (p.length ? '?' + p.join('&') : ''));
+}
+
+/* 考核看板自有刷新：独立拉取违规处罚明细落盘（与标准达成取数解耦，见 Nest AssessmentViolationFetchService） */
+export function refreshAssessment({ teams = [], date, manual = false } = {}) {
+  return request('/assessment-fetch/violation', j({ teams, date, manual }));
+}
+/* 考核看板刷新时一并拉取运单明细（看板主指标推配送/完成/T8 依赖 backend/data/运单明细-实时.json，
+   由 Nest AssessmentDeliveryFetchService 落盘；与标准达成共享同一文件）。 */
+export function refreshAssessmentDelivery(body = {}) {
+  // 风神导出运单较慢，放宽超时到 120s，避免默认 15s 被中断误报「运单数据拉取失败」
+  return request('/assessment-fetch/delivery', { ...j(Object.assign({ manual: true }, body)), timeout: 120000 });
+}
+/** 查询手动刷新冷却剩余（页面加载恢复读秒用）。 */
+export function fetchRefreshCooldown() {
+  return request('/assessment-fetch/refresh-cooldown');
+}
+/** 主动写入一次冷却时间戳（如从自动切回手动时默认 1 分钟冷却）。不触发取数。 */
+export function markRefreshCooldown() {
+  return request('/assessment-fetch/refresh-cooldown', j({}));
 }
 /* 独立刷新：拉全站运单明细落盘（与标准达成落盘文件名一致），标准达成计算时也能读。
    同步返回抓取+落盘结果，前端无需轮询；风神导出可能耗时，放宽超时。 */
@@ -166,10 +185,10 @@ export function refreshDeliveryTimeout(body = {}) {
 /* 配送超时看板「展示站点」配置：GET 返回 {teams: 已配置展示站点id, all: 全部可选站点{id,name}}；
    POST 保存展示站点（config:write）。未配置任何站点时回落全部站点。 */
 export function fetchTimeoutTeams() {
-  return request('/realtime/timeout/teams');
+  return request('/assessment/timeout/teams');
 }
 export function saveTimeoutTeams(teams) {
-  return request('/realtime/timeout/teams', j({ teams }));
+  return request('/assessment/timeout/teams', j({ teams }));
 }
 
 /* ============ 系统设置（Admin） ============ */

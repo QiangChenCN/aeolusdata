@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { FetchModule } from '../fetch/fetch.module';
+import { FetchModule } from '../../../fetch/fetch.module';
 import { ConfigModule } from '../config/config.module';
 import { BOTS } from './bot.interface';
 import { BotConfigService } from './bot-config.service';

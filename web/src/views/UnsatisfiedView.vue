@@ -29,10 +29,11 @@
           multiple
           collapse-tags
           collapse-tags-tooltip
+          clearable
           style="width: 240px"
           filterable
           placeholder="违规分类"
-          @change="onSelectAll(monthlyCats, monthlyCatOptions.filter(o => o.value !== SELECT_ALL).map(o => o.value), $event)"
+          @change="onMonthlyCatChange"
         >
           <el-option label="全选" :value="SELECT_ALL" />
           <el-option
@@ -48,10 +49,11 @@
           multiple
           collapse-tags
           collapse-tags-tooltip
+          clearable
           style="width: 240px"
           filterable
           placeholder="违规类型"
-          @change="onSelectAll(monthlyTypes, monthlyTypeOptions.filter(o => o.value !== SELECT_ALL).map(o => o.value), $event)"
+          @change="onMonthlyTypeChange"
         >
           <el-option label="全选" :value="SELECT_ALL" />
           <el-option
@@ -67,10 +69,11 @@
           multiple
           collapse-tags
           collapse-tags-tooltip
+          clearable
           filterable
           style="width: 200px"
           placeholder="站点"
-          @change="onSelectAll(monthlySites, monthlySiteOptions.filter(o => o.value !== SELECT_ALL).map(o => o.value), $event)"
+          @change="onMonthlySiteChange"
         >
           <el-option label="全选" :value="SELECT_ALL" />
           <el-option
@@ -86,10 +89,11 @@
           multiple
           collapse-tags
           collapse-tags-tooltip
+          clearable
           filterable
           style="width: 200px"
           placeholder="骑手"
-          @change="onSelectAll(monthlyRiders, monthlyRiderOptions.filter(o => o.value !== SELECT_ALL).map(o => o.value), $event)"
+          @change="onMonthlyRiderChange"
         >
           <el-option label="全选" :value="SELECT_ALL" />
           <el-option
@@ -150,10 +154,11 @@
           multiple
           collapse-tags
           collapse-tags-tooltip
+          clearable
           style="width: 240px"
           filterable
           placeholder="违规分类"
-          @change="onSelectAll(realtimeCats, realtimeCatOptions.filter(o => o.value !== SELECT_ALL).map(o => o.value), $event)"
+          @change="onRealtimeCatChange"
         >
           <el-option label="全选" :value="SELECT_ALL" />
           <el-option
@@ -169,10 +174,11 @@
           multiple
           collapse-tags
           collapse-tags-tooltip
+          clearable
           style="width: 240px"
           filterable
           placeholder="违规类型"
-          @change="onSelectAll(realtimeTypes, realtimeTypeOptions.filter(o => o.value !== SELECT_ALL).map(o => o.value), $event)"
+          @change="onRealtimeTypeChange"
         >
           <el-option label="全选" :value="SELECT_ALL" />
           <el-option
@@ -188,10 +194,11 @@
           multiple
           collapse-tags
           collapse-tags-tooltip
+          clearable
           filterable
           style="width: 200px"
           placeholder="站点"
-          @change="onSelectAll(realtimeSites, realtimeSiteOptions.filter(o => o.value !== SELECT_ALL).map(o => o.value), $event)"
+          @change="onRealtimeSiteChange"
         >
           <el-option label="全选" :value="SELECT_ALL" />
           <el-option
@@ -388,32 +395,43 @@ function riderOptions(rows) {
 const monthlyRiders = ref([]);
 const monthlyRiderOptions = computed(() => riderOptions(monthlyRows.value));
 
-// 过滤：违规分类 ∧ 违规类型 ∧ 站点 ∧ 骑手 同时命中
+// 过滤：违规分类 ∧ 违规类型 ∧ 站点 ∧ 骑手 同时命中；某维度为空（已清空）视为不过滤该维度
+const matchSel = (sel, val) => sel.length === 0 || sel.includes(val);
 const realtimeFilteredRows = computed(() =>
   realtimeRows.value.filter(
     (r) =>
-      realtimeCats.value.includes(catOf(r)) &&
-      realtimeTypes.value.includes(typeOf(r)) &&
-      realtimeSites.value.includes(siteOf(r)),
+      matchSel(realtimeCats.value, catOf(r)) &&
+      matchSel(realtimeTypes.value, typeOf(r)) &&
+      matchSel(realtimeSites.value, siteOf(r)),
   ),
 );
 const monthlyFilteredRows = computed(() =>
   monthlyRows.value.filter(
     (r) =>
-      monthlyCats.value.includes(catOf(r)) &&
-      monthlyTypes.value.includes(typeOf(r)) &&
-      monthlySites.value.includes(siteOf(r)) &&
-      monthlyRiders.value.includes(riderOf(r)),
+      matchSel(monthlyCats.value, catOf(r)) &&
+      matchSel(monthlyTypes.value, typeOf(r)) &&
+      matchSel(monthlySites.value, siteOf(r)) &&
+      matchSel(monthlyRiders.value, riderOf(r)),
   ),
 );
 
 // 多选框“全选”：选中占位项 SELECT_ALL 即选中全部真实值，并剔除占位项本身（避免参与过滤）
 const SELECT_ALL = '__ALL__';
-function onSelectAll(modelRef, allValues, selected) {
+// 注意：必须在 <script setup> 作用域里捕获真实 ref（模板里直接传 monthlyCats 会被自动解包成数组，
+// 导致下面的 modelRef.value = ... 写到了数组上而非响应式 ref，全选失效）。
+function handleSelectAll(modelRef, optionsRef, selected) {
+  const allValues = optionsRef.value.filter((o) => o.value !== SELECT_ALL).map((o) => o.value);
   modelRef.value = selected.includes(SELECT_ALL)
     ? allValues.slice()
     : selected.filter((v) => v !== SELECT_ALL);
 }
+const onMonthlyCatChange = (sel) => handleSelectAll(monthlyCats, monthlyCatOptions, sel);
+const onMonthlyTypeChange = (sel) => handleSelectAll(monthlyTypes, monthlyTypeOptions, sel);
+const onMonthlySiteChange = (sel) => handleSelectAll(monthlySites, monthlySiteOptions, sel);
+const onMonthlyRiderChange = (sel) => handleSelectAll(monthlyRiders, monthlyRiderOptions, sel);
+const onRealtimeCatChange = (sel) => handleSelectAll(realtimeCats, realtimeCatOptions, sel);
+const onRealtimeTypeChange = (sel) => handleSelectAll(realtimeTypes, realtimeTypeOptions, sel);
+const onRealtimeSiteChange = (sel) => handleSelectAll(realtimeSites, realtimeSiteOptions, sel);
 
 const nowDtStr = () => {
   const d = new Date();

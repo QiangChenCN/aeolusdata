@@ -207,7 +207,7 @@ def save_violation(team, date, rows, ok=True, error=None):
     """违规明细落盘（转发 Nest）。
 
     包装格式（`fetch_ok` / `fetch_error` / `fetched_at`）由 Nest 的 `saveViolation` 组装 ——
-    该格式的读侧是 `analytics/realtime/violations.load_team_raw`，把「写」的知识集中到
+    该格式的读侧是 `analytics/assessment/violations.load_team_raw`，把「写」的知识集中到
     Nest 一侧后，这里只交原始行与成败标记。
     """
     r = _call_nest(

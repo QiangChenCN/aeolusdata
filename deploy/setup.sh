@@ -28,7 +28,7 @@ python/.venv/bin/python -m pip install -r python/requirements.txt
 # 5) 前端构建（dist 被 .gitignore 忽略，需每次构建；构建在 ECS 上完成）
 cd web && npm install && npm run build && cd ..
 
-# 6) 后端构建（NestJS：TypeScript → backend/dist，systemd 里直接 node dist/main）
+# 6) 后端构建（NestJS：TypeScript → backend/dist，systemd 里直接 node dist/src/main）
 cd backend && npm ci && npm run build && cd ..
 
 echo "== setup 完成 =="

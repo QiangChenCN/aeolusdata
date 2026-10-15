@@ -10,16 +10,20 @@ export function navTo(it) {
     case 'history': return '/history';
     case 'standard': return '/standard';
     case 'attendPeriod': return '/attend-period';
-    case 'realtime': return '/realtime';
+    case 'assessment': return '/assessment';
     case 'timeout': return '/timeout';
     case 'unsatisfied': return '/unsatisfied';
     case 'todo': return '/todo';
     case 'assessService': return '/assess/service';
     case 'assessStandard': return '/assess/standard';
-    case 'rbac-users': return '/rbac/users';
-    case 'rbac-roles': return '/rbac/roles';
-    case 'rbac-policy': return '/rbac/policy';
-    case 'rbac-pw': return '/rbac/pw';
+    case 'assess': return '/assess';
+    case 'rbac-users': return '/settings/rbac/users';
+    case 'rbac-roles': return '/settings/rbac/roles';
+    case 'rbac-policy': return '/settings/rbac/policy';
+    case 'rbac-pw': return '/settings/rbac/pw';
+    case 'rbac': return '/settings/rbac';
+    case 'profile': return '/settings/profile';
+    case 'bots': return '/bot';
     case 'syscfg': return '/settings';
     case 'sys-dingtalk': return '/settings/dingtalk';
     case 'sys-aeolus': return '/settings/aeolus';
@@ -38,6 +42,30 @@ export function navMatch(it) {
 export function navIsActive(it) {
   if (it.type === 'parent') {
     return it.children.some((c) => navIsActive(c)) || !!(it.kind && navMatch(it));
+  }
+  // 权限管理（侧栏叶子项）：其下任一 rbac-* 子页命中即高亮
+  if (it.kind === 'rbac') {
+    const r = useRoute();
+    const k = r.meta && r.meta.kind;
+    return typeof k === 'string' && k.startsWith('rbac');
+  }
+  // 考核设置（侧栏叶子项，位于数据看板下）：其下任一 assess* 子页命中即高亮
+  if (it.kind === 'assess') {
+    const r = useRoute();
+    const k = r.meta && r.meta.kind;
+    return k === 'assess' || k === 'assessService' || k === 'assessStandard';
+  }
+  // 机器人配置（侧栏叶子项，位于系统设置下）：其下任一 botcfg 子页命中即高亮
+  if (it.kind === 'bots') {
+    const r = useRoute();
+    const k = r.meta && r.meta.kind;
+    return k === 'bots' || k === 'botcfg';
+  }
+  // 个人中心（侧栏叶子项，位于系统设置下）：profile 单页命中即高亮
+  if (it.kind === 'profile') {
+    const r = useRoute();
+    const k = r.meta && r.meta.kind;
+    return k === 'profile';
   }
   return navMatch(it);
 }

@@ -8,6 +8,9 @@
     </div>
     <el-table :data="users" stripe border>
       <el-table-column prop="username" label="用户名" width="160" />
+      <el-table-column prop="name" label="姓名" width="120" />
+      <el-table-column prop="phone" label="手机号" width="140" />
+      <el-table-column prop="email" label="邮箱" min-width="180" show-overflow-tooltip />
       <el-table-column prop="role" label="角色" width="140" />
       <el-table-column label="状态" width="160">
         <template #default="{ row }">
@@ -66,6 +69,9 @@
             <el-option v-for="r in roles" :key="r.name" :label="r.name" :value="r.name" />
           </el-select>
         </el-form-item>
+        <el-form-item label="姓名"><el-input v-model="userForm.name" placeholder="选填" maxlength="20" /></el-form-item>
+        <el-form-item label="手机号"><el-input v-model="userForm.phone" placeholder="选填，11 位手机号" maxlength="11" /></el-form-item>
+        <el-form-item label="邮箱"><el-input v-model="userForm.email" placeholder="选填" maxlength="64" /></el-form-item>
         <el-form-item v-if="userForm._edit" label="禁用"><el-switch v-model="userForm.disabled" /></el-form-item>
       </el-form>
       <template #footer>
@@ -90,7 +96,7 @@ const app = useAppStore();
 const users = ref([]);
 const roles = ref([]);
 const userDlg = ref(false);
-const userForm = reactive({ username: '', password: '', role: '', disabled: false, _edit: false });
+const userForm = reactive({ username: '', password: '', role: '', name: '', phone: '', email: '', disabled: false, _edit: false });
 
 // 钉钉绑定
 const bindDlg = ref(false);
@@ -129,16 +135,16 @@ async function loadRoles() {
 }
 function openUser(u) {
   Object.assign(userForm, u
-    ? { username: u.username, password: '', role: u.role, disabled: !!u.disabled, _edit: true }
-    : { username: '', password: '', role: roles.value[0] ? roles.value[0].name : '', disabled: false, _edit: false });
+    ? { username: u.username, password: '', role: u.role, name: u.name || '', phone: u.phone || '', email: u.email || '', disabled: !!u.disabled, _edit: true }
+    : { username: '', password: '', role: roles.value[0] ? roles.value[0].name : '', name: '', phone: '', email: '', disabled: false, _edit: false });
   userDlg.value = true;
 }
 async function saveUser() {
   try {
     if (userForm._edit) {
-      await updateUser({ username: userForm.username, role: userForm.role, disabled: userForm.disabled });
+      await updateUser({ username: userForm.username, role: userForm.role, disabled: userForm.disabled, name: userForm.name, phone: userForm.phone, email: userForm.email });
     } else {
-      await createUser({ username: userForm.username, password: userForm.password, role: userForm.role });
+      await createUser({ username: userForm.username, password: userForm.password, role: userForm.role, name: userForm.name, phone: userForm.phone, email: userForm.email });
     }
     userDlg.value = false;
     ElMessage.success('已保存');

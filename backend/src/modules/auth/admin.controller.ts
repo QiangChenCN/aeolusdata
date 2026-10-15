@@ -34,7 +34,7 @@ export class AdminController {
   @Post('admin/user')
   addUser(@Body() b: Record<string, any>) {
     try {
-      this.auth.addUser(b.username, b.password, b.role);
+      this.auth.addUser(b.username, b.password, b.role, b.name, b.phone, b.email);
       return { ok: true };
     } catch (e) {
       return { ok: false, error: (e as Error).message };
@@ -43,7 +43,7 @@ export class AdminController {
   @Post('admin/user/update')
   updateUser(@Body() b: Record<string, any>) {
     try {
-      this.auth.updateUser(b.username, b.role, b.disabled);
+      this.auth.updateUser(b.username, b.role, b.disabled, b.name, b.phone, b.email);
       return { ok: true };
     } catch (e) {
       return { ok: false, error: (e as Error).message };

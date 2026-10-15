@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { FetchModule } from '../fetch/fetch.module';
+import { FetchModule } from '../../../fetch/fetch.module';
 import { CookieStatusController } from './cookie-status.controller';
 
 /**

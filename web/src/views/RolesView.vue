@@ -1,6 +1,6 @@
 <template>
   <div class="adm">
-    <h2 class="v-title">角色权限</h2>
+    <h2 class="v-title">角色管理</h2>
 
     <div class="adm-bar">
       <span class="sp" />

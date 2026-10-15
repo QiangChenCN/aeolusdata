@@ -54,8 +54,8 @@
             :max-height="560"
             :default-sort="{ prop: 'timeout_total', order: 'descending' }"
           >
-            <el-table-column prop="team_id" label="站点ID" min-width="130" fixed sortable />
-            <el-table-column label="站点" min-width="170" fixed sortable>
+            <el-table-column prop="team_id" label="站点ID" min-width="130" fixed sortable show-overflow-tooltip />
+            <el-table-column prop="team_name" label="站点" min-width="200" fixed sortable show-overflow-tooltip>
               <template #default="{ row }">
                 <el-button link type="primary" class="dv-link" @click="openStation(row)">
                   {{ row.team_name }}
@@ -91,10 +91,10 @@
               :default-sort="{ prop: 'overtime_sec', order: 'descending' }"
               @sort-change="onRiderSort"
             >
-              <el-table-column prop="rider_id" label="骑手ID" min-width="150" fixed sortable />
-              <el-table-column prop="rider_name" label="骑手姓名" min-width="150" fixed sortable />
-              <el-table-column prop="team_id" label="站点ID" min-width="130" fixed sortable />
-              <el-table-column prop="team_name" label="站点名称" min-width="170" sortable />
+              <el-table-column prop="rider_id" label="骑手ID" min-width="150" fixed sortable show-overflow-tooltip />
+              <el-table-column prop="rider_name" label="骑手姓名" min-width="150" fixed sortable show-overflow-tooltip />
+              <el-table-column prop="team_id" label="站点ID" min-width="130" fixed sortable show-overflow-tooltip />
+              <el-table-column prop="team_name" label="站点名称" min-width="170" sortable show-overflow-tooltip />
               <el-table-column prop="delivered" label="配送成功单量" min-width="130" align="center" sortable />
               <el-table-column prop="timeout" label="T8超时单量" min-width="120" align="center" sortable />
               <el-table-column prop="ontime_rate" label="准时率" min-width="110" align="center" sortable>
@@ -126,38 +126,37 @@
             border
             class="dv-table"
             empty-text="暂无超时运单明细"
-            :fit="false"
             :default-sort="{ prop: 'deliver_dur_sec', order: 'descending' }"
             @sort-change="onOrderSort"
           >
-            <el-table-column prop="order_id" label="运单ID" :width="colW.order_id" fixed sortable="custom" />
-            <el-table-column prop="rider_id" label="骑手ID" :width="colW.rider_id" fixed sortable="custom" />
-            <el-table-column prop="rider_name" label="骑手姓名" :width="colW.rider_name" fixed sortable="custom" />
-            <el-table-column prop="team_id" label="站点ID" :width="colW.team_id" fixed sortable="custom" />
-            <el-table-column prop="team_name" label="站点姓名" :width="colW.team_name" sortable="custom" />
-            <el-table-column prop="merchant_id" label="商家ID" :width="colW.merchant_id" sortable="custom" />
-            <el-table-column prop="merchant_name" label="商家名称" :width="colW.merchant_name" sortable="custom" />
-            <el-table-column prop="flow_no" label="流水号" :width="colW.flow_no" sortable="custom" />
-            <el-table-column label="超时分钟" :width="colW.over_min" align="center" sortable="custom">
+            <el-table-column prop="order_id" label="运单ID" min-width="170" fixed sortable="custom" show-overflow-tooltip />
+            <el-table-column prop="rider_id" label="骑手ID" min-width="120" fixed sortable="custom" show-overflow-tooltip />
+            <el-table-column prop="rider_name" label="骑手姓名" min-width="110" fixed sortable="custom" show-overflow-tooltip />
+            <el-table-column prop="team_id" label="站点ID" min-width="130" fixed sortable="custom" show-overflow-tooltip />
+            <el-table-column prop="team_name" label="站点姓名" min-width="170" sortable="custom" show-overflow-tooltip />
+            <el-table-column prop="merchant_id" label="商家ID" min-width="120" sortable="custom" show-overflow-tooltip />
+            <el-table-column prop="merchant_name" label="商家名称" min-width="150" sortable="custom" show-overflow-tooltip />
+            <el-table-column prop="flow_no" label="流水号" min-width="140" sortable="custom" show-overflow-tooltip />
+            <el-table-column prop="over_min" label="超时分钟" min-width="100" align="center" sortable="custom">
               <template #default="{ row }">{{ fmtMin(row.over_min) }}</template>
             </el-table-column>
-            <el-table-column label="复合超时时长(秒)" :width="colW.compound" align="center" sortable="custom">
+            <el-table-column prop="compound_overtime_sec" label="复合超时时长(秒)" min-width="150" align="center" sortable="custom">
               <template #default="{ row }"><span class="rt rt--bad">{{ fmtMin(row.compound_overtime_sec) }}</span></template>
             </el-table-column>
-            <el-table-column label="到店时长" :width="colW.arrive_dur" align="center" sortable="custom">
+            <el-table-column prop="arrive_dur_sec" label="到店时长" min-width="110" align="center" sortable="custom">
               <template #default="{ row }">{{ fmtSecToMin(row.arrive_dur_sec) }}</template>
             </el-table-column>
-            <el-table-column label="等餐时长" :width="colW.wait_dur" align="center" sortable="custom">
+            <el-table-column prop="wait_dur_sec" label="等餐时长" min-width="110" align="center" sortable="custom">
               <template #default="{ row }">{{ fmtSecToMin(row.wait_dur_sec) }}</template>
             </el-table-column>
-            <el-table-column label="配送时长" :width="colW.deliver_dur" align="center" sortable="custom">
+            <el-table-column prop="deliver_dur_sec" label="配送时长" min-width="110" align="center" sortable="custom">
               <template #default="{ row }">{{ fmtSecToMin(row.deliver_dur_sec) }}</template>
             </el-table-column>
-            <el-table-column prop="accept_time" label="骑手接单时间" :width="colW.accept_time" align="center" sortable="custom" />
-            <el-table-column prop="arrive_time" label="骑手到店时间" :width="colW.arrive_time" align="center" sortable="custom" />
-            <el-table-column prop="pickup_time" label="骑手取餐时间" :width="colW.pickup_time" align="center" sortable="custom" />
-            <el-table-column prop="deliver_time" label="骑手送达时间" :width="colW.deliver_time" align="center" sortable="custom" />
-            <el-table-column prop="expect_time" label="平台期望时间" :width="colW.expect_time" align="center" sortable="custom" />
+            <el-table-column prop="accept_time" label="骑手接单时间" min-width="170" align="center" sortable="custom" />
+            <el-table-column prop="arrive_time" label="骑手到店时间" min-width="170" align="center" sortable="custom" />
+            <el-table-column prop="pickup_time" label="骑手取餐时间" min-width="170" align="center" sortable="custom" />
+            <el-table-column prop="deliver_time" label="骑手送达时间" min-width="170" align="center" sortable="custom" />
+            <el-table-column prop="expect_time" label="平台期望时间" min-width="170" align="center" sortable="custom" />
           </el-table>
           <div class="dv-pg">
             <el-pagination
@@ -180,7 +179,7 @@
         </div>
         <el-table :data="drawerStation.riders" stripe border class="dv-drill-table"
                   :default-sort="{ prop: 'overtime_min', order: 'descending' }" @row-click="onRiderRow">
-          <el-table-column label="骑手" min-width="150" fixed sortable>
+          <el-table-column label="骑手" min-width="150" fixed sortable show-overflow-tooltip>
             <template #default="{ row }">
               <el-button link type="primary" class="dv-link">{{ row.rider_name || row.rider_id || '未知' }}</el-button>
             </template>
@@ -204,7 +203,7 @@
         </div>
         <el-table :data="selectedRider.timeout_orders" stripe border class="dv-drill-table"
                   :default-sort="{ prop: 'over_min', order: 'descending' }">
-          <el-table-column prop="tracking_id" label="运单号" min-width="200" />
+          <el-table-column prop="tracking_id" label="运单号" min-width="200" show-overflow-tooltip />
           <el-table-column label="超时分钟" min-width="110" align="center" sortable>
             <template #default="{ row }"><span class="rt rt--bad">{{ fmtMin(row.over_min) }}</span></template>
           </el-table-column>
@@ -233,7 +232,7 @@ import { computed, onMounted, onUnmounted, ref, watch, nextTick } from 'vue';
 import { Refresh, ArrowLeft, Setting } from '@element-plus/icons-vue';
 import { ElMessage } from 'element-plus';
 import {
-  fetchTeams, fetchRealtimeTimeout, refreshDeliveryTimeout,
+  fetchTeams, fetchAssessmentTimeout, refreshDeliveryTimeout,
   fetchTimeoutTeams, saveTimeoutTeams,
 } from '../api/dashboards.js';
 
@@ -281,15 +280,12 @@ const activeTab = ref('station');
 /* 内容区可用高度：测量 .dv-body，使骑手表格撑满内容页 */
 const bodyRef = ref(null);
 const bodyH = ref(520);
-const bodyW = ref(0); // 内容区宽度：用于判断列总宽是否不足，从而按比例填充（消除行末空白）
 let tabRO = null;
 function measureTabs() {
   const el = bodyRef.value;
   if (!el) return;
   const h = el.clientHeight;
   if (h > 0) bodyH.value = Math.max(240, h - 8);
-  const w = el.clientWidth;
-  if (w > 0) bodyW.value = w;
 }
 /* 各站加载错误 / 是否刚刷新过（用于区分「从未取数」与「取数了仍无数据」） */
 const loadErrMsg = ref('');
@@ -451,101 +447,6 @@ const orderRows = computed(() => {
   return out;
 });
 
-/* —— 运单明细列宽自适应：按每列实际最长内容（含表头）测算像素宽度，固定渲染、超宽横向滚动，杜绝换行 —— */
-const orderColDefs = [
-  { id: 'order_id',    label: '运单ID',        get: (r) => r.order_id },
-  { id: 'rider_id',    label: '骑手ID',        get: (r) => r.rider_id },
-  { id: 'rider_name',  label: '骑手姓名',      get: (r) => r.rider_name },
-  { id: 'team_id',     label: '站点ID',        get: (r) => r.team_id },
-  { id: 'team_name',   label: '站点姓名',      get: (r) => r.team_name },
-  { id: 'merchant_id', label: '商家ID',        get: (r) => r.merchant_id },
-  { id: 'merchant_name', label: '商家名称',    get: (r) => r.merchant_name },
-  { id: 'flow_no',     label: '流水号',        get: (r) => r.flow_no },
-  { id: 'over_min',    label: '超时分钟',      get: (r) => fmtMin(r.over_min) },
-  { id: 'compound',    label: '复合超时时长(秒)', get: (r) => fmtMin(r.compound_overtime_sec) },
-  { id: 'arrive_dur',  label: '到店时长',  get: (r) => fmtSecToMin(r.arrive_dur_sec) },
-  { id: 'wait_dur',    label: '等餐时长',  get: (r) => fmtSecToMin(r.wait_dur_sec) },
-  { id: 'deliver_dur', label: '配送时长',  get: (r) => fmtSecToMin(r.deliver_dur_sec) },
-  { id: 'accept_time', label: '骑手接单时间',  get: (r) => r.accept_time },
-  { id: 'arrive_time', label: '骑手到店时间',  get: (r) => r.arrive_time },
-  { id: 'pickup_time', label: '骑手取餐时间',  get: (r) => r.pickup_time },
-  { id: 'deliver_time', label: '骑手送达时间', get: (r) => r.deliver_time },
-  { id: 'expect_time', label: '平台期望时间',  get: (r) => r.expect_time },
-];
-
-/* 用真实 DOM 探测每列最长内容的自然像素宽度（复制 el-table 实际字号字体，避免 canvas 估算偏差） */
-const rawColW = ref({});
-// 浏览器滚动条宽度（一次测量）：填充时扣除它，避免产生横向滚动条
-const SBW = (() => {
-  const d = document.createElement('div');
-  d.style.cssText = 'position:absolute;top:-9999px;left:-9999px;width:100px;height:100px;overflow:scroll;';
-  document.body.appendChild(d);
-  const w = d.offsetWidth - d.clientWidth;
-  document.body.removeChild(d);
-  return w || 0;
-})();
-// 列宽自适应 + 剩余宽度按比例分配：当“所有列按内容算出的总宽 < 内容区宽度(扣滚动条)”时，
-// 把剩余空间按各列内容占比放大到刚好填满容器（杜绝行末空白）；总宽已超出则保持贴合内容、横向滚动。
-const colW = computed(() => {
-  const map = rawColW.value;
-  const ids = Object.keys(map);
-  if (!ids.length) return map;
-  const sum = ids.reduce((a, k) => a + (map[k] || 0), 0);
-  // 仅当本页行数多到撑出表格固定高度（出现纵向滚动条）时才扣除其宽度，否则不扣，避免凭空留白
-  const vScroll = pagedOrderRows.value.length * 48 + 44 > orderH.value;
-  const target = bodyW.value - (vScroll ? SBW : 0) - 1; // 实际可用宽度（再留 1px 防亚像素溢出）
-  // 只要内容总宽 < 容器就按需填充到 target（无空白、无横向滚动）；总宽 ≥ 容器才是真溢出，允许横向滚动
-  if (bodyW.value > 0 && sum > 0 && sum < bodyW.value) {
-    const factor = target / sum;
-    const out = {};
-    let acc = 0;
-    ids.forEach((k, i) => {
-      const w = Math.round((map[k] || 0) * factor);
-      out[k] = w;
-      acc += w;
-    });
-    out[ids[ids.length - 1]] += target - acc; // 取整余量精确凑到 target（可负，杜绝溢出成横向滚动）
-    return out;
-  }
-  return map;
-});
-function measureColWidths() {
-  const map = {};
-  let probe = null;
-  try {
-    probe = document.createElement('div');
-    // 复制表格单元格的真实字体（含中文/字号），保证测量与渲染一致
-    const refCell = document.querySelector('.dv-table .el-table__body .cell')
-      || document.querySelector('.dv-table .el-table__header .cell');
-    const font = refCell ? getComputedStyle(refCell).font : '14px Arial, sans-serif';
-    probe.style.cssText =
-      'position:absolute;left:-9999px;top:0;visibility:hidden;white-space:nowrap;' +
-      'padding:0;margin:0;font:' + font + ';';
-    document.body.appendChild(probe);
-  } catch (e) {
-    probe = null;
-  }
-  if (!probe) { for (const c of orderColDefs) map[c.id] = 120; return map; }
-  const data = orderRows.value;
-  const sample = data.length > 500 ? data.slice(0, 500) : data; // 抽样测算，兼顾性能
-  for (const c of orderColDefs) {
-    probe.textContent = c.label;
-    let max = probe.offsetWidth; // 表头
-    for (const r of sample) {
-      probe.textContent = c.get(r);
-      const w = probe.offsetWidth;
-      if (w > max) max = w;
-    }
-    map[c.id] = Math.ceil(max) + 26; // 单元格左右内边距 + 余量，确保不换行
-  }
-  document.body.removeChild(probe);
-  return map;
-}
-// 数据变化后等表格渲染完再测算（字体/单元格已就绪）
-watch(orderRows, () => {
-  nextTick(() => { rawColW.value = measureColWidths(); });
-}, { immediate: true });
-
 /* 秒 → 分钟（用于到店/等餐/配送时长展示） */
 function fmtSecToMin(v) {
   if (v == null) return '—';
@@ -618,7 +519,7 @@ async function load(silent = false) {
     attempted.value = ids.length;
     fetchedAt.value = '';
     const results = await Promise.all(
-      ids.map((id) => fetchRealtimeTimeout({ team: id }).catch((e) => ({ __err: e }))),
+      ids.map((id) => fetchAssessmentTimeout({ team: id }).catch((e) => ({ __err: e }))),
     );
     const good = [];
     const errs = [];
@@ -777,17 +678,21 @@ onUnmounted(() => {
 /* 表格行高：放宽单元格上下内边距与行内文字行高，避免内容过密、密密麻麻 */
 .dv-table :deep(.el-table th.el-table__cell),
 .dv-table :deep(.el-table td.el-table__cell) {
-  padding: 14px 0;
+  padding: 8px 0;
 }
-.dv-table :deep(.el-table .cell) {
+.dv-table :deep(.el-table .cell),
+.dv-drill-table :deep(.el-table .cell) {
   line-height: 22px;
+  white-space: nowrap;
 }
-/* 排序图标：仅被点击排序（ascending/descending）的列显示图标，未排序列不预留图标位置 */
-.dv-table :deep(.el-table__cell.is-sortable .caret-wrapper) { display: none; }
-.dv-table :deep(.el-table__cell.is-sortable.ascending .caret-wrapper),
-.dv-table :deep(.el-table__cell.is-sortable.descending .caret-wrapper) { display: inline-flex; }
-/* 去掉可排序列右侧为图标预留的内边距（图标已按需显示，避免空占位） */
-.dv-table :deep(.el-table__header th.el-table__cell.is-sortable .cell) { padding-right: 10px; }
+/* 排序图标：参考「标准达成」骑手看板 —— 默认隐藏每列的排序箭头（避免把表头撑高），
+   仅对当前激活排序列显示升降序箭头作为状态指示。点击表头任意位置仍可触发 custom 排序。
+   额外：鼠标悬停「可排序」列时淡显箭头，提示「此列可排序」，既不撑高表头又保留可发现性。 */
+.dv-table :deep(.caret-wrapper) { display: none !important; }
+.dv-table :deep(.ascending .caret-wrapper),
+.dv-table :deep(.descending .caret-wrapper) { display: inline-flex !important; }
+.dv-table :deep(.is-sortable:hover .caret-wrapper) { display: inline-flex !important; opacity: 0.4; cursor: pointer; }
+.dv-table :deep(.el-table__header .cell) { white-space: nowrap; }
 /* 顶层横向菜单（顶栏菜单）：站点数据 / 骑手数据 / 运单明细 */
 .dv-menu { border-bottom: 1px solid #ebeef5; margin-top: var(--sp-4); margin-bottom: var(--sp-12); }
 /* 内容区：撑满剩余高度，骑手表格据此计算固定高度（撑满内容页） */

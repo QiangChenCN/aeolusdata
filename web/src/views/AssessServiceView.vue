@@ -120,6 +120,30 @@
         「分层方式」按考核项设置：不分层（该行 8 格合并为 1 格，全部场景共用一套值）／日期分层（合并为周中、周末 2 格）／天气分层（周中 4 格可填，周末 4 格只读并随周中变化）／日期天气分层（8 格各自独立）。保存时按各自分层方式展开成完整矩阵。
       </p>
     </el-card>
+
+    <el-card class="asq-card asq-card--fixed" shadow="never">
+      <template #header>
+        <span class="asq-card-h">特殊日期设置</span>
+        <span class="asq-tip">标记当月需「反着算」的日期：原本周中按周末算、原本周末按周中算。评分接入后，这些日期将走覆盖后的日型阈值。</span>
+      </template>
+      <div class="asq-sp">
+        <div v-for="(o, i) in dateOverrides" :key="o.id" class="asq-sp-row">
+          <el-date-picker
+            v-model="o.date" type="date" value-format="YYYY-MM-DD"
+            :disabled-date="notInMonth" placeholder="选择日期" size="small" class="asq-sp-date"
+          />
+          <el-select v-model="o.treat_as" size="small" class="asq-sp-treat" placeholder="如何计算">
+            <el-option label="按周中算" value="weekday" />
+            <el-option label="按周末算" value="weekend" />
+          </el-select>
+          <el-button size="small" text type="danger" @click="removeOverride(i)">删除</el-button>
+        </div>
+        <div class="asq-sp-actions">
+          <el-button size="small" @click="addOverride">+ 添加特殊日期</el-button>
+          <span v-if="!dateOverrides.length" class="asq-tip">暂无特殊日期</span>
+        </div>
+      </div>
+    </el-card>
   </div>
 </template>
 
@@ -151,6 +175,20 @@ const updatedAt = ref('');
 const updatedBy = ref('');
 const saving = ref(false);
 const savedInfo = ref(false);
+const dateOverrides = ref([]);
+let _ovId = 0;
+function addOverride() {
+  dateOverrides.value.push({ id: _ovId++, date: '', treat_as: '' });
+}
+function removeOverride(i) {
+  dateOverrides.value.splice(i, 1);
+}
+/** 日期选择器禁用非本月的日期。 */
+function notInMonth(date) {
+  const d = new Date(date);
+  const [y, m] = month.value.split('-').map(Number);
+  return d.getFullYear() !== y || d.getMonth() + 1 !== m;
+}
 
 function currentMonth() {
   const d = new Date();
@@ -343,6 +381,10 @@ async function load() {
     kinds.value = kEdit;
     updatedAt.value = fmtTime(res && res.updated_at);
     updatedBy.value = (res && res.updated_by) || '';
+    const ov = (res && res.date_overrides) || {};
+    dateOverrides.value = Object.keys(ov).sort().map((date) => ({
+      id: _ovId++, date, treat_as: ov[date] === 'weekend' ? 'weekend' : 'weekday',
+    }));
   } catch (e) {
     ElMessage.error(e.message || '加载服务质量设置失败');
   }
@@ -360,6 +402,7 @@ async function save() {
   try {
     const body = {
       month: month.value, targets: {}, weights: {}, ranges: {}, kinds: {}, layering: {},
+      date_overrides: {},
     };
     for (const m of metrics.value) {
       const kind = kinds.value[m.key] ?? null;
@@ -387,6 +430,12 @@ async function save() {
         perMetric[dt.key] = perWx;
       }
       body.targets[m.key] = perMetric;
+    }
+    // 特殊日期覆盖表：日期 → 按周中/周末算（仅保留日期与计算方式都填了的条目）
+    for (const o of dateOverrides.value) {
+      if (o.date && (o.treat_as === 'weekday' || o.treat_as === 'weekend')) {
+        body.date_overrides[o.date] = o.treat_as;
+      }
     }
     const res = await saveServiceQualityTargets(body);
     if (res && res.ok) {
@@ -464,4 +513,11 @@ onMounted(load);
 .asq-note { margin: var(--sp-8) 0 0; font-size: var(--el-font-size-extra-small); color: var(--el-text-color-secondary); }
 .asq-updated { font-size: var(--el-font-size-extra-small); color: var(--el-text-color-secondary); }
 .asq-saved { font-size: var(--el-font-size-extra-small); color: #1aac5a; }
+/* 特殊日期设置：卡片不撑满，按内容高度；列表行内联排列 */
+.asq-card--fixed { flex: 0 0 auto; min-height: auto; }
+.asq-sp { display: flex; flex-direction: column; gap: var(--sp-8); }
+.asq-sp-row { display: flex; align-items: center; gap: var(--sp-8); }
+.asq-sp-date { width: 170px; }
+.asq-sp-treat { width: 132px; }
+.asq-sp-actions { display: flex; align-items: center; gap: var(--sp-12); }
 </style>

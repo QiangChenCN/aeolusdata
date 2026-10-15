@@ -2,8 +2,8 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService as NestConfigService } from '@nestjs/config';
 import * as fs from 'fs';
 import * as path from 'path';
-import { TeamsFetchService, TeamRef, readKnownTeams } from '../fetch/teams-fetch.service';
-import { RawCacheService } from '../fetch/raw-cache.service';
+import { TeamsFetchService, TeamRef, readKnownTeams } from '../../../fetch/teams-fetch.service';
+import { RawCacheService } from '../../../fetch/raw-cache.service';
 
 /**
  * 配置层（原 Python `dashboard/standard/{teams_config,grade_standards,threshold_config,
@@ -53,7 +53,7 @@ function filterIds(ids: string[], allowed: Allowed): string[] {
 }
 
 // ============================================================================
-// 考核项 / 日期类型 / 天气 三维口径（与 `analytics/realtime/config.py` 逐字对应，
+// 考核项 / 日期类型 / 天气 三维口径（与 `analytics/assessment/config.py` 逐字对应，
 // 也是实时看板计算得分唯一的目标来源 —— 见 service_quality.py）。
 // ============================================================================
 const RT_METRICS = [
@@ -597,7 +597,7 @@ export class ConfigService {
       '/api/service-quality/targets',
       '/api/attend-period/config',
       '/api/attend-period/teams',
-      '/api/realtime/timeout/teams',
+      '/api/assessment/timeout/teams',
     ].includes(urlPath);
   }
 
@@ -624,7 +624,7 @@ export class ConfigService {
         return method === 'GET' ? this.periodConfigGet(q('month')) : this.periodConfigPost(body);
       case '/api/attend-period/teams':
         return method === 'GET' ? this.apTeamsGet(allowed) : this.apTeamsPost(body);
-      case '/api/realtime/timeout/teams':
+      case '/api/assessment/timeout/teams':
         return method === 'GET' ? this.dtTeamsGet(allowed) : this.dtTeamsPost(body);
       case '/api/service-quality/targets':
         return method === 'GET'
@@ -691,7 +691,7 @@ export class ConfigService {
   }
 
   // ============================================================ 服务质量考核设置
-  // 考核项 / 日期类型 / 天气 三维与 realtime 口径一致（同一批 RT_METRICS 等常量），
+  // 考核项 / 日期类型 / 天气 三维与 assessment 口径一致（同一批 RT_METRICS 等常量），
   // 差别只有两点：① 按月份独立；② 每格是 t0/t60/t100 三档阈值（0分/60分/100分）而非单值。
   //
   // 落盘：{ version, updated_at, updated_by, months: { "<YYYY-MM>": {
@@ -699,6 +699,7 @@ export class ConfigService {
   //     ranges:  { "<metric>": { min, max } },      // 调分项：得分区间（可负）
   //     kinds:   { "<metric>": "weight"|"adjust"|null },
   //     layering:     { "<metric>": "none"|"date"|"weather"|"date_weather" }, // 按考核项
+  //     date_overrides: { "<YYYY-MM-DD>": "weekday"|"weekend" }, // 特殊日期：强制按周中/周末算
   //     "<metric>": { "<date_type>": { "<weather>": { t0, t60, t100 } } } } } }
   private sqPath(): string {
     // 后端本地状态统一落 backend/data/（带点前缀，与 .users.json / todo.db 等同目录）
@@ -762,6 +763,30 @@ export class ConfigService {
     }
     return out;
   }
+  /**
+   * 特殊日期覆盖表：{ "<YYYY-MM-DD>": "weekday"|"weekend" }。
+   * 仅接受属于该月、值合法的条目（其余静默丢弃，与阈值/tiers 的宽松口径一致）。
+   * 语义：把某日历日强制按「周中 / 周末」算（原本周中→按周末算、原本周末→按周中算）。
+   * 评分接入为后续任务；此处仅负责读写与存储。
+   */
+  private sqNormDateOverrides(incoming: any, month: string): Record<string, 'weekday' | 'weekend'> {
+    const out: Record<string, 'weekday' | 'weekend'> = {};
+    if (!incoming || typeof incoming !== 'object' || Array.isArray(incoming)) return out;
+    const prefix = month + '-';
+    for (const [k, v] of Object.entries(incoming)) {
+      if (typeof k !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(k)) continue;
+      if (!k.startsWith(prefix)) continue; // 仅接受当月日期
+      if (v !== 'weekday' && v !== 'weekend') continue;
+      out[k] = v;
+    }
+    return out;
+  }
+  private sqMonthDateOverrides(month: string): Record<string, 'weekday' | 'weekend'> {
+    const all = this.sqLoadAll();
+    const months = all.months && typeof all.months === 'object' ? all.months : {};
+    const entry = months[month] && typeof months[month] === 'object' ? months[month] : {};
+    return this.sqNormDateOverrides(entry.date_overrides, month);
+  }
   serviceQualityTargetsGet(month?: string): unknown {
     month = month || currentMonth();
     const all = this.sqLoadAll();
@@ -781,6 +806,7 @@ export class ConfigService {
       kinds_meta: SQ_KINDS,
       layering: this.sqMonthLayering(month),
       layering_meta: SQ_LAYERING,
+      date_overrides: this.sqMonthDateOverrides(month),
       updated_at: all.updated_at || '',
       updated_by: all.updated_by || '',
     };
@@ -863,10 +889,12 @@ export class ConfigService {
         }
       }
     }
+    // 特殊日期覆盖表（仅存储，评分接入为后续任务）
+    const dateOverrides = this.sqNormDateOverrides((body && body.date_overrides) || {}, month);
     const all = this.sqLoadAll();
     all.version = 1;
     all.months = all.months && typeof all.months === 'object' ? all.months : {};
-    all.months[month] = { ...out, weights, ranges, kinds, layering };
+    all.months[month] = { ...out, weights, ranges, kinds, layering, date_overrides: dateOverrides };
     all.updated_at = nowStamp();
     all.updated_by = user || '';
     try {

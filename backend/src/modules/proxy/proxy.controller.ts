@@ -5,7 +5,7 @@ import { ComputeService } from '../compute/compute.service';
 import { ComputeResult } from '../compute/compute.port';
 import { AuthService } from '../auth/auth.service';
 import { DataPermService } from '../auth/data-perm.service';
-import { RefreshRunnerService } from '../fetch/refresh-runner.service';
+import { RefreshRunnerService } from '../../../fetch/refresh-runner.service';
 import { ConfigService } from '../config/config.service';
 import { extractToken } from '../../common/token.util';
 
@@ -15,7 +15,7 @@ import { extractToken } from '../../common/token.util';
  * 按 ADR 经 ComputePort 委托；NestJS 在委托前先算数据权限范围（team 维度），
  * 经请求头 x-scope 下发 ——「数据权限在 NestJS 侧执行，再委托 Python 计算」。
  *
- * 路由表与迁移前的 server.py 对齐：standard/* attend-period/* overview/* realtime/* sheet。
+ * 路由表与迁移前的 server.py 对齐：standard/* attend-period/* overview/* assessment/* sheet。
  * （groups / teams / cookies-status 已原生化，见各自模块；auth/* / account/change-pw / admin/* /
  *   policy / data-perms 由 Nest 内置控制器处理。）
  * 注：原 std/* ov/* ap/* 是死配置（前端与 server 均未使用这些前缀），已移除。
@@ -153,15 +153,15 @@ export class ProxyController {
   proxyOverviewPost(@Req() req: Request, @Body() body: unknown) {
     return this.unwrap(this.proxyReq(req, 'POST', body));
   }
-  // 实时在线播报：仅 realtime/station（实时聚合计算）转发 Python，
+  // 实时在线播报：仅 assessment/station（实时聚合计算）转发 Python，
   // 其余配置端点（service-quality/targets 等）已迁 Nest 原生（config.service.ts）。
-  @Get('realtime/{*path}')
-  proxyRealtimeGet(@Req() req: Request) {
+  @Get('assessment/{*path}')
+  proxyAssessmentGet(@Req() req: Request) {
     if (this.config.isConfigPath(req.path)) return this.handleConfig('GET', req);
     return this.unwrap(this.proxyReq(req, 'GET'));
   }
-  @Post('realtime/{*path}')
-  proxyRealtimePost(@Req() req: Request, @Body() body: unknown) {
+  @Post('assessment/{*path}')
+  proxyAssessmentPost(@Req() req: Request, @Body() body: unknown) {
     if (this.config.isConfigPath(req.path)) return this.handleConfig('POST', req, body);
     return this.unwrap(this.proxyReq(req, 'POST', body));
   }

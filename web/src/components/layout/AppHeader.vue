@@ -1,6 +1,6 @@
 <template>
   <div class="hd">
-    <button class="hd-menu" @click="app.toggleSide()" title="折叠 / 展开侧栏">
+    <button class="hd-menu" @click="$emit('toggle-nav')" title="折叠 / 展开侧栏">
       <el-icon><Menu /></el-icon>
     </button>
     <div class="hd-brand">
@@ -17,10 +17,12 @@
 </template>
 
 <script setup>
-import { computed } from 'vue';
+import { computed, defineEmits } from 'vue';
 import StatusCapsule from '../common/StatusCapsule.vue';
 import UserChip from '../common/UserChip.vue';
 import { useAppStore } from '../../stores/app.js';
+
+defineEmits(['toggle-nav']);
 
 const app = useAppStore();
 

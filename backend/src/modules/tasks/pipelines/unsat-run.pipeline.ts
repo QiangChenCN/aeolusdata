@@ -5,8 +5,8 @@ import * as path from 'path';
 import { TaskHandler, TaskRunContext, TaskStage, TaskStop } from '../task-handler';
 import { Pipeline } from '../pipeline';
 import { TaskHandlersService } from '../task-handlers.service';
-import { ViolationFetchService } from '../../fetch/violation-fetch.service';
-import { UnsatStoreService } from '../../fetch/unsat-store.service';
+import { ViolationFetchService } from '../../../../fetch/violation-fetch.service';
+import { UnsatStoreService } from '../../../../fetch/unsat-store.service';
 import { DingtalkService } from '../../dingtalk/dingtalk.service';
 import {
   PRODUCTION_GROUP_NAME,

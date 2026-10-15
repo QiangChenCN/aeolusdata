@@ -17,16 +17,36 @@ export const FONT_FAMILY = 'SimHei';
 
 let registered: string | null = null;
 
+/**
+ * 从当前文件位置向上回溯，定位仓库内置的中文字体。
+ *
+ * 兼容两种运行布局：
+ * - 开发（`nest start`）：__dirname = src/modules/render → 上溯到 backend/assets/…
+ * - 生产（`node dist/src/main.js`）：__dirname = dist/src/modules/render → 上溯到 backend/assets/…
+ * 这样不依赖 `nest build` 是否把 assets 拷进 dist，也不依赖系统装字体。
+ */
+export function findBundledFont(): string | null {
+  let dir = __dirname;
+  for (let i = 0; i < 8; i++) {
+    const cand = path.join(dir, 'assets', 'fonts', 'SourceHanSans.ttc');
+    if (fs.existsSync(cand)) return cand;
+    const parent = path.dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  return null;
+}
+
 export function resolveFontPath(): string {
   const env = process.env.DING_FONT_PATH;
   if (env && fs.existsSync(env)) return env;
 
   // 项目内置字体：跟随仓库走，开发/生产都不依赖系统装字体。仅用 Source Han Sans 完整版
   // （Adobe 发行，= NotoSansCJK 合集，含 SC/TC/JP/KR，TTC index 0 即简体中文）。
-  const bundled = path.resolve(__dirname, '../../../assets/fonts/SourceHanSans.ttc');
+  const bundled = findBundledFont();
 
   const candidates = [
-    bundled,
+    ...(bundled ? [bundled] : []),
     'C:/Windows/Fonts/simhei.ttf',
     'C:/Windows/Fonts/msyh.ttc',
     'C:/Windows/Fonts/msyh.ttf',

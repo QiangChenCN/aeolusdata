@@ -1,6 +1,6 @@
 <template>
   <div class="bc">
-    <h2 class="v-title">机器人配置</h2>
+    <h2 class="v-title">凭证配置</h2>
 
     <!-- 凭据分组（机器人 appkey / appsecret） -->
     <section class="bc-card">

@@ -10,6 +10,7 @@
     "sourceMap": true,
     "outDir": "./dist",
     "baseUrl": "./",
+    "rootDir": "./",
     "incremental": true,
     "types": ["node"],
     "skipLibCheck": true,
@@ -21,6 +22,6 @@
     "esModuleInterop": true,
     "resolveJsonModule": true
   },
-  "include": ["src/**/*"],
+  "include": ["src/**/*", "fetch/**/*"],
   "exclude": ["node_modules", "dist", "test"]
 }

@@ -4,7 +4,7 @@
 背景（ADR 修订 1，2026-09-22）：**取数不是计算** —— 打风神接口的事（分页 / 反爬节奏 /
 限流退避 / 会话重登）整体归 NestJS。`sources/*` 因此从「接口客户端」变成「转发层」：
 把参数交给 Nest 的 `/api/fetch/*`，把 Nest 返回的**原始数据结构**原样交回调用方 ——
-上层（`analytics/*`、`analytics/realtime/*`）无需任何改动。
+上层（`analytics/*`、`analytics/assessment/*`）无需任何改动。
 
 会话失效：Nest 的失败响应里带 `code`；`unwrap` 拿它与 `sources.session.SESSION_CODES`
 比对，命中即抛 `AuthError`，让 `call_with_relogin` 照旧强制重登后重试

@@ -1,0 +1,20 @@
+/* responsive.css —— 全站响应式兜底（紧凑 / 平板布局）
+   与 MainLayout 的小屏抽屉式侧栏配合，让各页内容在窄屏下不溢出、可重排。
+   断点沿用 Element Plus：xs<768, sm≥768, md≥992, lg≥1200, xl≥1920。
+   注：页面内部「卡片/KPI 栅格」优先使用 CSS grid 的 auto-fit/minmax（如 .dv-cards），
+   已天然自适应；此处只补画布内边距、表单换行等全局兜底。
+   说明：本项目不针对手机做单独优化，仅保留紧凑/平板级别的通用自适应。 */
+
+/* 让 flex 容器允许收缩，避免宽表格/筛选栏把页面撑出横向滚动（el-table 自身已 overflow:auto） */
+.app-main { min-width: 0; }
+.app-body { min-width: 0; }
+
+/* 平板及以下：收紧画布内边距，inline 表单允许换行 */
+@media (max-width: 992px) {
+  .dv { padding: var(--sp-12); }
+  .el-form--inline { flex-wrap: wrap; }
+}
+
+/* 抽屉式侧栏（紧凑布局下替代 el-aside）：去掉默认内边距，让导航铺满 */
+.app-side-drawer .el-drawer__body { padding: 0; }
+.app-side-drawer .side { height: 100%; }

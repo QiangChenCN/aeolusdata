@@ -8,13 +8,13 @@ import { ConfigService } from '@nestjs/config';
 import { Request } from 'express';
 import * as fs from 'fs';
 import * as path from 'path';
-import { AuthService } from '../auth/auth.service';
-import { DataPermService } from '../auth/data-perm.service';
-import { ComputeService } from '../compute/compute.service';
+import { AuthService } from '../src/modules/auth/auth.service';
+import { DataPermService } from '../src/modules/auth/data-perm.service';
+import { ComputeService } from '../src/modules/compute/compute.service';
 import { FetchPaceService } from './fetch-pace.service';
 import { RefreshAllService } from './refresh-all.service';
 import { TeamsFetchService } from './teams-fetch.service';
-import { extractToken } from '../../common/token.util';
+import { extractToken } from '../src/common/token.util';
 
 /**
  * 全量刷新「编排器」（原 Python `dashboard/standard/refresh_all.py` 的 Nest 原生实现）。
@@ -399,19 +399,6 @@ export class RefreshRunnerService {
         return; // finally 仍会收尾（running=false / 状态落定）
       }
       this.setCurrent(SHARED_TEAM_KEY, '共享运单完成');
-
-      // ── 阶段 0.5：违规明细（计算步在 Python；失败不阻断主刷新）
-      this.setCurrent(SHARED_TEAM_KEY, '拉取违规处罚明细');
-      const v = await this.callCompute('/api/compute/violations', {
-        start_date: start,
-        end_date: end,
-        teams,
-      });
-      this.state.violation = v.ok
-        ? { ok: true, error: null, msg: (v.msg as string) ?? null }
-        : { ok: false, error: (v.error as string) ?? null, msg: null };
-      this.log(v.ok ? `违规明细：${v.msg}` : `违规明细失败（不影响主刷新）：${v.error}`);
-      this.setCurrent(SHARED_TEAM_KEY, '违规明细完成');
 
       // ── 每站：骑手维度 → 站点维度
       for (const tid of teams) {

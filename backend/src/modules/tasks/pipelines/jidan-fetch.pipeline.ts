@@ -5,7 +5,7 @@ import * as path from 'path';
 import { TaskHandler, TaskRunContext, TaskStage } from '../task-handler';
 import { Pipeline } from '../pipeline';
 import { TaskHandlersService } from '../task-handlers.service';
-import { RushFetchService, RushTeamResult } from '../../fetch/rush-fetch.service';
+import { RushFetchService, RushTeamResult } from '../../../../fetch/rush-fetch.service';
 
 /** 三站点 teamId（与考勤同体系）。 */
 const TEAMS: [number, string][] = [

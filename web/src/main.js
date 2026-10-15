@@ -9,6 +9,7 @@ import App from './App.vue';
 import router from './router';
 import './styles/element-overrides.css';
 import './styles/base.css';
+import './styles/responsive.css';
 
 const app = createApp(App);
 

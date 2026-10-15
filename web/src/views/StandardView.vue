@@ -110,7 +110,7 @@
           </div>
           <div class="dv-rider-body">
             <div class="dv-table-wrap">
-              <el-table v-loading="riderLoading" :data="riderPagedRows" stripe border class="dv-table" height="100%" empty-text="暂无骑手数据" @sort-change="onRiderSort">
+              <el-table v-loading="riderLoading" :data="riderPagedRows" stripe border size="large" class="dv-table" height="100%" empty-text="暂无骑手数据" @sort-change="onRiderSort">
                 <el-table-column prop="rider_id" label="骑手ID" :min-width="riderColWidths['rider_id']" fixed sortable="custom" />
                 <el-table-column prop="rider_name" label="骑手姓名" :min-width="riderColWidths['rider_name']" fixed sortable="custom">
                   <template #default="{ row }">
@@ -166,14 +166,16 @@
 <script setup>
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
 import { Search, Refresh, Setting, Clock } from '@element-plus/icons-vue';
-import { ElMessage } from 'element-plus';
+import { ElMessage } from 'element-plus';
+
 import { filterRiders } from '../utils/riderFilter.js';
 import {
   fetchTeams, fetchStandardStationReport, fetchStandardRiders,
   refreshStandard, fetchRefreshStatus,
   fetchStandardGradeGlobal,
 } from '../api/dashboards.js';
-
+
+
 const teams = ref([]);
 const teamSel = ref('__all__');
 /* 站点下拉严格按「标准达成设置」里当前月份的参与站点（partIds）显示，不回落全部站点、不回落默认站点 */

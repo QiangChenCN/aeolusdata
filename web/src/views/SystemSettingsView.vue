@@ -17,6 +17,13 @@
         </div>
         <el-icon class="card-arw"><ArrowRight /></el-icon>
       </RouterLink>
+      <RouterLink to="/settings/rbac" class="card">
+        <div>
+          <div class="card-t">权限管理</div>
+          <div class="card-d">账号、角色、密码策略与个人改密（账号管理 / 角色管理 / 密码策略 / 个人改密）</div>
+        </div>
+        <el-icon class="card-arw"><ArrowRight /></el-icon>
+      </RouterLink>
     </div>
   </div>
 </template>

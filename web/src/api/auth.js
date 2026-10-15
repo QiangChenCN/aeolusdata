@@ -14,6 +14,24 @@ export async function signout() {
   return request('/auth/logout', { method: 'POST' });
 }
 
+// 更新个人头像（data URI 形式），仅能修改当前登录用户自己。
+export async function updateAvatar(avatar) {
+  return request('/auth/avatar', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ avatar }),
+  });
+}
+
+// 更新个人资料（姓名 / 手机号），仅能修改当前登录用户自己。
+export async function updateProfile(profile) {
+  return request('/auth/profile', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(profile),
+  });
+}
+
 export async function me() {
   return request('/auth/me');
 }

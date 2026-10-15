@@ -100,13 +100,13 @@
 | `GET /api/overview/{site-orders,standard,assessment}`（数据大屏） | `dashboard.standard.*` | 同上 | ✅ 归 Python（大数据计算） |
 | `GET /api/attend-period/{valid,rider-detail,station-data,dataset,months}`（计算） | `dashboard.standard.attend_period_*` | 同上 | ✅ 归 Python（大数据计算） |
 | `GET/POST /api/attend-period/{config,teams}`（**配置**） | `dashboard.standard.{period_config,attend_period_teams}` | **Nest 原生** `config.service.ts`（proxy 拦截） | ✅ 已迁移（2026-09-23 收尾；见 §6.1） |
-| `GET /api/realtime/station`（实时播报聚合，计算） | `dashboard.realtime.*` | `python/compute_service/handlers.py` | ✅ 归 Python（大数据计算） |
-| `GET/POST /api/realtime/{selection,targets}`（**配置**） | `dashboard.realtime.config` | **Nest 原生** `config.service.ts`（proxy 拦截） | ✅ 已迁移（2026-09-23 收尾；见 §6.1） |
+| `GET /api/assessment/station`（实时播报聚合，计算） | `analytics.assessment.*` | `python/compute_api/handlers.py` | ✅ 归 Python（大数据计算） |
+| `GET/POST /api/assessment/{selection,targets}`（**配置**） | `analytics.assessment.config` | **Nest 原生** `config.service.ts`（proxy 拦截） | ✅ 已迁移（2026-09-23 收尾；见 §6.1） |
 | `GET /api/sheet?path=`（xlsx/xls 解析 `openpyxl`/`xlrd`） | `openpyxl`/`xlrd` | compute_service 自带端点 | ⬜ 归 Python（Excel 边界；需引入 xlsx 库，待迁 Nest） |
 | `POST /api/groups/used`、`/groups/forget`（`group_picker`） | — | `backend/src/modules/groups/`（**Nest 原生**，`group_picker` 已删） | ✅ 已迁移 |
 
 > 前缀更正：早期文档写的 `std/*`、`ov/*`、`ap/*` 是**死配置**（前端与 server 均未使用），
-> 真实前缀为 `standard/`、`overview/`、`attend-period/`（另有 `realtime/`），
+> 真实前缀为 `standard/`、`overview/`、`attend-period/`、`assessment/`，
 > 见 `backend/src/modules/proxy/proxy.controller.ts` 注释。
 | `GET /api/files?task_id=`、`/api/file?path=`（产物列举/下载） | 文件系统 | **直接移植**（产物在本地磁盘） | 🟡 |
 | `GET/POST /api/todo`、`/api/todo/runs`、`/api/todo/lists`、`/api/todo/items`、`/api/todo/trigger`、`/api/todo/import` + 定时调度器 | `todo` 模块（`todo-store.service` 端口 `todo_store.py` + `todo.controller` + `scheduler.service` 端口 `todo_sched.py` 的 `TodoScheduler`：每 5s 扫描 / 失败重试 3 次 / 补跑宽限 15min / 重启恢复 / 手动触发） | 直接移植（node:sqlite 内置驱动，复用 python/workbench/data/todo.db） | ✅ |

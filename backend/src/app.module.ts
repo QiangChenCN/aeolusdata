@@ -12,7 +12,7 @@ import { TasksModule } from './modules/tasks/tasks.module';
 import { TodoModule } from './modules/todo/todo.module';
 import { ServeModule } from './modules/serve/serve.module';
 import { ProxyModule } from './modules/proxy/proxy.module';
-import { FetchModule } from './modules/fetch/fetch.module';
+import { FetchModule } from '../fetch/fetch.module';
 import { DingtalkModule } from './modules/dingtalk/dingtalk.module';
 import { GroupsModule } from './modules/groups/groups.module';
 import { MediaModule } from './modules/media/media.module';
@@ -21,6 +21,7 @@ import { TeamsModule } from './modules/teams/teams.module';
 import { StatusModule } from './modules/status/status.module';
 import { ConfigModule as AppConfigModule } from './modules/config/config.module';
 import { BotsModule } from './modules/bots/bots.module';
+import { AssessmentModule } from './modules/assessment/assessment.module';
 
 @Module({
   imports: [
@@ -45,6 +46,7 @@ import { BotsModule } from './modules/bots/bots.module';
     TeamsModule,
     StatusModule,
     BotsModule,
+    AssessmentModule,
   ],
   // 统一访问闸门：机器令牌闸门 + RBAC 会话鉴权（见 AccessGuard）
   providers: [{ provide: APP_GUARD, useClass: AccessGuard }],

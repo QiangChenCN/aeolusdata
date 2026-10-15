@@ -97,7 +97,7 @@ def _parse_dur(s):
 def _agg_rate(num, den):
     if not den:
         return None
-    return round(num * 1000 / den) / 10
+    return num * 100.0 / den
 
 
 def _clamp_star(v):

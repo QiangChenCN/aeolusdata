@@ -35,6 +35,14 @@ export interface UserRecord {
   must_change?: boolean;
   /** 钉钉 unionid：绑定后可用于钉钉免登 / OAuth2 自动登录。 */
   dingtalk_unionid?: string;
+  /** 头像地址（URL 或 data URI）；为空时前端回退到首字母占位头像。 */
+  avatar?: string;
+  /** 姓名（真实姓名 / 昵称），选填，用于个人资料展示。 */
+  name?: string;
+  /** 手机号，选填；前端展示与校验，后端仅做格式校验与存储。 */
+  phone?: string;
+  /** 邮箱，选填；用于通知与找回，后端仅做格式校验与存储。 */
+  email?: string;
 }
 
 export interface RoleRecord {
@@ -265,6 +273,11 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     } catch {
       return [];
     }
+  }
+  /** 按用户名取单条用户记录（查不到返回 null）。 */
+  getUser(username: string): UserRecord | null {
+    const u = this.loadUsers().find((x) => x.username === username);
+    return u || null;
   }
   private saveUsers(users: UserRecord[]): void {
     fs.writeFileSync(this.usersFile, JSON.stringify({ users }, null, 2), 'utf-8');
@@ -635,7 +648,7 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
   }
 
   // ---------------- 账号管理 ----------------
-  addUser(username: string, password: string, role: string): void {
+  addUser(username: string, password: string, role: string, name?: string, phone?: string, email?: string): void {
     username = (username || '').trim();
     if (!username) throw new Error('用户名不能为空');
     if (/[\s/\\]/.test(username)) throw new Error('用户名不能含空格或 / \\');
@@ -643,6 +656,8 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     if (!roles[role]) throw new Error('无效角色：' + role);
     const [ok, reason] = this.validatePassword(password);
     if (!ok) throw new Error(reason);
+    if (phone) this.assertPhone(phone);
+    if (email) this.assertEmail(email);
     const users = this.loadUsers();
     if (users.some((u) => u.username === username)) throw new Error('用户已存在：' + username);
     users.push({
@@ -655,12 +670,15 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
       locked_until: 0,
       pw_history: [],
       must_change: false,
+      name: name ? name.trim() : undefined,
+      phone: phone ? phone.trim() : undefined,
+      email: email ? email.trim() : undefined,
     });
     this.saveUsers(users);
     this.audit('user:add', true, username, '-', role);
   }
 
-  updateUser(username: string, role?: string, disabled?: boolean): void {
+  updateUser(username: string, role?: string, disabled?: boolean, name?: string, phone?: string, email?: string): void {
     const users = this.loadUsers();
     const u = users.find((x) => x.username === username);
     if (!u) throw new Error('用户不存在：' + username);
@@ -669,8 +687,49 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
       u.role = role;
     }
     if (disabled !== undefined) u.disabled = !!disabled;
+    if (name !== undefined) u.name = name.trim() || undefined;
+    if (phone !== undefined) {
+      const p = phone.trim();
+      if (p) this.assertPhone(p);
+      u.phone = p || undefined;
+    }
+    if (email !== undefined) {
+      const e = email.trim();
+      if (e) this.assertEmail(e);
+      u.email = e || undefined;
+    }
     this.saveUsers(users);
     this.audit('user:update', true, username, '-', u.role);
+  }
+
+  /** 个人中心更新自己的姓名 / 手机号 / 邮箱（不含角色、禁用等管理字段）。 */
+  updateProfile(username: string, name?: string, phone?: string, email?: string): void {
+    const users = this.loadUsers();
+    const u = users.find((x) => x.username === username);
+    if (!u) throw new Error('用户不存在：' + username);
+    if (name !== undefined) u.name = name.trim() || undefined;
+    if (phone !== undefined) {
+      const p = phone.trim();
+      if (p) this.assertPhone(p);
+      u.phone = p || undefined;
+    }
+    if (email !== undefined) {
+      const e = email.trim();
+      if (e) this.assertEmail(e);
+      u.email = e || undefined;
+    }
+    this.saveUsers(users);
+    this.audit('user:update-profile', true, username, '-', u.role);
+  }
+
+  /** 中国大陆手机号校验（11 位，1 开头第二位 3-9）。 */
+  private assertPhone(phone: string): void {
+    if (!/^1[3-9]\d{9}$/.test(phone)) throw new Error('手机号格式不正确');
+  }
+
+  /** 邮箱格式校验（宽松：local@domain.tld）。 */
+  private assertEmail(email: string): void {
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error('邮箱格式不正确');
   }
 
   deleteUser(username: string, currentUser?: string): void {
@@ -725,6 +784,26 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     this.audit('user:change-pw', true, username, '-', u.role);
   }
 
+  /**
+   * 更新个人头像：以 data URI（base64）形式存入用户记录，避免引入文件存储基础设施。
+   * 仅接受图片 data URI，并限制体积，防止 .users.json 被撑爆或为任意外链留口子。
+   * 调用方（控制器）负责「只能改自己」的权限约束。
+   */
+  updateAvatar(username: string, avatar: string): string {
+    if (!avatar) throw new Error('头像数据为空');
+    const m = /^data:image\/(png|jpe?g|gif|webp);base64,/i.exec(avatar);
+    if (!m) throw new Error('头像格式不支持，仅支持 PNG/JPG/WEBP/GIF');
+    // base64 体积约为原图 1.33 倍，限制 data URI 长度 ≈ 1.5MB 原图上限
+    if (avatar.length > 2_500_000) throw new Error('头像文件过大（请压缩后重试）');
+    const users = this.loadUsers();
+    const u = users.find((x) => x.username === username);
+    if (!u) throw new Error('用户不存在：' + username);
+    u.avatar = avatar;
+    this.saveUsers(users);
+    this.audit('user:update-avatar', true, username, '-', u.role);
+    return avatar;
+  }
+
   listUsersSafe(): Array<Record<string, unknown>> {
     const users = this.loadUsers();
     const now = Date.now() / 1000;
@@ -736,6 +815,10 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
       created_at: u.created_at,
       must_change: !!u.must_change,
       dingtalk_unionid: u.dingtalk_unionid || '',
+      avatar: u.avatar || '',
+      name: u.name || '',
+      phone: u.phone || '',
+      email: u.email || '',
     }));
   }
 

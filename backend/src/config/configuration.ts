@@ -24,7 +24,7 @@ export const envValidationSchema = Joi.object({
     .valid('development', 'production', 'test')
     .default('development'),
   AUTH_TOKEN: Joi.string().required(),
-  // 默认取 python：代理端点（standard / attend-period / overview / realtime / groups …）
+  // 默认取 python：代理端点（standard / attend-period / overview / assessment / groups …）
   // 依赖 Python 生态，node 模式下它们恒定返回 NEED_PYTHON，默认值取 node 会误导。
   COMPUTE_PROVIDER: Joi.string().valid('node', 'python').default('python'),
   PYTHON_COMPUTE_URL: Joi.string().uri().optional(),

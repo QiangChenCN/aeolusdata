@@ -5,13 +5,13 @@ import * as path from 'path';
 import { TaskHandler, TaskRunContext, TaskStage } from '../task-handler';
 import { Pipeline } from '../pipeline';
 import { TaskHandlersService } from '../task-handlers.service';
-import { AttendanceFetchService } from '../../fetch/attendance-fetch.service';
-import { AeolusCookieService } from '../../fetch/aeolus-cookie.service';
+import { AttendanceFetchService } from '../../../../fetch/attendance-fetch.service';
+import { AeolusCookieService } from '../../../../fetch/aeolus-cookie.service';
 import { ReportRenderService, TeamItem } from '../../render/report-render.service';
 import { MinioService } from '../../media/minio.service';
 import { DingtalkService } from '../../dingtalk/dingtalk.service';
 import { ALL_MANAGER_IDS, PRODUCTION_GROUP_NAME } from '../../notify/notify-config';
-import { readKnownTeams } from '../../fetch/teams-fetch.service';
+import { readKnownTeams } from '../../../../fetch/teams-fetch.service';
 
 const REST_STATES = new Set([2]);
 const OFFLINE_STATES = new Set([3]);

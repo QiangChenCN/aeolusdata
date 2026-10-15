@@ -12,6 +12,7 @@
           "ranges":  { "<metric>": {"min":num,"max":num} }, # 调分项：得分区间（可负）
           "kinds":   { "<metric>": "weight"|"adjust"|null },# 计分方式：权重项 / 调分项
           "layering":{ "<metric>": "none"|"date"|"weather"|"date_weather" },  # 按考核项
+          "date_overrides": { "<YYYY-MM-DD>": "weekday"|"weekend" },  # 特殊日期：强制按周中/周末算
           "<metric>": { "<date_type>": { "<weather>": { "t0","t60","t100" } } }
         }
       }
@@ -47,6 +48,7 @@ if PY_HOME and PY_HOME not in _sys.path:
 # <<< python-home bootstrap <<<
 
 import os
+import re
 import json
 import datetime as _dt
 
@@ -87,6 +89,9 @@ DEFAULT_LAYERING = "date_weather"
 
 _TIERS = ("t0", "t60", "t100")
 
+# 特殊日期覆盖表的日期键格式（YYYY-MM-DD）。
+_RE_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
 
 def current_month():
     """当前北京时间月份 YYYY-MM。"""
@@ -104,6 +109,30 @@ def month_of(date_str=None):
 def metric_direction(metric):
     """'pos'（越高越好）/ 'neg'（越低越好）；未知指标返回 None。"""
     return SQ_METRIC_DIR.get(str(metric))
+
+
+def resolve_date_type(date_str, overrides=None):
+    """返回某日期的日型（'weekday' | 'weekend'）。
+
+    先按日历判定（周六/周日 → weekend，其余 → weekday），再套用特殊日期覆盖表
+    overrides（{ 'YYYY-MM-DD': 'weekday' | 'weekend' }，来自 quality_settings(month)['date_overrides']）。
+    覆盖表用于把「原本周中按周末算 / 原本周末按周中算」的日期拉回对应日型。
+
+    注意：评分侧真正按日型选阈值 为后续任务；此函数仅提供「按日期解析日型」的统一入口，
+    避免打分层各自解析日历/覆盖表导致口径漂移。
+    """
+    s = str(date_str or "").strip()[:10]
+    base = "weekday"
+    try:
+        d = _dt.date.fromisoformat(s)
+        base = "weekend" if d.isoweekday() >= 6 else "weekday"
+    except ValueError:
+        pass
+    if isinstance(overrides, dict):
+        ov = overrides.get(s)
+        if ov in ("weekday", "weekend"):
+            return ov
+    return base
 
 
 def _num(v):
@@ -128,11 +157,121 @@ def _read_all():
     return d if isinstance(d, dict) else {}
 
 
+def score_metric(value, tiers, direction):
+    """把考核项达成值按三档阈值映射为 0~100 得分（分段线性）。
+
+    tiers = {"t0","t60","t100"}；任一为 None → 返回 None（阈值未配置，无法打分）。
+    direction = 'pos'（越高越好，要求 t0<t60<t100）或 'neg'（越低越好，要求 t0>t60>t100）。
+    锚点：t0→0 分、t60→60 分、t100→100 分；区间外夹取到 0/100，区间内线性插值。
+    """
+    if value is None or not isinstance(tiers, dict):
+        return None
+    t0, t60, t100 = tiers.get("t0"), tiers.get("t60"), tiers.get("t100")
+    if t0 is None or t60 is None or t100 is None:
+        return None
+    try:
+        if direction == "pos":
+            if t60 == t0 or t100 == t60:
+                return None  # 档位退化，无法插值
+            if value <= t0:
+                return 0.0
+            if value >= t100:
+                return 100.0
+            if value <= t60:
+                return 60.0 * (value - t0) / (t60 - t0)
+            return 60.0 + 40.0 * (value - t60) / (t100 - t60)
+        # neg：越高越差，锚点镜像（t0 最大→0 分，t100 最小→100 分）
+        if t0 == t60 or t60 == t100:
+            return None
+        if value >= t0:
+            return 0.0
+        if value <= t100:
+            return 100.0
+        if value >= t60:
+            return 60.0 * (t0 - value) / (t0 - t60)
+        return 60.0 + 40.0 * (t60 - value) / (t60 - t100)
+    except (TypeError, ZeroDivisionError):
+        return None
+
+
+def metric_tiers(settings, metric, date_type, weather):
+    """取某考核项在 (date_type, weather) 下的三档阈值；缺失层级回落到代表格。"""
+    targets = settings.get("targets") if isinstance(settings.get("targets"), dict) else {}
+    m = targets.get(metric)
+    if not isinstance(m, dict):
+        return {}
+    dt = m.get(date_type)
+    if not isinstance(dt, dict):
+        dt = m.get("weekday")  # 日期维度缺失时回落周中代表格
+    if not isinstance(dt, dict):
+        return {}
+    cell = dt.get(weather)
+    if not isinstance(cell, dict):
+        cell = dt.get("normal")  # 天气维度缺失时回落正常天代表格
+    return cell if isinstance(cell, dict) else {}
+
+
+def compute_team_scores(raw, settings, date_type, weather):
+    """给定各考核项原始达成值，按配置算各指标 0~100 得分与总分。
+
+    raw: { "<metric>": value }（value 单位须与配置阈值一致，如 % / 秒）。
+    返回 { "<metric>": 0~100 分或 None, "total_score": 总分或 None }。
+
+    各指标得分：用 (date_type, weather) 对应档位三档阈值做分段线性映射；阈值不全 → None。
+    总分：仅在【所有指标 kinds 均已设置】且【每个指标都能算出分】时计算——
+      · 权重项：贡献 = 得分 × (权重%/100)
+      · 调分项：贡献 = min + 得分/100 × (max-min)（得分区间可负）
+      总分 = Σ贡献（不归一化）；满分 = 权重项权重之和。
+      说明：完整 7 项权重合计 100 → 满分 100；而考核看板只取其中 4 项（权重合计 85），
+      故看板总分满分 85、而非 100（历史上曾 /wsum×100 归一化，会把 85 膨胀成 100，已修正）。
+    任一指标缺权重/区间或得分为 None → 总分 None（配置不完整，不臆造总分）。
+    """
+    scores = {}
+    for metric, value in raw.items():
+        if metric not in SQ_METRIC_DIR:
+            continue
+        cell = metric_tiers(settings, metric, date_type, weather)
+        sc = score_metric(value, cell, SQ_METRIC_DIR.get(metric))
+        scores[metric] = None if sc is None else round(sc, 2)
+    kinds = settings.get("kinds") if isinstance(settings.get("kinds"), dict) else {}
+    weights = settings.get("weights") if isinstance(settings.get("weights"), dict) else {}
+    ranges = settings.get("ranges") if isinstance(settings.get("ranges"), dict) else {}
+    total = None
+    if scores and all(kinds.get(m) in ("weight", "adjust") for m in scores):
+        num = 0.0
+        wsum = 0.0
+        ok = True
+        for m, sc in scores.items():
+            if sc is None:
+                ok = False
+                break
+            k = kinds.get(m)
+            if k == "weight":
+                w = weights.get(m)
+                if w is None:
+                    ok = False
+                    break
+                num += sc * (float(w) / 100.0)
+                wsum += float(w)
+            else:  # adjust：得分区间 remap 到 [min, max]
+                r = ranges.get(m)
+                if not isinstance(r, dict) or r.get("min") is None or r.get("max") is None:
+                    ok = False
+                    break
+                num += float(r["min"]) + (sc / 100.0) * (float(r["max"]) - float(r["min"]))
+        if ok and wsum > 0:
+            # 不归一化：总分 = 权重项加权和（满分 = Σ权重）。看板只取 4 项 → 满分 85。
+            total = round(num, 2)
+    scores["total_score"] = total
+    return scores
+
+
 def quality_settings(month=None):
     """读取某月服务质量考核设置。
 
-    返回 {configured, month, weights, ranges, kinds, targets, updated_at, updated_by}
+    返回 {configured, month, weights, ranges, kinds, targets, date_overrides, updated_at, updated_by}
     - targets[metric][date_type][weather] = {t0, t60, t100}（缺失键 → None）
+    - date_overrides = { "YYYY-MM-DD": "weekday"|"weekend" }（特殊日期覆盖表，缺失 → {}）
     - weights[metric] = 百分比（仅「权重项」有意义，0~100）
     - ranges[metric]  = {min, max} 得分区间（仅「调分项」有意义，可负）
     - 未保存过的月份 configured=False，所有值为 None（**不回落默认**）
@@ -145,6 +284,14 @@ def quality_settings(month=None):
     ranges_raw = entry.get("ranges") if isinstance(entry.get("ranges"), dict) else {}
     kinds_raw = entry.get("kinds") if isinstance(entry.get("kinds"), dict) else {}
     layering_raw = entry.get("layering") if isinstance(entry.get("layering"), dict) else {}
+
+    # 特殊日期覆盖表：{ "YYYY-MM-DD": "weekday"|"weekend" }（前端设置页写入，本次仅读取暴露；
+    # 评分侧按日期匹配、套用覆盖后的日型阈值 为后续任务）。
+    ov_raw = entry.get("date_overrides") if isinstance(entry.get("date_overrides"), dict) else {}
+    date_overrides = {
+        k: v for k, v in ov_raw.items()
+        if isinstance(k, str) and _RE_DATE.fullmatch(k) and v in ("weekday", "weekend")
+    }
 
     weights = {}
     ranges = {}
@@ -184,6 +331,7 @@ def quality_settings(month=None):
         "kinds": kinds,
         "layering": layering,
         "targets": targets,
+        "date_overrides": date_overrides,
         "updated_at": all_.get("updated_at"),
         "updated_by": all_.get("updated_by"),
     }

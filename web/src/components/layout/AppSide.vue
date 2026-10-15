@@ -29,11 +29,12 @@ const navItems = computed(() => {
   items.push({ type: 'leaf', key: 'home', kind: 'home', id: '', name: '首页', icon: 'HomeFilled' });
 
   const dashSubs = [
-    { type: 'leaf', kind: 'realtime', id: '', name: '实时数据', icon: 'DataLine' },
+    { type: 'leaf', kind: 'assessment', id: '', name: '考核看板', icon: 'DataLine' },
     { type: 'leaf', kind: 'timeout', id: '', name: '配送超时', icon: 'Timer' },
     { type: 'leaf', kind: 'standard', id: '', name: '标准达成', icon: 'Aim' },
     { type: 'leaf', kind: 'attendPeriod', id: '', name: '时段出勤', icon: 'Calendar' },
     { type: 'leaf', kind: 'unsatisfied', id: '', name: '违规处罚', icon: 'Warning' },
+    { type: 'leaf', kind: 'assess', id: '', name: '考核设置', icon: 'Trophy' },
   ];
   items.push({ type: 'parent', key: 'dash', name: '数据看板', icon: 'DataLine', children: dashSubs });
 
@@ -45,32 +46,19 @@ const navItems = computed(() => {
   ];
   items.push({ type: 'parent', key: 'work', name: '工作任务', icon: 'List', children: workChildren });
 
-  const assessSubs = [
-    { type: 'leaf', kind: 'assessService', id: '', name: '服务质量设置', icon: 'Medal' },
-    { type: 'leaf', kind: 'assessStandard', id: '', name: '标准达成设置', icon: 'Aim' },
-  ];
-  items.push({ type: 'parent', key: 'assess', name: '考核设置', icon: 'Trophy', children: assessSubs });
-
+  // 系统设置：个人中心对所有登录用户可见（账号信息 + 个人改密），置于分组首位便于快速找到；
+  // 其余管理类子项（钉钉/风神/权限/调度）仅管理员可见，排在个人中心之后。
+  const sysSubs = [];
+  sysSubs.push({ type: 'leaf', kind: 'profile', id: '', key: 'profile', name: '个人中心', icon: 'User' });
   if (auth.isAdmin) {
-    const botSubs = [
-      { type: 'leaf', kind: 'botcfg', id: 'global', name: '全局配置', icon: 'Setting' },
-      { type: 'leaf', kind: 'botcfg', id: 'robot', name: '机器人配置', icon: 'Key' },
-      { type: 'leaf', kind: 'botcfg', id: 'instance', name: '实例配置', icon: 'Cpu' },
-    ];
-    items.push({ type: 'parent', key: 'botcfg', name: '机器人配置', icon: 'ChatDotRound', children: botSubs });
-    const rbacSubs = [
-      { type: 'leaf', kind: 'rbac-users', id: '', name: '账号管理', icon: 'User' },
-      { type: 'leaf', kind: 'rbac-roles', id: '', name: '角色权限', icon: 'Key' },
-      { type: 'leaf', kind: 'rbac-policy', id: '', name: '密码策略', icon: 'Lock' },
-      { type: 'leaf', kind: 'rbac-pw', id: '', name: '个人改密', icon: 'EditPen' },
-    ];
-    items.push({ type: 'parent', key: 'rbac', name: '权限管理', icon: 'Tools', children: rbacSubs });
-    const sysSubs = [
+    sysSubs.push(
       { type: 'leaf', kind: 'sys-dingtalk', id: '', name: '钉钉设置', icon: 'ChatDotRound' },
       { type: 'leaf', kind: 'sys-aeolus', id: '', name: '风神设置', icon: 'Key' },
-    ];
-    items.push({ type: 'parent', key: 'sys', name: '系统设置', icon: 'Setting', kind: 'syscfg', children: sysSubs });
+      { type: 'leaf', kind: 'rbac', id: '', name: '权限管理', icon: 'Tools' },
+      { type: 'leaf', kind: 'bots', id: '', name: '调度设置', icon: 'ChatDotRound' },
+    );
   }
+  items.push({ type: 'parent', key: 'sys', name: '系统设置', icon: 'Setting', kind: 'syscfg', children: sysSubs });
   return items;
 });
 

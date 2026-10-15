@@ -269,7 +269,20 @@ def is_t8_timeout(o, threshold_min=None):
     return sec is not None and sec > thr * 60
 
 
-def count_pushed_orders(orders, start, end=None):
+# 高笔单（大额 / 高价值单）键：原始接口英文 isHighValue 与中文「是否高笔单」同源。
+HIGH_VALUE_KEYS = ("是否高笔单", "isHighValue")
+
+
+def is_high_value_order(o):
+    """高笔单（大额 / 高价值单）判定：是否高笔单 / isHighValue 为真即记高笔单。
+
+    与 is_t8_timeout 同属「配送完成单」子集口径（都要求当天接单 + 配送成功），
+    差异仅在判定条件：高笔单以「是否高笔单=是」替代「超平台期望 > 8 分钟」。
+    """
+    return _is_truthy_flag(order_val(o, HIGH_VALUE_KEYS))
+
+
+def count_pushed_orders(orders, start, end=None, all_dates=False):
     """推配送单量：运单明细中「按骑手接单时间(acceptAtLast，缺失兜底创建时间)归属到
     [start, end] 北京时间自然日」的订单数。
 
@@ -280,10 +293,17 @@ def count_pushed_orders(orders, start, end=None):
     已知取舍（与历史看板一致，实时看板当前阶段不处理）：运单明细以「终态时间」窗口
     落盘（阶段 0，见 Nest 的 fetch/refresh-all.service.ts::refreshOrders），因此「接单当天、次日完成」的跨午夜单
     不会落在当天文件里 —— 该单量在当天会被少算，留待历史看板阶段再纠偏。
+
+    all_dates=True（考核看板专用新口径，2026-10-14 起）：不再按接单时间归属当天，
+    直接用「取到的全部运单」（每条都算一单，含跨天接单的运单），解决实时看板
+    「130 vs 207」的口径差。该参数默认 False，保持标准达成 / 超时看板 / 大屏原口径不变。
     """
     end = end or start
     cnt = 0
     for o in (orders or []):
+        if all_dates:
+            cnt += 1
+            continue
         ms = accept_ms(o)
         if ms is None:
             continue
@@ -301,4 +321,5 @@ __all__ = [
     "is_valid_order", "is_reverse_order", "is_reassign_order",
     "accept_ms", "ms_to_ymd", "parse_hms_seconds",
     "over_expect_seconds", "is_t8_timeout", "count_pushed_orders",
+    "HIGH_VALUE_KEYS", "is_high_value_order",
 ]

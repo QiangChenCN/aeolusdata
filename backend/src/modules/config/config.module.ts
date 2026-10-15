@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigService } from './config.service';
-import { FetchModule } from '../fetch/fetch.module';
+import { FetchModule } from '../../../fetch/fetch.module';
 
 /**
  * 配置层模块（看板配置读写，原 Python dashboard.standard.* / dashboard.realtime.config）。

@@ -1,7 +1,7 @@
 <template>
   <el-dropdown trigger="click" @command="onCommand">
     <span class="uc-trigger">
-      <el-avatar class="uc-avatar" size="small">
+      <el-avatar class="uc-avatar" size="small" :src="auth.avatar || undefined">
         <template v-if="auth.user">{{ auth.user.charAt(0).toUpperCase() }}</template>
         <el-icon v-else><User /></el-icon>
       </el-avatar>

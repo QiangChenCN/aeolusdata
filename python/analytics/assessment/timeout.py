@@ -28,7 +28,7 @@
 依赖：
   · analytics.cache        原始数据层读写 + 进程内结果缓存
   · analytics.order_rules  完成态 / 超时 / 取值 / 接单时间归属（与有效单口径同源）
-  · analytics.realtime.board 配送完成单计数 / 准时率（单一来源，避免重复实现）
+  · analytics.assessment.board 配送完成单计数 / 准时率（单一来源，避免重复实现）
   · 站点名：由前端经专用站点目录接口（GET /api/teams，风神全量站点）解析后覆盖，
             本模块不再内置硬编码站点名兜底清单
 """
@@ -52,12 +52,13 @@ if PY_HOME and PY_HOME not in _sys.path:
 import datetime
 from analytics import cache as CACHE
 from analytics import order_rules as OR
-from analytics.realtime import board as RTB
-from analytics.realtime import compound as COMP
-from analytics.realtime import violations as VIOL
+from analytics.assessment import board as RTB
+from analytics.assessment import delivery_source as DS
+from analytics.assessment import compound as COMP
+from analytics.assessment import violations as VIOL
 
 BJ = datetime.timezone(datetime.timedelta(hours=8))
-MODULE = "realtime_timeout_v2"   # v2: ontime_rate 改为 T8 加权口径（新增 t8_rate_detail）
+MODULE = "assessment_timeout_v2"   # v2: ontime_rate 改为 T8 加权口径（新增 t8_rate_detail）
 
 # 严重度分桶键（与前端约定一致）
 BUCKET_LIGHT = "8-15"     # 8 分 < 超时长 ≤ 15 分
@@ -291,7 +292,7 @@ def analyze(orders, date, now_ms, early_delivered=0):
     rider_list = []
     for r in riders.values():
         if r["timeout"] > 0:
-            r["ontime_rate"] = round((r["delivered"] - r["timeout"]) * 1000.0 / r["delivered"]) / 10
+            r["ontime_rate"] = (r["delivered"] - r["timeout"]) * 100.0 / r["delivered"]
             # 单均复合超时时长（分钟）= 超时单复合超时总时长 / 配送成功单量
             r["avg_overtime_min"] = round(r["overtime_min"] / r["delivered"], 2) if r["delivered"] else None
             r["overtime_min"] = round(r["overtime_min"], 1)
@@ -310,7 +311,7 @@ def analyze(orders, date, now_ms, early_delivered=0):
     #   分母 = 有效完单 + 高笔单T8非准时单*1 + 星巴克非准时单*2
     _num = t8_ontime - false_slow_cancel - early_delivered * 2
     _den = valid_completed + high_value_timeout * 1 + starbucks_timeout * 2
-    t8_rate = round(_num * 1000.0 / _den) / 10 if _den else None
+    t8_rate = _num * 100.0 / _den if _den else None
 
     return {
         "pushed_order_volume": pushed,
@@ -338,7 +339,7 @@ def analyze(orders, date, now_ms, early_delivered=0):
 def build_one(team_id, date=None):
     """单站配送超时统计。date 缺省取北京时间当天；now 取当前北京时间。
 
-    原始 orders 缺失即返回 need_refresh=True（与实时看板一致：先拉取当天三源落盘）。
+    原始运单缺失即返回 need_refresh=True（与实时看板一致：运单由考核看板「刷新」拉取落盘）。
     命中进程内结果缓存直接返回。
     """
     team_id = str(team_id)
@@ -347,14 +348,14 @@ def build_one(team_id, date=None):
     cached = CACHE.get_result(MODULE, team_id, date, "", "cache")
     if cached is not None:
         return cached
-    orders = CACHE.load_raw("orders", team_id, date)
+    orders = DS.load_delivery_orders(team_id)
     if orders is None:
         return {
             "team_id": team_id,
             "team_name": team_id,
             "need_refresh": True,
             "data_status": "no_data",
-            "data_note": "今日运单明细尚未落盘，请点「刷新数据」拉取后查看",
+            "data_note": "今日运单明细尚未落盘，请点本看板「刷新」拉取运单明细",
             "pushed_order_volume": None,
             "delivery_completed": None,
             "timeout_total": None,

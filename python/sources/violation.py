@@ -19,7 +19,7 @@ if PY_HOME and PY_HOME not in _sys.path:
 ⚠️ 2026-09-23：**取数已迁 NestJS**（ADR 修订 1）。本文件不再自己打风神接口，只把参数
 转发给 `POST /api/fetch/violation-csv`（Nest 侧两步：POST 取签名链接 → GET 下载 OSS）。
 返回形状与迁移前**逐字一致**（元组 `(text, file_url)`），调用方
-（`analytics/realtime/violations.py`）无需改动。
+（`analytics/assessment/violations.py`）无需改动。
 
 设计约定（见工作区永久记忆 get_data 约定）：
 - 每个 get_data 模块 = 一个接口；转发层也只负责「把这个接口的原始数据拿回来」

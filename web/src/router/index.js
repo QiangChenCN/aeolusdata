@@ -9,22 +9,26 @@ import TodoView from '../views/TodoView.vue';
 import StandardView from '../views/StandardView.vue';
 import AssessServiceView from '../views/AssessServiceView.vue';
 import AssessStandardView from '../views/AssessStandardView.vue';
+import AssessView from '../views/AssessView.vue';
 import AttendPeriodView from '../views/AttendPeriodView.vue';
 import OverviewView from '../views/OverviewView.vue';
-import RealtimeView from '../views/RealtimeView.vue';
+import AssessmentBoardView from '../views/AssessmentBoardView.vue';
 import DeliveryTimeoutView from '../views/DeliveryTimeoutView.vue';
 import UnsatisfiedView from '../views/UnsatisfiedView.vue';
 import GroupsView from '../views/GroupsView.vue';
 import UsersView from '../views/UsersView.vue';
 import RolesView from '../views/RolesView.vue';
 import PolicyView from '../views/PolicyView.vue';
-import ChangePwView from '../views/ChangePwView.vue';
 import SystemSettingsView from '../views/SystemSettingsView.vue';
+import RbacView from '../views/RbacView.vue';
 import DingtalkSettingsView from '../views/DingtalkSettingsView.vue';
 import AeolusSettingsView from '../views/AeolusSettingsView.vue';
 import BotGlobalView from '../views/BotGlobalView.vue';
 import BotRobotView from '../views/BotRobotView.vue';
 import BotInstanceView from '../views/BotInstanceView.vue';
+import BotView from '../views/BotView.vue';
+import ProfileInfoView from '../views/ProfileInfoView.vue';
+import NotFoundView from '../views/NotFoundView.vue';
 import { useAuthStore } from '../stores/auth.js';
 
 // 单一出口架构：所有受保护页挂在 MainLayout 之下（壳 + 内部 router-view），
@@ -35,37 +39,55 @@ const routes = [
     path: '/',
     component: MainLayout,
     children: [
-      // 根路径直接渲染首页（原重定向到 /home）；/home 反向重定向到 / 以兼容旧书签。
+      // 根路径直接渲染首页（首页即根路由 /）
       { path: '', name: 'home', component: HomeView, meta: { title: '首页', kind: 'home' } },
-      { path: 'home', redirect: '' },
       { path: 'tasks', name: 'tasks-all', component: TaskCenterView, meta: { title: '全部任务', kind: 'tasks', id: 'all' } },
       { path: 'history', name: 'history', component: HistoryView, meta: { title: '运行记录', kind: 'history', id: '' } },
       { path: 'preset', name: 'preset', component: PresetView, meta: { title: '预设' } },
       { path: 'todo', name: 'todo', component: TodoView, meta: { title: '工作内容' } },
-      { path: 'assess', redirect: '/assess/service' },
-      { path: 'assess/service', name: 'assess-service', component: AssessServiceView, meta: { title: '服务质量设置', kind: 'assessService', id: '' } },
-      { path: 'assess/standard', name: 'assess-standard', component: AssessStandardView, meta: { title: '标准达成设置', kind: 'assessStandard', id: '' } },
+      { path: 'assess', name: 'assess', component: AssessView, redirect: { name: 'assess-service' }, meta: { title: '考核设置', kind: 'assess' },
+        children: [
+          { path: 'service', name: 'assess-service', component: AssessServiceView, meta: { title: '服务质量设置', kind: 'assessService', id: '' } },
+          { path: 'standard', name: 'assess-standard', component: AssessStandardView, meta: { title: '标准达成设置', kind: 'assessStandard', id: '' } },
+        ] },
       { path: 'standard', name: 'standard', component: StandardView, meta: { title: '标准达成', kind: 'standard', id: '' } },
       { path: 'attend-period', name: 'attend-period', component: AttendPeriodView, meta: { title: '时段出勤', kind: 'attendPeriod', id: '' } },
       { path: 'overview', name: 'overview', component: OverviewView, meta: { title: '总览' } },
-      { path: 'realtime', name: 'realtime', component: RealtimeView, meta: { title: '实时数据', kind: 'realtime', id: '' } },
+      { path: 'assessment', name: 'assessment', component: AssessmentBoardView, meta: { title: '考核看板', kind: 'assessment', id: '' } },
       { path: 'timeout', name: 'timeout', component: DeliveryTimeoutView, meta: { title: '配送超时', kind: 'timeout', id: '' } },
       { path: 'unsatisfied', name: 'unsatisfied', component: UnsatisfiedView, meta: { title: '违规处罚', kind: 'unsatisfied', id: '' } },
       { path: 'groups', name: 'groups', component: GroupsView, meta: { title: '群组' } },
-      { path: 'rbac', redirect: '/rbac/users' },
-      { path: 'rbac/users', name: 'rbac-users', component: UsersView, meta: { title: '账号管理', kind: 'rbac-users' } },
-      { path: 'rbac/roles', name: 'rbac-roles', component: RolesView, meta: { title: '角色权限', kind: 'rbac-roles' } },
-      { path: 'rbac/policy', name: 'rbac-policy', component: PolicyView, meta: { title: '密码策略', kind: 'rbac-policy' } },
-      { path: 'rbac/pw', name: 'rbac-pw', component: ChangePwView, meta: { title: '个人改密', kind: 'rbac-pw' } },
       { path: 'settings', name: 'system-settings', component: SystemSettingsView, meta: { title: '系统设置', kind: 'syscfg' } },
       { path: 'settings/dingtalk', name: 'dingtalk-settings', component: DingtalkSettingsView, meta: { title: '钉钉设置', kind: 'sys-dingtalk' } },
       { path: 'settings/aeolus', name: 'aeolus-settings', component: AeolusSettingsView, meta: { title: '风神设置', kind: 'sys-aeolus' } },
-      { path: 'bot', redirect: '/bot/global' },
-      { path: 'bot/global', name: 'bot-global', component: BotGlobalView, meta: { title: '全局配置', kind: 'botcfg', id: 'global' } },
-      { path: 'bot/robot', name: 'bot-robot', component: BotRobotView, meta: { title: '机器人配置', kind: 'botcfg', id: 'robot' } },
-      { path: 'bot/instance', name: 'bot-instance', component: BotInstanceView, meta: { title: '实例配置', kind: 'botcfg', id: 'instance' } },
+      {
+        path: 'settings/rbac',
+        name: 'rbac',
+        component: RbacView,
+        redirect: { name: 'rbac-users' },
+        meta: { title: '权限管理', kind: 'rbac' },
+        children: [
+          { path: 'users', name: 'rbac-users', component: UsersView, meta: { title: '账号管理', kind: 'rbac-users' } },
+          { path: 'roles', name: 'rbac-roles', component: RolesView, meta: { title: '角色管理', kind: 'rbac-roles' } },
+          { path: 'policy', name: 'rbac-policy', component: PolicyView, meta: { title: '密码策略', kind: 'rbac-policy' } },
+        ],
+      },
+      {
+        path: 'settings/profile',
+        name: 'profile',
+        component: ProfileInfoView,
+        meta: { title: '个人中心', kind: 'profile' },
+      },
+      { path: 'bot', name: 'bots', component: BotView, redirect: { name: 'bot-global' }, meta: { title: '调度设置', kind: 'bots' },
+        children: [
+          { path: 'global', name: 'bot-global', component: BotGlobalView, meta: { title: '全局配置', kind: 'botcfg', id: 'global' } },
+          { path: 'robot', name: 'bot-robot', component: BotRobotView, meta: { title: '凭证配置', kind: 'botcfg', id: 'robot' } },
+          { path: 'instance', name: 'bot-instance', component: BotInstanceView, meta: { title: '实例配置', kind: 'botcfg', id: 'instance' } },
+        ] },
     ],
   },
+  // 兜底：未知路径（含拼写错误/已删除路由）渲染 404 页面，而非空白或静默跳首页
+  { path: '/:pathMatch(.*)*', name: 'not-found', component: NotFoundView, meta: { title: '页面不存在' } },
 ];
 
 // History 模式（无 #）：深链接需服务端回退到 index.html。

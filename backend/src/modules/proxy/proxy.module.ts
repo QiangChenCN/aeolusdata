@@ -1,7 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ComputeModule } from '../compute/compute.module';
 import { AuthModule } from '../auth/auth.module';
-import { FetchModule } from '../fetch/fetch.module';
+import { FetchModule } from '../../../fetch/fetch.module';
 import { ConfigModule } from '../config/config.module';
 import { ProxyController } from './proxy.controller';
 

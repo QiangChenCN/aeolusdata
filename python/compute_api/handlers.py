@@ -6,7 +6,7 @@ NestJS（`backend/`），HTTP 外壳（8917）也已移除；本文件只保留 
 需要的计算侧，故从根目录 `server.py` 迁到 `compute_api/` 下。
 
 保留内容（由 AST 传递闭包精确确定，非手工增删）：
-  · 命名空间 handler：standard / attend-period / overview / realtime
+  · 命名空间 handler：standard / attend-period / overview / assessment
   · 其依赖：速率限制、站点缓存、Cookie 探针、路径守卫、表格解析
 
 已剔除（迁 NestJS 或废弃，约 900 行）：
@@ -754,9 +754,9 @@ def _post_ap_teams(self, data):
 # >>>ROUTES_MARKER<<<
 
 # ---------------- 实时数据：站点概览（推配送单量 / 配送完成单） ----------------
-# 计算逻辑已迁至 analytics/realtime/board.py；此处仅做站点权限闸门 + 转发。
-def _get_realtime_station(self, qs):
-    from analytics.realtime import board as RTB
+# 计算逻辑已迁至 analytics/assessment/board.py；此处仅做站点权限闸门 + 转发。
+def _get_assessment_station(self, qs):
+    from analytics.assessment import board as RTB
     from analytics import cache as CACHE
     team = (qs.get("team") or [None])[0]
     if not team:
@@ -767,6 +767,8 @@ def _get_realtime_station(self, qs):
     try:
         date = CACHE.today_ymd()
         row = RTB.build_one(team, date)
+        from analytics.assessment import result_store as RS
+        RS.save_result("station", team, date, row)
         miss = bool(row.get("need_refresh"))
         self._json({
             "ok": True,
@@ -778,6 +780,9 @@ def _get_realtime_station(self, qs):
             "data_status": "no_data" if miss else (row.get("data_status") or "ok"),
             "data_note": row.get("data_note"),
             "need_refresh": miss,
+            # 更新时间：考核数据（违规明细 + 运单明细两份全站单文件）最近一次取数/落盘时间；
+            # 前端据此展示「更新时间」，刷新页面（仅读盘重算）不跳动，真正重新取数后才更新。
+            "fetched_at": RTB.latest_assessment_data_time(date),
         })
     except Exception as e:
         self._json({"ok": False, "error": "%s: %s" % (type(e).__name__, e),
@@ -786,9 +791,9 @@ def _get_realtime_station(self, qs):
 
 
 # ---------------- 配送超时看板（站点超时汇总 + 订单明细）----------------
-# 计算逻辑已迁至 analytics/realtime/timeout.py；此处仅做站点权限闸门 + 转发。
-def _get_realtime_timeout(self, qs):
-    from analytics.realtime import timeout as RTO
+# 计算逻辑已迁至 analytics/assessment/timeout.py；此处仅做站点权限闸门 + 转发。
+def _get_assessment_timeout(self, qs):
+    from analytics.assessment import timeout as RTO
     from analytics import cache as CACHE
     team = (qs.get("team") or [None])[0]
     if not team:
@@ -799,6 +804,8 @@ def _get_realtime_timeout(self, qs):
     try:
         date = CACHE.today_ymd()
         row = RTO.build_one(team, date)
+        from analytics.assessment import result_store as RS
+        RS.save_result("timeout", team, date, row)
         miss = bool(row.get("need_refresh"))
         self._json({
             "ok": True,
@@ -894,8 +901,8 @@ GET_ROUTES = {
     "/api/overview/site-orders": _get_ov_site_orders,
     "/api/overview/standard": _get_ov_standard,
     "/api/overview/assessment": _get_ov_assessment,
-    "/api/realtime/station":    _get_realtime_station,
-    "/api/realtime/timeout":    _get_realtime_timeout,
+    "/api/assessment/station":    _get_assessment_station,
+    "/api/assessment/timeout":    _get_assessment_timeout,
 }
 
 POST_ROUTES = {

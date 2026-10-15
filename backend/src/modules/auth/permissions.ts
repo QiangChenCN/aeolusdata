@@ -59,7 +59,7 @@ export const POST_ROUTE_PERMS: Record<string, string> = {
   '/api/delivery-timeout/refresh': 'data:refresh',
   '/api/attend-period/config': 'config:write',
   '/api/attend-period/teams': 'config:write',
-  '/api/realtime/timeout/teams': 'config:write',
+  '/api/assessment/timeout/teams': 'config:write',
   '/api/todo/lists': 'todo:write',
   '/api/todo/items': 'todo:write',
   '/api/todo/trigger': 'todo:write',

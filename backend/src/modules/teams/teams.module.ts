@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
-import { FetchModule } from '../fetch/fetch.module';
+import { FetchModule } from '../../../fetch/fetch.module';
 import { TeamsController } from './teams.controller';
 
 /**

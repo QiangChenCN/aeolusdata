@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common';
 import { StreamingModule } from '../streaming/streaming.module';
-import { FetchModule } from '../fetch/fetch.module';
+import { FetchModule } from '../../../fetch/fetch.module';
 import { DingtalkModule } from '../dingtalk/dingtalk.module';
 import { MediaModule } from '../media/media.module';
 import { RenderModule } from '../render/render.module';

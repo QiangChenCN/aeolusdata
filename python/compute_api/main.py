@@ -263,48 +263,6 @@ def _refresh_failed(res):
     return False, ""
 
 
-@app.post("/api/compute/violations")
-async def compute_violations(req: Request):
-    """阶段 0.5：拉违规明细（取数经 Nest）→ 按「团队ID」分组 → 逐站落盘。
-
-    失败时**必须逐站落失败标记**：否则盘上留着上一次成功的旧数据，实时看板会把它当成
-    当天数据继续算 —— 数字照常显示、实际已陈旧、且全程无报错（静默失真）。
-    """
-    data = await _json_body(req)
-    start_date = str(data.get("start_date") or "").strip()
-    end_date = str(data.get("end_date") or start_date).strip()
-    teams = [str(t) for t in (data.get("teams") or []) if str(t).strip()]
-    if not start_date or not teams:
-        return JSONResponse({"ok": False, "error": "缺少 start_date 或 teams"}, 400)
-
-    def _do():
-        from analytics.realtime import violations as RV
-        grouped = RV.fetch_grouped(start_date, end_date)
-        hit = 0
-        for tid in teams:
-            rows = grouped.get(str(tid)) or []
-            hit += len(rows)
-            RV.save_team(str(tid), start_date, rows)
-        return {"ok": True, "error": None,
-                "msg": "违规 %d 条，本批站点命中 %d 条" % (
-                    sum(len(v) for v in grouped.values()), hit)}
-
-    try:
-        return await run_in_threadpool(_do)
-    except Exception as e:  # noqa: BLE001
-        vmsg = "%s: %s" % (type(e).__name__, e)
-        try:
-            from analytics.realtime import violations as RV
-            for tid in teams:
-                try:
-                    RV.mark_failed(str(tid), start_date, vmsg)
-                except Exception:  # noqa: BLE001
-                    pass
-        except Exception:  # noqa: BLE001
-            pass
-        return {"ok": False, "error": vmsg, "msg": None}
-
-
 @app.post("/api/compute/rider-dimension")
 async def compute_rider_dimension(req: Request):
     """单站骑手维度：拉考勤（经 Nest）+ 复用运单 → 返回骑手结果。

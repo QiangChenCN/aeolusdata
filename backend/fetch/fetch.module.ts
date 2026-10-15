@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common';
-import { AuthModule } from '../auth/auth.module';
-import { ComputeModule } from '../compute/compute.module';
+import { AuthModule } from '../src/modules/auth/auth.module';
+import { ComputeModule } from '../src/modules/compute/compute.module';
 import { RefreshController } from './refresh.controller';
 import { RefreshRunnerService } from './refresh-runner.service';
 import { DeliveryTimeoutController } from './delivery-timeout.controller';

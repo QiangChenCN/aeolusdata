@@ -12,5 +12,5 @@
   注意名字相近但不是一回事：本包叫 analytics，数据目录现在叫 backend/data/raw。
 
 子包：
-  · realtime/ —— 实时看板（运单/违规的近实时聚合）
+  · assessment/ —— 实时看板（运单/违规的近实时聚合）
 """

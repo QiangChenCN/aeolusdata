@@ -55,7 +55,7 @@ def test_key_routes_present():
     # 故不在此列（见下方 NEST_NATIVE）。
     for p in ("/api/standard/station-report",
               "/api/standard/achievement", "/api/standard/riders",
-              "/api/realtime/station",
+              "/api/assessment/station",
               "/api/attend-period/months", "/api/overview/standard"):
         assert p in handlers.GET_ROUTES, "缺少关键 GET 路由 %s" % p
     # /api/standard/teams-config 已随「参与考核站点」字段一并移除（改为

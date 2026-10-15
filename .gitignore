@@ -98,6 +98,12 @@ backend/data/group_recent.json
 backend/data/raw/
 backend/logs/
 pace_state.json
+# 考核/看板结果缓存与运行期导出 JSON（刷新产物，各环境自行生成，不进版本控制）
+# 注：backend/data/*.json 仅忽略「非点开头」的导出文件；已跟踪的 org_tree.json 与 jobs/ 不受影响。
+backend/data/results/
+backend/data/assessment/
+backend/data/assessment-refresh-cooldown.json
+backend/data/*.json
 
 # 运行时配置（由 Nest 后端通过 UI 落盘，属于各环境本地状态）：
 # 这些 *.json 是用户在「等级标准设置」里保存的活数据，绝不能进版本控制——

@@ -40,35 +40,34 @@ import sys
 
 import pytest
 from analytics import cache as CACHE
-from analytics.realtime import violations as RV
+from analytics.assessment import violations as RV
 
 
 # ---------------- 违规明细的陈旧可见化 ----------------
 
 @pytest.fixture
 def tmp_data(monkeypatch, tmp_path):
-    """把原始层目录指到临时目录，避免污染 backend/data/raw。"""
+    """把原始层目录指到临时目录，避免污染 backend/data/raw 与 backend/data/assessment。"""
     monkeypatch.setattr(CACHE, "_DATA_DIR", str(tmp_path))
+    monkeypatch.setattr(RV, "ASSESS_RAW_DIR", str(tmp_path))
     return tmp_path
 
 
 def _seed_violation(team, date, rows, ok=True, error=None):
-    """直接落盘一份违规明细文件。
+    """直接落盘一份违规明细文件（形状为「跨语言契约」）。
 
-    其形状是**跨语言契约**：生产环境的写入方是 Nest 的
-    `RawCacheService.saveViolation`（形状断言见
-    `backend/src/modules/fetch/raw-cache.spec.ts`），本文件的用例只钉「读侧拿到这种
-    文件时的行为」。
+    生产写入方现为 Nest 的 `AssessmentViolationFetchService`，全天违规合并为一份当天文件
+    `backend/data/违规处罚明细-实时.json`（覆盖写）；本文件只钉读侧行为。
+    rows 中每条记录需自带「团队ID」字段，读侧按团队ID过滤出本站点行。
     """
     payload = {
         "date": date,
-        "team_id": str(team),
         "fetched_at": "2026-09-21 20:45:15",
         "fetch_ok": bool(ok),
         "fetch_error": (None if ok else (str(error or "")[:300] or None)),
         "rows": rows or [],
     }
-    with open(CACHE._path("violation", team, date), "w", encoding="utf-8") as f:
+    with open(RV._own_path(date), "w", encoding="utf-8") as f:
         json.dump(payload, f, ensure_ascii=False)
 
 
@@ -131,34 +130,22 @@ def _stub_post(monkeypatch, result=None):
     return sent
 
 
-def test_save_team_forwards_to_nest(tmp_data, monkeypatch):
-    """save_team 应把「原始行 + 成败标记」交给 Nest，而不是自己写文件。"""
-    sent = _stub_post(monkeypatch)
+def test_load_team_reads_own_namespace_and_ignores_shared_raw(tmp_data):
+    """考核看板违规读侧只认自有单文件 违规处罚明细-实时.json；
 
-    assert RV.save_team("917521136", "2026-09-21", [{"a": 1}]) is True
-
-    assert len(sent) == 1
-    path, payload = sent[0]
-    assert path == "/api/cache/raw"
-    assert payload == {"kind": "violation", "team": "917521136", "date": "2026-09-21",
-                       "rows": [{"a": 1}], "ok": True, "error": None}
-    assert not os.path.exists(CACHE._path("violation", "917521136", "2026-09-21")), \
-        "Python 侧不应再直接写原始层文件"
-
-
-def test_mark_failed_keeps_old_rows_and_flags_not_ok(tmp_data, monkeypatch):
-    """拉取失败时：仍要落盘（保留旧 rows 供回查），但 ok=False 交给 Nest 记标记。"""
+    旧的共享 raw/violation_* 即使存在也读不到 —— 与标准达成 / 服务质量彻底解耦，不串数据。
+    """
     tid, date = "917521136", "2026-09-21"
-    old = [{"团队ID": tid, "违规分类": "投诉"}]
-    _seed_violation(tid, date, old)
+    # 旧共享命名空间落一份数据 —— 读侧必须无视
+    with open(CACHE._path("violation", tid, date), "w", encoding="utf-8") as f:
+        json.dump({"date": date, "team_id": tid, "fetched_at": "x",
+                   "fetch_ok": True, "fetch_error": None,
+                   "rows": [{"团队ID": tid}]}, f, ensure_ascii=False)
+    assert RV.load_team(tid, date) is None, "不得读旧的共享 raw/violation_*"
 
-    sent = _stub_post(monkeypatch)
-    RV.mark_failed(tid, date, "模拟：接口返回 401")
-
-    _, payload = sent[0]
-    assert payload["ok"] is False
-    assert payload["error"] == "模拟：接口返回 401"
-    assert payload["rows"] == old, "旧 rows 必须带上，否则失败落盘会冲掉可回查的数据"
+    # 自有命名空间落同样数据 —— 读侧认
+    _seed_violation(tid, date, [{"团队ID": tid}])
+    assert RV.load_team(tid, date) is not None
 
 
 def test_save_raw_refuses_empty_payload_without_calling_nest(tmp_data, monkeypatch):
@@ -173,11 +160,6 @@ def test_save_raw_refuses_empty_payload_without_calling_nest(tmp_data, monkeypat
 
 # ---------------- 会话失效自愈：401 → 强制重登 → 重试一次 ----------------
 
-_CSV = ("团队ID,违规分类,违规类型,违规状态\n"
-        "917521136,投诉,违规送达,成立\n"
-        "917521136,投诉,违规送达,成立\n")
-
-
 def test_violation_api_error_is_runtime_error():
     """结构化异常必须仍是 RuntimeError，否则会打断既有捕获方。"""
     from sources import violation as V
@@ -186,71 +168,10 @@ def test_violation_api_error_is_runtime_error():
     assert e.code == "401"
 
 
-def test_fetch_rows_retries_once_after_session_error(monkeypatch):
-    """会话失效：强制重登，用新 cookie 重试一次并成功。
-
-    打桩点是 `sources.session.refresh_cookie`（重登原语本身），不关心它背后是
-    Python 登录还是 NestJS 的 `/api/fetch/aeolus-relogin` —— 用例只该钉住「重试编排」。
-    """
-    from sources import session as GA
-    from sources import violation as V
-
-    calls = []
-
-    def _download(start_ms, end_ms, cookie=None):
-        calls.append(cookie)
-        if len(calls) == 1:
-            raise V.ViolationApiError("违规明细接口返回空 result（code=401 未登录）", "401")
-        return _CSV, "http://oss/file.csv"
-
-    monkeypatch.setattr(V, "download_csv", _download)
-    monkeypatch.setattr(GA, "refresh_cookie", lambda: "brand-new-cookie")
-
-    rows = RV.fetch_rows(0, 1)
-    assert len(rows) == 2, "重登重试后应拿到数据"
-    assert calls == [None, "brand-new-cookie"], "第二次必须用重登后的新 cookie"
-
-
-def test_fetch_rows_does_not_relogin_on_other_errors(monkeypatch):
-    """非会话错误（如 500）不应触发重登重试，直接上抛。"""
-    from sources import session as GA
-    from sources import violation as V
-
-    refreshed = []
-
-    def _download(start_ms, end_ms, cookie=None):
-        raise V.ViolationApiError("违规明细接口错误：code=500 msg=服务异常", "500")
-
-    def _refresh():
-        refreshed.append(1)
-        return "should-not-be-used"
-
-    monkeypatch.setattr(V, "download_csv", _download)
-    monkeypatch.setattr(GA, "refresh_cookie", _refresh)
-
-    with pytest.raises(V.ViolationApiError) as ei:
-        RV.fetch_rows(0, 1)
-    assert ei.value.code == "500"
-    assert refreshed == [], "非会话错误不应重登"
-
-
-def test_fetch_rows_retries_at_most_once(monkeypatch):
-    """重登后仍失败：原样上抛，且不能无限重试。"""
-    from sources import session as GA
-    from sources import violation as V
-
-    attempts = []
-
-    def _download(start_ms, end_ms, cookie=None):
-        attempts.append(cookie)
-        raise V.ViolationApiError("违规明细接口返回空 result（code=401 未登录）", "401")
-
-    monkeypatch.setattr(V, "download_csv", _download)
-    monkeypatch.setattr(GA, "refresh_cookie", lambda: "brand-new-cookie")
-
-    with pytest.raises(V.ViolationApiError):
-        RV.fetch_rows(0, 1)
-    assert len(attempts) == 2, "只应重试一次（共 2 次调用）"
+# 注：以下「会话失效自愈（401 → 强制重登 → 重试一次 / 至多一次 /
+# 非会话错误不重登）」的编排已随违规取数迁到 NestJS（见
+# violation-fetch.service.ts 的 downloadCsv），Python 侧 RV.fetch_rows 已删除，
+# 相关用例随之移除 —— 跨语言两层各测各的。
 
 
 # ---------------- sources/auth 共享原语本身 ----------------
@@ -328,22 +249,3 @@ def test_call_with_relogin_does_not_retry_other_errors(monkeypatch):
 # 注：原 3 个 `orders_fetch.Session` 用例（重登上限 / 重登后恢复 / 限流不重登）随之删除 ——
 # 本地运单拉取路径已按「取数归 NestJS」移除，那次重登编排的等价实现在 Nest 侧
 # （`fetch-pace` + `orders-fetch`，由 `refresh-runner.spec.ts` 覆盖编排层）。
-
-
-def test_fetch_rows_propagates_original_error_when_relogin_fails(monkeypatch):
-    """重登本身失败时，应抛出原始取数错误，不能被登录异常掩盖。"""
-    from sources import session as GA
-    from sources import violation as V
-
-    def _download(start_ms, end_ms, cookie=None):
-        raise V.ViolationApiError("违规明细接口返回空 result（code=401 未登录）", "401")
-
-    def _refresh():
-        raise RuntimeError("登录失败：账号或密码错误")
-
-    monkeypatch.setattr(V, "download_csv", _download)
-    monkeypatch.setattr(GA, "refresh_cookie", _refresh)
-
-    with pytest.raises(V.ViolationApiError) as ei:
-        RV.fetch_rows(0, 1)
-    assert ei.value.code == "401", "应是原始取数错误，不是登录异常"

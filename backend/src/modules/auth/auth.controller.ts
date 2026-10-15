@@ -36,6 +36,10 @@ export class AuthController {
       token: r.token,
       user: b.username,
       role: r.role,
+      avatar: this.auth.getUser(b.username || '')?.avatar ?? null,
+      name: this.auth.getUser(b.username || '')?.name ?? null,
+      phone: this.auth.getUser(b.username || '')?.phone ?? null,
+      email: this.auth.getUser(b.username || '')?.email ?? null,
       expires_in: r.expiresIn,
     };
   }
@@ -56,6 +60,10 @@ export class AuthController {
       authenticated: true,
       user: s.user,
       role: s.role,
+      avatar: this.auth.getUser(s.user)?.avatar ?? null,
+      name: this.auth.getUser(s.user)?.name ?? null,
+      phone: this.auth.getUser(s.user)?.phone ?? null,
+      email: this.auth.getUser(s.user)?.email ?? null,
       perms: [...this.auth.effectivePerms(s.role)],
       catalog: PERM_CATALOG,
     };
@@ -111,7 +119,7 @@ export class AuthController {
       const r = this.auth.resolveDingtalkUser(id.unionid, id.name || '', this.ip(req), false);
       if ('needBind' in r) return { ok: false, needBind: true, unionid: r.unionid, name: r.name };
       this.setSessionCookie(res, r.token, false, req.secure);
-      return { ok: true, token: r.token, user: r.user, role: r.role, expires_in: r.expiresIn };
+      return { ok: true, token: r.token, user: r.user, role: r.role, avatar: this.auth.getUser(r.user)?.avatar ?? null, expires_in: r.expiresIn };
     } catch (e) {
       return { ok: false, error: (e as Error).message };
     }
@@ -164,6 +172,42 @@ export class AuthController {
     if (b.unionid === undefined) return { ok: false, error: '缺少 unionid' };
     this.auth.bindDingtalk(username, b.unionid);
     return { ok: true };
+  }
+
+  /**
+   * 修改个人头像：仅允许修改「当前登录用户自己」的头像（用户名取自会话，不接受外部传入）。
+   * 头像以 data URI 形式提交，由 AuthService.updateAvatar 校验格式与体积。
+   */
+  @Post('avatar')
+  @HttpCode(200)
+  setAvatar(@Body() b: { avatar?: string }, @Req() req: Request) {
+    const s = this.auth.getSession(extractToken(req));
+    if (!s) throw new UnauthorizedException('请先登录');
+    try {
+      const avatar = this.auth.updateAvatar(s.user, b.avatar || '');
+      return { ok: true, avatar };
+    } catch (e) {
+      return { ok: false, error: (e as Error).message };
+    }
+  }
+
+  /**
+   * 更新个人资料（姓名 / 手机号 / 邮箱）：仅允许修改「当前登录用户自己」，用户名取自会话。
+   * 手机号经 AuthService.assertPhone 校验、邮箱经 assertEmail 校验；
+   * 角色、禁用等管理字段不可在此修改。
+   */
+  @Post('profile')
+  @HttpCode(200)
+  setProfile(@Body() b: { name?: string; phone?: string; email?: string }, @Req() req: Request) {
+    const s = this.auth.getSession(extractToken(req));
+    if (!s) throw new UnauthorizedException('请先登录');
+    try {
+      this.auth.updateProfile(s.user, b.name, b.phone, b.email);
+      const u = this.auth.getUser(s.user);
+      return { ok: true, name: u?.name ?? null, phone: u?.phone ?? null, email: u?.email ?? null };
+    } catch (e) {
+      return { ok: false, error: (e as Error).message };
+    }
   }
 
   private ip(req: Request): string {
