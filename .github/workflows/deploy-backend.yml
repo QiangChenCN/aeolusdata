@@ -47,11 +47,6 @@ jobs:
           ECS_SSH_KEY: ${{ secrets.ECS_SSH_KEY }}
         run: |
           eval "$(ssh-agent -s)"
-          # 临时调试：只输出长度与首尾行，定位 Secret 内容问题（不含密钥本体）
-          echo "ECS_SSH_KEY length = ${#ECS_SSH_KEY}"
-          echo "line count = $(echo "$ECS_SSH_KEY" | wc -l)"
-          echo "first line = $(echo "$ECS_SSH_KEY" | head -1)"
-          echo "last line  = $(echo "$ECS_SSH_KEY" | tail -1)"
           echo "$ECS_SSH_KEY" | tr -d '\r' | ssh-add -
           rsync -az --delete \
             -e "ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null" \
