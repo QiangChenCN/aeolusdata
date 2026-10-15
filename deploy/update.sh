@@ -10,8 +10,8 @@ git pull --ff-only
 echo "== 同步 Python 依赖 =="
 python/.venv/bin/python -m pip install -r python/requirements.txt
 
-echo "== 安装后端运行依赖（仅 runtime，不含 jest 等 devDependencies；dist 由 GitHub Actions 预编译并 rsync 下发）=="
-cd backend && npm ci --omit=dev && cd ..
+echo "== 安装后端依赖并构建（--omit=dev 仅排除 jest/ts-jest 等测试工具；构建工具 @nestjs/cli/typescript 已列入 dependencies，故服务器可独立完成 nest build）=="
+cd backend && npm ci --omit=dev && npm run build && cd ..
 
 echo "== 重建前端 =="
 cd web && npm install && npm run build && cd ..
