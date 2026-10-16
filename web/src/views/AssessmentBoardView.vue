@@ -4,8 +4,9 @@
       <h2 class="v-title">考核看板</h2>
       <el-select v-model="teamSel" class="dv-sel" placeholder="站点" @change="load">
         <el-option label="全部站点" value="__all__" />
-        <el-option v-for="t in teams" :key="t.id" :label="t.name" :value="t.id" />
+        <el-option v-for="t in teamOptions" :key="t.id" :label="t.name" :value="t.id" />
       </el-select>
+      <el-button @click="openCfg"><el-icon><Setting /></el-icon> 站点设置</el-button>
       <el-text v-if="lastUpdated" type="info" size="small" class="dv-updated">
         更新时间 {{ lastUpdated }}
       </el-text>
@@ -178,17 +179,61 @@
         </el-table-column>
       </el-table>
       </div>
-  </div>
-</template>
+
+      <!-- 站点设置：选择需要在看板展示的站点（持久化） -->
+      <el-dialog v-model="cfgVisible" title="站点设置（选择需要在看板展示的站点）" width="440px">
+      <el-checkbox-group v-model="cfgSel" class="dv-cfg-group">
+      <el-checkbox v-for="t in teams" :key="t.id" :value="t.id">{{ t.name }}</el-checkbox>
+      </el-checkbox-group>
+      <template #footer>
+      <el-button @click="cfgVisible = false">取消</el-button>
+      <el-button type="primary" :loading="cfgSaving" @click="saveCfg">保存</el-button>
+      </template>
+      </el-dialog>
+      </div>
+      </template>
 
 <script setup>
 import { computed, onMounted, onUnmounted, ref } from 'vue';
+import { ElMessage } from 'element-plus';
 
-import { fetchTeams, fetchAssessmentStation, refreshAssessment, refreshAssessmentDelivery, fetchRefreshCooldown, markRefreshCooldown } from '../api/dashboards.js';
+import { fetchTeams, fetchAssessmentStation, refreshAssessment, refreshAssessmentDelivery, fetchRefreshCooldown, markRefreshCooldown, fetchAssessmentTeams, saveAssessmentTeams } from '../api/dashboards.js';
 
 
 const teams = ref([]);
 const teamSel = ref('__all__');
+/* 展示站点配置：teamsCfg = 已配置展示的站点 id；未配置任何站点时回落全部（teamOptions 兜底）。 */
+const teamsCfg = ref([]);
+const teamOptions = computed(() =>
+  teams.value.filter((t) => !teamsCfg.value.length || teamsCfg.value.includes(String(t.id)))
+);
+/* 站点设置弹窗状态 */
+const cfgVisible = ref(false);
+const cfgSel = ref([]);
+const cfgSaving = ref(false);
+function openCfg() {
+  cfgSel.value = [...teamsCfg.value];
+  cfgVisible.value = true;
+}
+async function saveCfg() {
+  cfgSaving.value = true;
+  try {
+    const res = await saveAssessmentTeams(cfgSel.value);
+    if (res && res.ok) {
+      teamsCfg.value = res.teams || [...cfgSel.value];
+      ElMessage.success('站点配置已保存');
+      cfgVisible.value = false;
+      teamSel.value = '__all__';   // 重置到全部站点，避免选中项被移出后下拉空白
+      load();
+    } else {
+      ElMessage.error((res && res.error) || '保存失败');
+    }
+  } catch (e) {
+    ElMessage.error(e.message || '保存失败');
+  } finally {
+    cfgSaving.value = false;
+  }
+}
 const rows = ref([]);          // 有数据的站点行（已过滤 need_refresh）
 const loading = ref(false);
 const loaded = ref(false);
@@ -421,7 +466,7 @@ async function load(silent = false, fetch = false, manual = false) {
   loading.value = true;
   try {
     const ids = teamSel.value === '__all__'
-      ? teams.value.map((t) => t.id)
+      ? teamOptions.value.map((t) => t.id)
       : [teamSel.value];
     attempted.value = ids.length;
     // 取数触发条件（fetch）：手动刷新（manual=true）与自动轮询都要「取数 + 计算」；
@@ -478,6 +523,11 @@ async function load(silent = false, fetch = false, manual = false) {
 
 onMounted(async () => {
   try { const t = await fetchTeams(); teams.value = (t && t.teams) || []; } catch (e) { /* ignore */ }
+  // 考核看板「展示站点」配置：取已配置的展示站点 id（未配置则回落全部，teamOptions 兜底）
+  try {
+    const tc = await fetchAssessmentTeams();
+    teamsCfg.value = (tc && tc.teams) || [];
+  } catch (e) { /* ignore：取不到配置则回落全部站点 */ }
   // 页面加载时从后端恢复手动刷新冷却剩余（后端持久化，刷新页面不失效）
   try {
     const s = await fetchRefreshCooldown();

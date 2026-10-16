@@ -151,6 +151,15 @@ export function fetchAssessmentStation({ team, start, end } = {}) {
   if (end) p.push('end=' + enc(end));
   return request('/assessment/station' + (p.length ? '?' + p.join('&') : ''));
 }
+/* 考核看板「展示站点」配置（/assessment/teams）：GET 返回
+   {teams: 已配置展示站点id, all: 全部可选站点{id,name}}；POST 保存展示站点。
+   未配置任何站点时回落全部站点。仅控制前端展示，不影响考核计算（计算仍按 team 全量可用）。 */
+export function fetchAssessmentTeams() {
+  return request('/assessment/teams');
+}
+export function saveAssessmentTeams(teams) {
+  return request('/assessment/teams', j({ teams }));
+}
 
 /* ============ 配送超时看板（独立命名空间 /delivery-timeout） ============ */
 export function fetchDeliveryTimeout({ team } = {}) {

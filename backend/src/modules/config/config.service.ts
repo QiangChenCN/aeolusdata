@@ -563,6 +563,59 @@ export class ConfigService {
     }
   }
 
+  // ============================================================ assessment 展示站点
+  // 考核看板「展示站点」配置：与 attend_period_teams 同构（独立文件，避免与时段出勤/配送超时混用）。
+  // 仅控制前端**展示**哪些站点；考核计算逻辑（Python 按 team 实时算）不受影响、仍全量可用。
+  // 落盘于 python/dashboard/standard/assessment_teams.json（与 attend-period 同目录约定）。
+  private asGetTeams(): string[] {
+    const obj = this.readJson(this.stdPath('assessment_teams.json'));
+    const ids = obj && Array.isArray(obj.teams) ? obj.teams : null;
+    if (!ids) return readKnownTeams().map((t) => t.id);
+    const out = ids.map((x: unknown) => String(x).trim()).filter((x: string) => x);
+    return out.length ? out : readKnownTeams().map((t) => t.id);
+  }
+  private asSetTeams(ids: unknown): { ok: boolean; teams: string[]; error: string | null } {
+    if (!Array.isArray(ids) || !ids.length) {
+      return { ok: false, teams: this.asGetTeams(), error: '站点不能为空' };
+    }
+    const clean: string[] = [];
+    const seen = new Set<string>();
+    for (const x of ids) {
+      const s = String(x).trim();
+      if (!s || seen.has(s)) continue;
+      seen.add(s);
+      clean.push(s);
+    }
+    if (!clean.length) {
+      return { ok: false, teams: this.asGetTeams(), error: '站点不能为空' };
+    }
+    try {
+      this.atomicWrite(this.stdPath('assessment_teams.json'), { teams: clean });
+      return { ok: true, teams: clean, error: null };
+    } catch (e) {
+      return { ok: false, teams: this.asGetTeams(), error: `写入失败：${(e as Error).message}` };
+    }
+  }
+  async asTeamsGet(allowed: Allowed): Promise<unknown> {
+    const payload = await this.teams.fetchAll();
+    const list = (payload.teams && payload.teams.length ? payload.teams : payload.fallback) || [];
+    const allRefs = list
+      .filter((t) => allowed === null || allowed.has(String(t.id)))
+      .map((t) => ({ id: String(t.id), name: String(t.name) }));
+    const teams = filterIds(this.asGetTeams(), allowed);
+    return {
+      ok: payload.ok === false ? false : true,
+      teams,
+      all: allRefs,
+      source: payload.source,
+      error: payload.error || null,
+    };
+  }
+  asTeamsPost(body: any): unknown {
+    const r = this.asSetTeams(body && body.teams);
+    return { ok: r.ok, teams: r.teams, error: r.error };
+  }
+
   // ===================================================================== 对外分发
   /** 是否为「配置端点」（应归 Nest 处理，而非转发 Python）。 */
   isConfigPath(urlPath: string): boolean {
@@ -572,6 +625,7 @@ export class ConfigService {
       '/api/attend-period/config',
       '/api/attend-period/teams',
       '/api/delivery-timeout/teams',
+      '/api/assessment/teams',
     ].includes(urlPath);
   }
 
@@ -598,6 +652,8 @@ export class ConfigService {
         return method === 'GET' ? this.periodConfigGet(q('month')) : this.periodConfigPost(body);
       case '/api/attend-period/teams':
         return method === 'GET' ? this.apTeamsGet(allowed) : this.apTeamsPost(body);
+      case '/api/assessment/teams':
+        return method === 'GET' ? this.asTeamsGet(allowed) : this.asTeamsPost(body);
       case '/api/service-quality/targets':
         return method === 'GET'
           ? this.serviceQualityTargetsGet(q('month'))
