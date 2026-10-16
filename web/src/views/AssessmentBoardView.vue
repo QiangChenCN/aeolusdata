@@ -38,10 +38,22 @@
 
     <!-- KPI 汇总卡片（随选中站点聚合，全部站点=各站求和后重算比率） -->
     <div v-if="cards.length" class="dv-cards">
-        <div v-for="c in cards" :key="c.label" class="dv-card">
-          <span class="dv-card-num" :class="c.cls">{{ c.value }}</span>
-          <span class="dv-card-label">{{ c.label }}</span>
-        </div>
+        <el-card
+          v-for="c in cards"
+          :key="c.label"
+          class="dv-card"
+          :class="c.cls"
+          shadow="never"
+        >
+          <el-statistic
+            :title="c.label"
+            :value="c.value"
+            :formatter="(v) => cardFmt(v, c)"
+            :suffix="c.none ? '' : c.suffix"
+          />
+          <!-- 环比预留位：后续在 cards 里补 delta（如「较上期 +0.3%」）字段后，
+               在这里 el-statistic 下方加一行 <span class="dv-card-delta"> 即可 -->
+        </el-card>
       </div>
 
       <!-- 站点明细对比表（列可排序，默认按推配送单量降序） -->
@@ -385,19 +397,42 @@ const agg = computed(() => {
   };
 });
 
-const cards = computed(() => [
-  { label: '推配送单量', value: agg.value.pushed },
-  { label: '配送完成单', value: agg.value.completed },
-  { label: 'T8超时单', value: agg.value.t8 },
-  { label: 'T8准时率', value: fmtRate(agg.value.ontime, 2), cls: rateClsUp(agg.value.ontime) },
-  { label: '投诉', value: agg.value.complaint },
-  { label: '差评', value: agg.value.bad },
-  { label: '索赔', value: agg.value.claim },
-  { label: '物流责取消', value: agg.value.cancel },
-  { label: '提前点送达', value: agg.value.early },
-  { label: '不满意率', value: fmtRate(agg.value.unsat), cls: rateClsDown(agg.value.unsat) },
-  { label: '物流妥投率', value: fmtRate(agg.value.fulfill), cls: rateClsUp(agg.value.fulfill) },
-]);
+/* KPI 卡片数据（供 el-statistic 渲染）。
+   el-statistic 的 value 只接受 Number，故无数据时传 0、由 formatter 输出「—」（none 标记）；
+   digits>0 表示比率卡（suffix 带 %，最多 digits 位小数）；digits=0 为计数卡。 */
+const cards = computed(() => {
+  const mk = (label, raw, digits, cls) => ({
+    label,
+    value: raw == null ? 0 : raw,
+    none: raw == null,
+    digits,
+    suffix: digits > 0 ? '%' : '',
+    cls: cls || '',
+  });
+  return [
+    mk('推配送单量', agg.value.pushed, 0),
+    mk('配送完成单', agg.value.completed, 0),
+    mk('T8超时单', agg.value.t8, 0),
+    mk('T8准时率', agg.value.ontime, 2, rateClsUp(agg.value.ontime)),
+    mk('投诉', agg.value.complaint, 0),
+    mk('差评', agg.value.bad, 0),
+    mk('索赔', agg.value.claim, 0),
+    mk('物流责取消', agg.value.cancel, 0),
+    mk('提前点送达', agg.value.early, 0),
+    mk('不满意率', agg.value.unsat, 3, rateClsDown(agg.value.unsat)),
+    mk('物流妥投率', agg.value.fulfill, 3, rateClsUp(agg.value.fulfill)),
+  ];
+});
+
+/* 卡片数值格式化（el-statistic 的 formatter）：接管 EP 默认的 padEnd 补零逻辑，
+   口径与表格列完全一致 —— 无数据显示「—」、比率最多 digits 位小数、不足不补零。
+   注意 EP 给 formatter 只传 value，位数等上下文由卡片对象 c 带上。 */
+function cardFmt(v, c) {
+  if (c.none) return '—';
+  const n = Number(v);
+  if (!Number.isFinite(n)) return '—';
+  return c.digits > 0 ? String(Number(n.toFixed(c.digits))) : String(n);
+}
 
 /* 比率列排序：null 永远排最后（无论升/降序），便于把「暂无数据」沉底 */
 function rateSort(key) {
@@ -626,15 +661,21 @@ onUnmounted(() => { stopPoll(); stopCooldownTick(); });
 .dv-hint { margin-bottom: var(--sp-12); }
 
 
-/* ── KPI 汇总卡片（对齐时段出勤看板的卡片风格）──── */
+/* ── KPI 汇总卡片（el-card + el-statistic 统计卡片）──── */
 .dv-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: var(--sp-12); margin-bottom: var(--sp-16); }
-.dv-card { background: var(--el-bg-color); border: 1px solid var(--el-border-color-lighter); border-radius: var(--el-border-radius-base); padding: var(--sp-16); display: flex; flex-direction: column; gap: 4px; }
-.dv-card-num { font-size: 24px; font-weight: var(--fw-bold); color: var(--el-color-primary); }
-.dv-card-label { font-size: var(--el-font-size-extra-small); color: var(--el-text-color-secondary); }
-.dv-card-num.is-ok { color: var(--ok, #2e7d32); }
-.dv-card-num.is-warn { color: var(--warn, #ed6c02); }
-.dv-card-num.is-bad { color: var(--danger, #d32f2f); }
-.dv-card-num.is-none { color: var(--el-text-color-secondary); }
+/* el-card 自带边框/圆角/背景（与设计令牌一致），仅去掉默认阴影、把默认 20px 内边距压回 16px */
+.dv-card :deep(.el-card__body) { padding: var(--sp-16); }
+/* 标题（标签）在上、数值在下：EP 默认顺序，也便于后续在数值下方加「环比」行 */
+.dv-card :deep(.el-statistic__head) { font-size: var(--el-font-size-extra-small); color: var(--el-text-color-secondary); }
+.dv-card :deep(.el-statistic__content) { font-size: 24px; font-weight: var(--fw-bold); color: var(--el-color-primary); line-height: 1.2; }
+.dv-card.is-ok :deep(.el-statistic__number) { color: var(--ok, #2e7d32); }
+.dv-card.is-warn :deep(.el-statistic__number) { color: var(--warn, #ed6c02); }
+.dv-card.is-bad :deep(.el-statistic__number) { color: var(--danger, #d32f2f); }
+.dv-card.is-none :deep(.el-statistic__number) { color: var(--el-text-color-secondary); }
+/* 环比行（后续启用）：数值下方一行小字，升绿降红 */
+.dv-card-delta { display: block; margin-top: 4px; font-size: var(--el-font-size-extra-small); font-weight: var(--fw-normal); color: var(--el-text-color-secondary); }
+.dv-card-delta.is-up { color: var(--danger, #d32f2f); }
+.dv-card-delta.is-down { color: var(--ok, #2e7d32); }
 
 /* ── 比率单元格 ──────────────────────────────── */
 .rt { font-weight: var(--fw-bold); }
