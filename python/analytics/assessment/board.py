@@ -226,6 +226,16 @@ def weather_key(level_label):
     return _WEATHER_KEY_MAP.get(level_label, "normal")
 
 
+def _tiers_or_empty(cell):
+    """目标格 → {t0,t60,t100}；非 dict 或任一端缺失 → {}（调用方按「未配置」处理）。"""
+    if not isinstance(cell, dict):
+        return {}
+    t0, t60, t100 = cell.get("t0"), cell.get("t60"), cell.get("t100")
+    if t0 is None or t60 is None or t100 is None:
+        return {}
+    return {"t0": t0, "t60": t60, "t100": t100}
+
+
 def _compute_scores(result, orders, date):
     """按当天日型 × 天气取对应档位，用配置的 t0/t60/t100 算各指标 0~100 得分与总分。
 
@@ -248,6 +258,16 @@ def _compute_scores(result, orders, date):
     result["fulfillment_score"] = scores.get("delivery_rate")
     result["unsat_score"] = scores.get("unsat_rate")
     result["compound_overtime_score"] = scores.get("compound_overtime")
+    # 同时回出各指标**实际命中的三档目标线**（该日型 × 该天气档位下的 t0/t60/t100），
+    # 供前端按「目标线」直接比较着色（≥t100 绿 / ≥t60 橙 / >t0 红 / ≤t0 深红），
+    # 不经过得分公式——得分口径若调整，着色不受影响。阈值不齐 → {}（前端按未配置处理）。
+    for out_key, metric in (
+        ("t8_ontime_tiers", "ontime_rate"),
+        ("fulfillment_tiers", "delivery_rate"),
+        ("unsat_tiers", "unsat_rate"),
+        ("compound_tiers", "compound_overtime"),
+    ):
+        result[out_key] = _tiers_or_empty(SQ.metric_tiers(settings, metric, date_type, wx))
     # 其余 3 项（电联率/IM回复率/新专送拜访，合计 15 分）看板不考核、按满分计入。
     _total = scores.get("total_score")
     if _total is not None:

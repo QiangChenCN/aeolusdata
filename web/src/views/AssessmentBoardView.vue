@@ -124,22 +124,22 @@
         <el-table-column label="达成率" className="dv-grp-rate">
           <el-table-column label="T8准时率" align="center" sortable :sort-method="rateSort('t8_ontime_rate')" className="dv-g-rate">
             <template #default="{ row }">
-              <span class="rt" :class="rateClsUp(row.t8_ontime_rate)">{{ fmtRate(row.t8_ontime_rate, 2) }}</span>
+              <span class="rt" :class="targetCls(row.t8_ontime_rate, row.t8_ontime_tiers, 'pos')">{{ fmtRate(row.t8_ontime_rate, 2) }}</span>
             </template>
           </el-table-column>
           <el-table-column label="物流妥投率" align="center" sortable :sort-method="rateSort('fulfillment_rate')" className="dv-g-rate">
             <template #default="{ row }">
-              <span class="rt" :class="rateClsUp(row.fulfillment_rate)">{{ fmtRate(row.fulfillment_rate) }}</span>
+              <span class="rt" :class="targetCls(row.fulfillment_rate, row.fulfillment_tiers, 'pos')">{{ fmtRate(row.fulfillment_rate) }}</span>
             </template>
           </el-table-column>
           <el-table-column label="不满意率" align="center" sortable :sort-method="rateSort('unsat_rate')" className="dv-g-rate">
             <template #default="{ row }">
-              <span class="rt" :class="rateClsDown(row.unsat_rate)">{{ fmtRate(row.unsat_rate) }}</span>
+              <span class="rt" :class="targetCls(row.unsat_rate, row.unsat_tiers, 'neg')">{{ fmtRate(row.unsat_rate) }}</span>
             </template>
           </el-table-column>
           <el-table-column label="复合超时时长(秒)" align="center" sortable :sort-method="rateSort('avg_compound_overtime_sec')" className="dv-g-rate">
             <template #default="{ row }">
-              <el-text :class="['rt', { 'dv-zero': num(row.avg_compound_overtime_sec) === 0 }]">{{ fmtMin(row.avg_compound_overtime_sec) }}</el-text>
+              <el-text :class="['rt', targetCls(row.avg_compound_overtime_sec, row.compound_tiers, 'neg'), { 'dv-zero': num(row.avg_compound_overtime_sec) === 0 }]">{{ fmtMin(row.avg_compound_overtime_sec) }}</el-text>
             </template>
           </el-table-column>
         </el-table-column>
@@ -219,7 +219,7 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue';
 import { ElMessage } from 'element-plus';
 
-import { fetchTeams, fetchAssessmentStation, refreshAssessment, refreshAssessmentDelivery, fetchRefreshCooldown, markRefreshCooldown, fetchAssessmentTeams, saveAssessmentTeams } from '../api/dashboards.js';
+import { fetchTeams, fetchAssessmentStation, refreshAssessment, refreshAssessmentDelivery, fetchRefreshCooldown, markRefreshCooldown, fetchAssessmentTeams, saveAssessmentTeams, fetchServiceQualityTargets } from '../api/dashboards.js';
 import { useRouter } from 'vue-router';
 
 const router = useRouter();
@@ -403,6 +403,12 @@ const agg = computed(() => {
    delta / deltaCls 为「较昨日」环比行（当前数值以「-」占位，后续接入昨日数据后给出真实值，
    颜色由调用方按指标语义传 is-good / is-bad，如准时率上升传 is-good）。 */
 const cards = computed(() => {
+  // 分层目标：与表格列同源 —— 按今日日型 × 所展示站点最严天气档位取 t0/t60/t100，直接比较。
+  // 目标配置未拉到/未配置时 tiers 为空，卡片按 is-none 灰色显示（不臆断好坏）。
+  const dateType = resolveDateType(todayYmd());
+  const weather = worstWeatherKey();
+  const clsOf = (metric, value, direction) =>
+    targetCls(value, metricTiers(metric, dateType, weather), direction);
   const mk = (label, raw, digits, cls, delta = '') => ({
     label,
     value: raw == null ? 0 : raw,
@@ -417,14 +423,14 @@ const cards = computed(() => {
     mk('推配送单量', agg.value.pushed, 0, '', '较昨日 -'),
     mk('配送完成单', agg.value.completed, 0, '', '较昨日 -'),
     mk('T8超时单', agg.value.t8, 0),
-    mk('T8准时率', agg.value.ontime, 2, rateClsUp(agg.value.ontime), '较昨日 -'),
+    mk('T8准时率', agg.value.ontime, 2, clsOf('ontime_rate', agg.value.ontime, 'pos'), '较昨日 -'),
     mk('投诉', agg.value.complaint, 0),
     mk('差评', agg.value.bad, 0),
     mk('索赔', agg.value.claim, 0),
     mk('物流责取消', agg.value.cancel, 0),
     mk('提前点送达', agg.value.early, 0),
-    mk('不满意率', agg.value.unsat, 3, rateClsDown(agg.value.unsat)),
-    mk('物流妥投率', agg.value.fulfill, 3, rateClsUp(agg.value.fulfill)),
+    mk('不满意率', agg.value.unsat, 3, clsOf('unsat_rate', agg.value.unsat, 'neg')),
+    mk('物流妥投率', agg.value.fulfill, 3, clsOf('delivery_rate', agg.value.fulfill, 'pos')),
   ];
 });
 
@@ -549,10 +555,67 @@ const teamNameMinWidth = computed(() => {
   }
   return Math.max(120, Math.ceil(max) + 28);
 });
-/* 越高越好的比率着色（T8准时率 / 物流妥投率） */
-function rateClsUp(v) { if (v == null) return 'is-none'; if (v >= 95) return 'is-ok'; if (v >= 90) return 'is-warn'; return 'is-bad'; }
-/* 越低越好的比率着色（不满意率） */
-function rateClsDown(v) { if (v == null) return 'is-none'; if (v <= 2) return 'is-ok'; if (v <= 5) return 'is-warn'; return 'is-bad'; }
+/* 达成列/卡片着色：**直接与「分层目标线」比较**(不经过得分公式)。
+   目标线 = 考核设置里该指标在「今日日型 × 天气档位」下的 t0/t60/t100：
+   · 达到 t100 满分目标线        → 绿 is-ok
+   · 达到 t60 及格线、未到 t100   → 橙 is-warn
+   · 超过 t0 零分线、未到 t60     → 红 is-bad
+   · 未达 t0 零分线               → 深红 is-deep
+   · 目标未配置 / 无数据          → 灰 is-none(不着色，不臆断好坏)
+   direction: 'pos' 越高越好(准时率/妥投率，t0<t60<t100)；'neg' 越低越好(不满意率/复合超时，t0>t60>t100)。
+   取代原先按固定阈值(95/90、2/5)着色的口径：目标随月份/日型/天气变，固定阈值会给出错误信号。 */
+function targetCls(value, tiers, direction) {
+  if (value == null || !tiers) return 'is-none';
+  const t0 = Number(tiers.t0), t60 = Number(tiers.t60), t100 = Number(tiers.t100);
+  if (![t0, t60, t100].every(Number.isFinite)) return 'is-none';
+  const v = Number(value);
+  if (!Number.isFinite(v)) return 'is-none';
+  if (direction === 'pos') {
+    if (v >= t100) return 'is-ok';
+    if (v >= t60) return 'is-warn';
+    return v > t0 ? 'is-bad' : 'is-deep';
+  }
+  if (v <= t100) return 'is-ok';
+  if (v <= t60) return 'is-warn';
+  return v < t0 ? 'is-bad' : 'is-deep';
+}
+
+/* ── 分层目标（考核设置：日期类型 × 天气）前端取数 ───────────────────────────
+   表格列用后端随行返回的命中目标线(row.*_tiers)；顶部卡片是全站/多站聚合值，
+   后端不按聚合算目标，故前端持有一份目标配置自行取格比较。
+   口径与 Python 侧对应（board._WEATHER_KEY_MAP / resolve_date_type），改一边必须同步改另一边。 */
+const sqTargets = ref(null);      // targets[metric][date_type][weather] = {t0,t60,t100}
+const sqDateOverrides = ref({});  // 特殊日期覆盖表 { 'YYYY-MM-DD': 'weekday'|'weekend' }
+/* 看板天气档位（中文标签）→ 配置 weather 键（与 board.py _WEATHER_KEY_MAP 一致） */
+const WEATHER_KEY_MAP = { 正常天: 'normal', 轻微恶天: 'light', 一般恶天: 'moderate', 严重恶天: 'severe' };
+/* 天气档位严重度升序（聚合时取所展示站点中最严档位） */
+const WEATHER_SEVERITY = ['normal', 'light', 'moderate', 'severe'];
+/* 日型：周六/周日 → weekend，其余 weekday；再套特殊日期覆盖表（与后端 resolve_date_type 一致） */
+function resolveDateType(dateStr) {
+  const ov = sqDateOverrides.value[dateStr];
+  if (ov === 'weekday' || ov === 'weekend') return ov;
+  const d = new Date(`${dateStr}T00:00:00Z`);
+  return d.getUTCDay() >= 6 ? 'weekend' : 'weekday';
+}
+/* 取某指标在 (日型, 天气) 下的三档阈值；缺维度回落代表格（与后端 metric_tiers 一致） */
+function metricTiers(metric, dateType, weather) {
+  const m = sqTargets.value && sqTargets.value[metric];
+  if (!m) return null;
+  const dt = m[dateType] || m.weekday;
+  if (!dt) return null;
+  return dt[weather] || dt.normal || null;
+}
+/* 聚合卡片所用天气档位：所展示站点中的最严档位。
+   聚合值混合了各站订单，只要有站点处于更差天气，就按更宽松的目标评，
+   避免把恶天订单按正常天目标过严评判（各站同城同日，通常档位一致）。 */
+function worstWeatherKey() {
+  let w = 'normal';
+  for (const r of rows.value) {
+    const k = WEATHER_KEY_MAP[String(r.weather_level || '')];
+    if (k && WEATHER_SEVERITY.indexOf(k) > WEATHER_SEVERITY.indexOf(w)) w = k;
+  }
+  return w;
+}
 
 function todayYmd() {
   return new Date(Date.now() + 8 * 3600 * 1000).toISOString().slice(0, 10);
@@ -640,6 +703,15 @@ onMounted(async () => {
     const tc = await fetchAssessmentTeams();
     teamsCfg.value = (tc && tc.teams) || [];
   } catch (e) { /* ignore：取不到配置则回落全部站点 */ }
+  // 分层目标配置（考核设置：日期类型 × 天气的三档阈值）：供顶部卡片按目标算分着色。
+  // 取不到时卡片得分为 null → 灰色，不影响数值展示；后端保存设置后需刷新页面才会拿到新阈值。
+  try {
+    const sq = await fetchServiceQualityTargets(todayYmd().slice(0, 7));
+    if (sq && sq.ok) {
+      sqTargets.value = sq.targets || null;
+      sqDateOverrides.value = sq.date_overrides || {};
+    }
+  } catch (e) { /* ignore：目标配置不可用时卡片不着色 */ }
   // 页面加载时从后端恢复手动刷新冷却剩余（后端持久化，刷新页面不失效）
   try {
     const s = await fetchRefreshCooldown();
@@ -679,6 +751,7 @@ onUnmounted(() => { stopPoll(); stopCooldownTick(); });
 .dv-card.is-warn :deep(.el-statistic__content) { color: var(--warn, #ed6c02); }
 .dv-card.is-bad :deep(.el-statistic__content) { color: var(--danger, #d32f2f); }
 .dv-card.is-none :deep(.el-statistic__content) { color: var(--el-text-color-secondary); }
+.dv-card.is-deep :deep(.el-statistic__content) { color: var(--danger-deep, #b71c1c); }
 /* 环比行（较昨日）：数值下方一行小字；颜色由调用方按指标语义传 is-good / is-bad */
 .dv-card-delta { display: block; margin-top: 4px; font-size: var(--el-font-size-extra-small); font-weight: var(--fw-normal); color: var(--el-text-color-secondary); }
 .dv-card-delta.is-good { color: var(--ok, #2e7d32); }
@@ -723,6 +796,7 @@ onUnmounted(() => { stopPoll(); stopCooldownTick(); });
 .rt.is-warn { color: var(--warn, #ed6c02); }
 .rt.is-bad { color: var(--danger, #d32f2f); }
 .rt.is-none { color: var(--el-text-color-secondary); font-weight: var(--fw-normal); }
+.rt.is-deep { color: var(--danger-deep, #b71c1c); }
 
 .dv-table { border-radius: var(--el-border-radius-base); width: 100%; }
 /* 表格包裹层：占满 .dv 剩余高度，让 el-table(height=100%) 底部贴合视口 */
