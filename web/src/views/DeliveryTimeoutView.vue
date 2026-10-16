@@ -232,8 +232,8 @@ import { computed, onMounted, onUnmounted, ref, watch, nextTick } from 'vue';
 import { Refresh, ArrowLeft, Setting } from '@element-plus/icons-vue';
 import { ElMessage } from 'element-plus';
 import {
-  fetchTeams, fetchAssessmentTimeout, refreshDeliveryTimeout,
-  fetchTimeoutTeams, saveTimeoutTeams,
+  fetchTeams, fetchDeliveryTimeout, refreshDeliveryTimeout,
+  fetchDeliveryTimeoutTeams, saveDeliveryTimeoutTeams,
 } from '../api/dashboards.js';
 
 const teams = ref([]);
@@ -254,7 +254,7 @@ function openCfg() {
 async function saveCfg() {
   cfgSaving.value = true;
   try {
-    const res = await saveTimeoutTeams(cfgSel.value);
+    const res = await saveDeliveryTimeoutTeams(cfgSel.value);
     if (res && res.ok) {
       teamsCfg.value = res.teams || [...cfgSel.value];
       ElMessage.success('站点配置已保存');
@@ -519,7 +519,7 @@ async function load(silent = false) {
     attempted.value = ids.length;
     fetchedAt.value = '';
     const results = await Promise.all(
-      ids.map((id) => fetchAssessmentTimeout({ team: id }).catch((e) => ({ __err: e }))),
+      ids.map((id) => fetchDeliveryTimeout({ team: id }).catch((e) => ({ __err: e }))),
     );
     const good = [];
     const errs = [];
@@ -617,7 +617,7 @@ function onTeamChange() {
 onMounted(async () => {
   try { const t = await fetchTeams(); teams.value = (t && t.teams) || []; } catch (e) { /* ignore */ }
   try {
-    const tc = await fetchTimeoutTeams();
+    const tc = await fetchDeliveryTimeoutTeams();
     teamsCfg.value = (tc && tc.teams) || [];
   } catch (e) { /* ignore：取不到配置则回落全部站点 */ }
   await load();

@@ -22,7 +22,6 @@ if PY_HOME and PY_HOME not in _sys.path:
 
 子模块：
   · board.py        站点概览指标计算（推配送单量 / 配送完成单 / T8超时单 / T8准时率 + 违规派生）
-  · timeout.py      配送超时看板（T8 超时单 + 占比 + 配送员明细）
   · compound.py     复合超时（配送时长构成）
   · violations.py   违规处罚明细读侧 + 口径统计（仅读自有命名空间，零 HTTP）
   · result_store.py 计算结果持久化（backend/data/results/，文件名加 assessment_ 前缀，已彻底迁出 assessment/ 命名空间）

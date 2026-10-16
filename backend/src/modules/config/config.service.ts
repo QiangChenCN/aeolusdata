@@ -135,6 +135,11 @@ export class ConfigService {
     }
   }
 
+  /** 读 python/dashboard/standard/<name>（独立看板配置共享此存储约定）。 */
+  readStdJson(name: string): any { return this.readJson(this.stdPath(name)); }
+  /** 原子写 python/dashboard/standard/<name>（与内部落盘同约定）。 */
+  writeStdJson(name: string, obj: unknown): void { this.atomicWrite(this.stdPath(name), obj); }
+
   // ============================================================ 标准达成设置（按月份 × 站点）
   // 数据模型：standard_grade_settings.json =
   //   { schema_version, updated_at, updated_by,
@@ -558,37 +563,6 @@ export class ConfigService {
     }
   }
 
-  // ============================================================ delivery_timeout_teams
-  private dtGetTeams(): string[] {
-    const obj = this.readJson(this.stdPath('delivery_timeout_teams.json'));
-    const ids = obj && Array.isArray(obj.teams) ? obj.teams : null;
-    if (!ids) return readKnownTeams().map((t) => t.id);
-    const out = ids.map((x: unknown) => String(x).trim()).filter((x: string) => x);
-    return out.length ? out : readKnownTeams().map((t) => t.id);
-  }
-  private dtSetTeams(ids: unknown): { ok: boolean; teams: string[]; error: string | null } {
-    if (!Array.isArray(ids) || !ids.length) {
-      return { ok: false, teams: this.dtGetTeams(), error: '站点不能为空' };
-    }
-    const clean: string[] = [];
-    const seen = new Set<string>();
-    for (const x of ids) {
-      const s = String(x).trim();
-      if (!s || seen.has(s)) continue;
-      seen.add(s);
-      clean.push(s);
-    }
-    if (!clean.length) {
-      return { ok: false, teams: this.dtGetTeams(), error: '站点不能为空' };
-    }
-    try {
-      this.atomicWrite(this.stdPath('delivery_timeout_teams.json'), { teams: clean });
-      return { ok: true, teams: clean, error: null };
-    } catch (e) {
-      return { ok: false, teams: this.dtGetTeams(), error: `写入失败：${(e as Error).message}` };
-    }
-  }
-
   // ===================================================================== 对外分发
   /** 是否为「配置端点」（应归 Nest 处理，而非转发 Python）。 */
   isConfigPath(urlPath: string): boolean {
@@ -597,7 +571,7 @@ export class ConfigService {
       '/api/service-quality/targets',
       '/api/attend-period/config',
       '/api/attend-period/teams',
-      '/api/assessment/timeout/teams',
+      '/api/delivery-timeout/teams',
     ].includes(urlPath);
   }
 
@@ -624,8 +598,6 @@ export class ConfigService {
         return method === 'GET' ? this.periodConfigGet(q('month')) : this.periodConfigPost(body);
       case '/api/attend-period/teams':
         return method === 'GET' ? this.apTeamsGet(allowed) : this.apTeamsPost(body);
-      case '/api/assessment/timeout/teams':
-        return method === 'GET' ? this.dtTeamsGet(allowed) : this.dtTeamsPost(body);
       case '/api/service-quality/targets':
         return method === 'GET'
           ? this.serviceQualityTargetsGet(q('month'))
@@ -664,29 +636,6 @@ export class ConfigService {
   }
   apTeamsPost(body: any): unknown {
     const r = this.aptSetTeams(body && body.teams);
-    return { ok: r.ok, teams: r.teams, error: r.error };
-  }
-
-  // ============================================================ delivery_timeout_teams
-  // 配送超时看板「展示站点」配置：与 attend_period_teams 同构，落盘到
-  // python/dashboard/standard/delivery_timeout_teams.json（前端按此过滤站点下拉与「全部站点」聚合）。
-  async dtTeamsGet(allowed: Allowed): Promise<unknown> {
-    const payload = await this.teams.fetchAll();
-    const list = (payload.teams && payload.teams.length ? payload.teams : payload.fallback) || [];
-    const allRefs = list
-      .filter((t) => allowed === null || allowed.has(String(t.id)))
-      .map((t) => ({ id: String(t.id), name: String(t.name) }));
-    const teams = filterIds(this.dtGetTeams(), allowed);
-    return {
-      ok: payload.ok === false ? false : true,
-      teams,
-      all: allRefs,
-      source: payload.source,
-      error: payload.error || null,
-    };
-  }
-  dtTeamsPost(body: any): unknown {
-    const r = this.dtSetTeams(body && body.teams);
     return { ok: r.ok, teams: r.teams, error: r.error };
   }
 

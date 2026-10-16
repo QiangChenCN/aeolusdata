@@ -152,11 +152,11 @@ export function fetchAssessmentStation({ team, start, end } = {}) {
   return request('/assessment/station' + (p.length ? '?' + p.join('&') : ''));
 }
 
-/* ============ 配送超时看板 ============ */
-export function fetchAssessmentTimeout({ team } = {}) {
+/* ============ 配送超时看板（独立命名空间 /delivery-timeout） ============ */
+export function fetchDeliveryTimeout({ team } = {}) {
   const p = [];
   if (team) p.push('team=' + enc(team));
-  return request('/assessment/timeout' + (p.length ? '?' + p.join('&') : ''));
+  return request('/delivery-timeout/data' + (p.length ? '?' + p.join('&') : ''));
 }
 
 /* 考核看板自有刷新：独立拉取违规处罚明细落盘（与标准达成取数解耦，见 Nest AssessmentViolationFetchService） */
@@ -182,13 +182,14 @@ export function markRefreshCooldown() {
 export function refreshDeliveryTimeout(body = {}) {
   return request('/delivery-timeout/refresh', { ...j(body), timeout: 120000 });
 }
-/* 配送超时看板「展示站点」配置：GET 返回 {teams: 已配置展示站点id, all: 全部可选站点{id,name}}；
-   POST 保存展示站点（config:write）。未配置任何站点时回落全部站点。 */
-export function fetchTimeoutTeams() {
-  return request('/assessment/timeout/teams');
+/* 配送超时看板「展示站点」配置（独立命名空间 /delivery-timeout/teams）：GET 返回
+   {teams: 已配置展示站点id, all: 全部可选站点{id,name}}；POST 保存展示站点（config:write）。
+   未配置任何站点时回落全部站点。 */
+export function fetchDeliveryTimeoutTeams() {
+  return request('/delivery-timeout/teams');
 }
-export function saveTimeoutTeams(teams) {
-  return request('/assessment/timeout/teams', j({ teams }));
+export function saveDeliveryTimeoutTeams(teams) {
+  return request('/delivery-timeout/teams', j({ teams }));
 }
 
 /* ============ 系统设置（Admin） ============ */

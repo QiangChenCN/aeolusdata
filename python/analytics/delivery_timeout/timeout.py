@@ -52,7 +52,6 @@ if PY_HOME and PY_HOME not in _sys.path:
 import datetime
 from analytics import cache as CACHE
 from analytics import order_rules as OR
-from analytics.assessment import board as RTB
 from analytics.assessment import delivery_source as DS
 from analytics.assessment import compound as COMP
 from analytics.assessment import violations as VIOL

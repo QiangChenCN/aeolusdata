@@ -1,11 +1,10 @@
-name: Deploy Backend (NestJS)
+name: Deploy (Backend + Web + Compute)
 
-# 主流部署方式：代码推到 main 后，由 GitHub Actions 负责
-#   1. 安装依赖并编译（npm ci && npm run build）→ 产出 dist/
-#   2. 仅把 dist/ rsync 到 ECS（构建产物不进 git 仓库）
-#   3. 重启后端 systemd 服务
-# 服务器不再安装 jest/ts-jest/typescript/@nestjs/cli 等 devDependencies，
-# 只通过 `npm ci --omit=dev` 装运行依赖（见 deploy/update.sh）。
+# 主流部署方式：代码推到 main 后，由 GitHub Actions 负责全量部署
+#   · Backend (NestJS 8787)：npm ci + build → rsync dist/ → restart aeolus-backend
+#   · Web (前端静态)：npm ci + build → rsync web/dist/（后端 main.ts 托管，无需重启）
+#   · Compute (Python 8900)：rsync 源码（保留服务器本地数据）→ pip 同步依赖 → restart aeolus-compute
+# 构建产物（dist/）与 .venv 不进 git 仓库，均在各自步骤现场产出 / 复用。
 #
 # 需要在仓库 Settings → Secrets and variables → Actions 中配置：
 #   ECS_HOST      服务器 IP 或域名
@@ -17,6 +16,9 @@ on:
     branches: [main]
     paths:
       - 'backend/**'
+      - 'web/**'
+      - 'python/**'
+      - 'deploy/**'
       - '.github/workflows/**'
   workflow_dispatch: {}
 
@@ -32,15 +34,10 @@ jobs:
         with:
           node-version: '24'
           cache: npm
-          cache-dependency-path: backend/package-lock.json
+          cache-dependency-path: '**/package-lock.json'
 
-      - name: Install & Build
-        working-directory: backend
-        run: |
-          npm ci
-          npm run build
-
-      - name: Deploy dist & Restart
+      # ---------- Backend ----------
+      - name: Build & Deploy Backend
         env:
           ECS_HOST: ${{ secrets.ECS_HOST }}
           ECS_USER: ${{ secrets.ECS_USER }}
@@ -48,9 +45,57 @@ jobs:
         run: |
           eval "$(ssh-agent -s)"
           echo "$ECS_SSH_KEY" | tr -d '\r' | ssh-add -
+          cd backend
+          npm ci
+          npm run build
+          cd ..
           rsync -az --delete \
             -e "ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null" \
             backend/dist/ \
             "$ECS_USER@$ECS_HOST:/opt/aeolusdata/backend/dist/"
           ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
             "$ECS_USER@$ECS_HOST" 'systemctl restart aeolus-backend'
+
+      # ---------- Web（静态由后端托管，仅同步 dist，无需重启）----------
+      - name: Build & Deploy Web
+        env:
+          ECS_HOST: ${{ secrets.ECS_HOST }}
+          ECS_USER: ${{ secrets.ECS_USER }}
+          ECS_SSH_KEY: ${{ secrets.ECS_SSH_KEY }}
+        run: |
+          eval "$(ssh-agent -s)"
+          echo "$ECS_SSH_KEY" | tr -d '\r' | ssh-add -
+          cd web
+          npm ci
+          npm run build
+          cd ..
+          rsync -az --delete \
+            -e "ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null" \
+            web/dist/ \
+            "$ECS_USER@$ECS_HOST:/opt/aeolusdata/web/dist/"
+
+      # ---------- Compute (Python) ----------
+      # 注意：python/ 内含服务器本地运行时数据（dashboard/standard/*.json、logs/ 等，均 gitignore），
+      # 绝不可用 --delete，否则会删除服务器本地配置、搞坏其他看板。
+      # 仅同步源码 + 排除 .venv/缓存；依赖用 pip 在服务器 venv 内同步；最后 restart aeolus-compute。
+      # 本次把 analytics/assessment/timeout.py 迁到 analytics/delivery_timeout/，显式删掉服务器上的旧文件。
+      - name: Deploy Compute (Python)
+        env:
+          ECS_HOST: ${{ secrets.ECS_HOST }}
+          ECS_USER: ${{ secrets.ECS_USER }}
+          ECS_SSH_KEY: ${{ secrets.ECS_SSH_KEY }}
+        run: |
+          eval "$(ssh-agent -s)"
+          echo "$ECS_SSH_KEY" | tr -d '\r' | ssh-add -
+          rsync -az \
+            --exclude='.venv' --exclude='__pycache__' --exclude='*.pyc' \
+            --exclude='*.err' --exclude='*.log' --exclude='logs/' \
+            -e "ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null" \
+            python/ \
+            "$ECS_USER@$ECS_HOST:/opt/aeolusdata/python/"
+          ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+            "$ECS_USER@$ECS_HOST" \
+            'rm -f /opt/aeolusdata/python/analytics/assessment/timeout.py
+             cd /opt/aeolusdata
+             python/.venv/bin/python -m pip install -r python/requirements.txt
+             systemctl restart aeolus-compute'

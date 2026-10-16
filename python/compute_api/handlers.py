@@ -791,9 +791,10 @@ def _get_assessment_station(self, qs):
 
 
 # ---------------- 配送超时看板（站点超时汇总 + 订单明细）----------------
-# 计算逻辑已迁至 analytics/assessment/timeout.py；此处仅做站点权限闸门 + 转发。
-def _get_assessment_timeout(self, qs):
-    from analytics.assessment import timeout as RTO
+# 计算逻辑在独立包 analytics/delivery_timeout/timeout.py（与 assessment 解耦）；
+# 此处仅做站点权限闸门 + 转发。
+def _get_delivery_timeout(self, qs):
+    from analytics.delivery_timeout import timeout as RTO
     from analytics import cache as CACHE
     team = (qs.get("team") or [None])[0]
     if not team:
@@ -902,7 +903,7 @@ GET_ROUTES = {
     "/api/overview/standard": _get_ov_standard,
     "/api/overview/assessment": _get_ov_assessment,
     "/api/assessment/station":    _get_assessment_station,
-    "/api/assessment/timeout":    _get_assessment_timeout,
+    "/api/delivery-timeout/data": _get_delivery_timeout,
 }
 
 POST_ROUTES = {

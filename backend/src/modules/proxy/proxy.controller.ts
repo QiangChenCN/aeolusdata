@@ -7,6 +7,7 @@ import { AuthService } from '../auth/auth.service';
 import { DataPermService } from '../auth/data-perm.service';
 import { RefreshRunnerService } from '../../../fetch/refresh-runner.service';
 import { ConfigService } from '../config/config.service';
+import { DeliveryTimeoutConfigService } from '../delivery-timeout/delivery-timeout-config.service';
 import { extractToken } from '../../common/token.util';
 
 /**
@@ -37,6 +38,7 @@ export class ProxyController {
     private readonly dataPerm: DataPermService,
     private readonly refreshRunner: RefreshRunnerService,
     private readonly config: ConfigService,
+    private readonly dtCfg: DeliveryTimeoutConfigService,
   ) {}
 
   /** 计算当前调用者的数据可见范围，下发 x-scope（'*' 表示不限）。 */
@@ -164,6 +166,31 @@ export class ProxyController {
   proxyAssessmentPost(@Req() req: Request, @Body() body: unknown) {
     if (this.config.isConfigPath(req.path)) return this.handleConfig('POST', req, body);
     return this.unwrap(this.proxyReq(req, 'POST', body));
+  }
+
+  // 配送超时看板：与 assessment 解耦的独立命名空间。
+  //  · /data   → 转发 Python 计算（analytics.delivery_timeout）。
+  //  · /teams  → 配置端点（isConfigPath 命中 /api/delivery-timeout/teams），改派 DeliveryTimeoutConfigService。
+  @Get('delivery-timeout/{*path}')
+  proxyDeliveryTimeoutGet(@Req() req: Request) {
+    if (this.config.isConfigPath(req.path)) return this.handleDeliveryTimeoutConfig('GET', req);
+    return this.unwrap(this.proxyReq(req, 'GET'));
+  }
+  @Post('delivery-timeout/{*path}')
+  proxyDeliveryTimeoutPost(@Req() req: Request, @Body() body: unknown) {
+    if (this.config.isConfigPath(req.path)) return this.handleDeliveryTimeoutConfig('POST', req, body);
+    return this.unwrap(this.proxyReq(req, 'POST', body));
+  }
+  private handleDeliveryTimeoutConfig(
+    method: 'GET' | 'POST',
+    req: Request,
+    body?: unknown,
+  ): Promise<unknown> {
+    const sess = this.configSession(req);
+    if (!sess) return Promise.resolve({ ok: false, error: '未登录' });
+    return method === 'GET'
+      ? this.dtCfg.getTeams(sess.allowed)
+      : Promise.resolve(this.dtCfg.setTeams(body));
   }
 
   // 服务质量考核设置（service-quality/targets）：纯配置端点，已迁 Nest 原生，不转发 Python。
