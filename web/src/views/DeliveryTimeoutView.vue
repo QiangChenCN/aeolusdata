@@ -118,6 +118,14 @@
 
         <!-- ③ 运单明细：跨所选站点聚合所有超时订单 -->
         <div v-show="activeTab === 'order'" class="dv-pane">
+          <div class="dv-ord-tool">
+            <span class="dv-ord-tool-label">超时口径：</span>
+            <el-select v-model="orderTypeFilter" class="dv-ord-sel" @change="orderPage = 1">
+              <el-option label="全部 T8 超时" value="" />
+              <el-option label="仅高比单 T8 超时" value="gaobi" />
+            </el-select>
+            <span class="dv-ord-tool-hint">T8 超时单即运单明细全部行；选「仅高比单」按是否高比单过滤</span>
+          </div>
           <el-table
             v-loading="loading"
             :data="pagedOrderRows"
@@ -229,6 +237,7 @@
 
 <script setup>
 import { computed, onMounted, onUnmounted, ref, watch, nextTick } from 'vue';
+import { useRoute } from 'vue-router';
 import { Refresh, ArrowLeft, Setting } from '@element-plus/icons-vue';
 import { ElMessage } from 'element-plus';
 import {
@@ -238,6 +247,7 @@ import {
 
 const teams = ref([]);
 const teamSel = ref('__all__');
+const route = useRoute();
 /* 展示站点配置：teamsCfg = 已配置展示的站点 id；未配置任何站点时回落全部（teamOptions 兜底）。 */
 const teamsCfg = ref([]);
 const teamOptions = computed(() =>
@@ -455,6 +465,7 @@ function fmtSecToMin(v) {
 }
 
 /* —— 运单明细：全量排序后再分页（el-table 自带排序仅作用于当前页，故手动排序；sortable="custom"） —— */
+const orderTypeFilter = ref(''); // '' = 全部 T8 超时；'gaobi' = 仅高比单 T8 超时（按 is_high_value 过滤）
 const orderPage = ref(1);
 const orderPageSize = ref(25); // 默认 25 条/页
 const orderSort = ref({ prop: 'deliver_dur_sec', order: 'descending' });
@@ -465,10 +476,13 @@ function onOrderSort({ prop, order }) {
   orderPage.value = 1;
 }
 const sortedOrderRows = computed(() => {
+  const base = orderTypeFilter.value === 'gaobi'
+    ? orderRows.value.filter((o) => o.is_high_value)
+    : orderRows.value;
   const { prop, order } = orderSort.value;
-  if (!prop || !order) return orderRows.value;
+  if (!prop || !order) return base;
   const dir = order === 'ascending' ? 1 : -1;
-  const arr = orderRows.value.slice();
+  const arr = base.slice();
   arr.sort((a, b) => {
     const an = a[prop] == null, bn = b[prop] == null;
     if (an && bn) return 0;
@@ -620,6 +634,11 @@ onMounted(async () => {
     const tc = await fetchDeliveryTimeoutTeams();
     teamsCfg.value = (tc && tc.teams) || [];
   } catch (e) { /* ignore：取不到配置则回落全部站点 */ }
+  // 考核看板下钻跳转（T8超时 / 高比单T8超时）：携带 team + tab=order + tt(gaobi?) 直达运单明细
+  const q = route.query || {};
+  if (q.team) teamSel.value = String(q.team);
+  if (q.tt === 'gaobi') orderTypeFilter.value = 'gaobi';
+  if (q.tab === 'order') activeTab.value = 'order';
   await load();
   // 标签页内容区高度测量（撑满内容页）；窗口/容器尺寸变化时自动重测
   await nextTick();
@@ -698,5 +717,9 @@ onUnmounted(() => {
 /* 内容区：撑满剩余高度，骑手表格据此计算固定高度（撑满内容页） */
 .dv-body { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .dv-pane { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.dv-ord-tool { flex: none; display: flex; align-items: center; gap: var(--sp-8); margin-bottom: var(--sp-12); }
+.dv-ord-tool-label { font-size: var(--el-font-size-base); color: var(--el-text-color-regular); }
+.dv-ord-sel { width: 180px; }
+.dv-ord-tool-hint { font-size: var(--el-font-size-small); color: var(--el-text-color-secondary); }
 .dv-pg { flex: none; padding-top: var(--sp-12); display: flex; justify-content: flex-end; }
 </style>

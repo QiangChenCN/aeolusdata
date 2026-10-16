@@ -276,6 +276,7 @@ def analyze(orders, date, now_ms, early_delivered=0):
                     "over_min": over_min,                                  # 超平台期望时长（分钟）
                     "compound_overtime_sec": round(compound_sec, 1),       # 复合超时时长（秒，考核方案分段）
                     "severity": _severity_bucket(over_min),
+                    "is_high_value": is_high_value_order(o),               # 是否高比单（高笔单），用于「高比单T8超时」下钻过滤
                 }
                 details.append(det)
                 r["timeout"] += 1

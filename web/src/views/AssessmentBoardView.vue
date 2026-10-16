@@ -139,12 +139,14 @@
           </el-table-column>
           <el-table-column prop="t8_timeout" label="T8超时" sortable className="dv-g-other">
             <template #default="{ row }">
-              <el-text :class="{ 'dv-zero': num(row.t8_timeout) === 0 }">{{ row.t8_timeout }}</el-text>
+              <span v-if="num(row.t8_timeout) > 0" class="dv-drill" @click="drillTimeout(row, 't8_timeout')" :title="'查看「' + row.team_name + '」的 ' + row.t8_timeout + ' 单 T8 超时（配送超时看板·运单明细）'">{{ row.t8_timeout }}</span>
+              <el-text v-else :class="{ 'dv-zero': num(row.t8_timeout) === 0 }">{{ row.t8_timeout }}</el-text>
             </template>
           </el-table-column>
           <el-table-column prop="gaobi_order" label="高比单T8超时" sortable className="dv-g-other">
             <template #default="{ row }">
-              <el-text :class="{ 'dv-zero': num(row.gaobi_order) === 0 }">{{ row.gaobi_order }}</el-text>
+              <span v-if="num(row.gaobi_order) > 0" class="dv-drill" @click="drillTimeout(row, 'gaobi_order')" :title="'查看「' + row.team_name + '」的 ' + row.gaobi_order + ' 单高比单 T8 超时（配送超时看板·运单明细，按是否高比单过滤）'">{{ row.gaobi_order }}</span>
+              <el-text v-else :class="{ 'dv-zero': num(row.gaobi_order) === 0 }">{{ row.gaobi_order }}</el-text>
             </template>
           </el-table-column>
           <el-table-column prop="false_report_slow_unfinished" label="虚假报备商户出餐慢取消" sortable className="dv-col-fake dv-g-other">
@@ -216,7 +218,7 @@ const router = useRouter();
      · 提前点送达 → 违规类型 1039（提前点送达（索赔））
      · 虚假报备商户出餐慢取消 → 违规类型 1004（违规取消，含虚假报备，看板可按违规原因手筛）
      · 高比单物流责取消 → 违规分类 CANCEL（处罚看板无「高比单」字段，仅能落到取消大类）
-   T8超时 / 高比单T8超时 是订单口径（非处罚明细），无对应处罚记录，不下钻。 */
+   T8超时 / 高比单T8超时 是订单口径（非处罚明细），无对应处罚记录，改为下钻到「配送超时」看板·运单明细。 */
 const DRILL = {
   complaint:                   { cat: 'COMPLAIN' },  // 投诉 → 违规分类 COMPLAIN
   bad_review:                  { cat: 'BAD_REVIEW' }, // 差评 → 违规分类 BAD_REVIEW
@@ -233,6 +235,14 @@ function drillTo(row, metric) {
   if (d.cat) q.cat = d.cat;
   if (d.type) q.type = d.type;
   router.push({ name: 'unsatisfied', query: q });
+}
+// T8超时 / 高比单T8超时：订单口径指标，下钻到「配送超时」看板的运单明细页
+// （配送超时看板只存 T8 超时单明细，故 tt=gaobi 仅用于高比单子集的二次过滤）
+function drillTimeout(row, metric) {
+  if (num(row[metric]) === 0) return;
+  const q = { tab: 'order', team: row.team_id };
+  if (metric === 'gaobi_order') q.tt = 'gaobi';
+  router.push({ name: 'timeout', query: q });
 }
 
 
