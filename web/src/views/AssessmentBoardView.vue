@@ -673,10 +673,12 @@ onUnmounted(() => { stopPoll(); stopCooldownTick(); });
 /* 标题（标签）在上、数值在下：EP 默认顺序，也便于后续在数值下方加「环比」行 */
 .dv-card :deep(.el-statistic__head) { font-size: var(--el-font-size-extra-small); color: var(--el-text-color-secondary); }
 .dv-card :deep(.el-statistic__content) { font-size: 24px; font-weight: var(--fw-bold); color: var(--el-color-primary); line-height: 1.2; }
-.dv-card.is-ok :deep(.el-statistic__number) { color: var(--ok, #2e7d32); }
-.dv-card.is-warn :deep(.el-statistic__number) { color: var(--warn, #ed6c02); }
-.dv-card.is-bad :deep(.el-statistic__number) { color: var(--danger, #d32f2f); }
-.dv-card.is-none :deep(.el-statistic__number) { color: var(--el-text-color-secondary); }
+/* 配色挂在整个 content 上而非只挂数值：EP 把「%」拆成了独立的 .el-statistic__suffix
+   （自身无 color、靠继承），只染 __number 会让 % 保持父级主色，与数值不同色 */
+.dv-card.is-ok :deep(.el-statistic__content) { color: var(--ok, #2e7d32); }
+.dv-card.is-warn :deep(.el-statistic__content) { color: var(--warn, #ed6c02); }
+.dv-card.is-bad :deep(.el-statistic__content) { color: var(--danger, #d32f2f); }
+.dv-card.is-none :deep(.el-statistic__content) { color: var(--el-text-color-secondary); }
 /* 环比行（较昨日）：数值下方一行小字；颜色由调用方按指标语义传 is-good / is-bad */
 .dv-card-delta { display: block; margin-top: 4px; font-size: var(--el-font-size-extra-small); font-weight: var(--fw-normal); color: var(--el-text-color-secondary); }
 .dv-card-delta.is-good { color: var(--ok, #2e7d32); }
