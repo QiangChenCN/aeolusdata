@@ -34,6 +34,7 @@
       当前站点今日运单明细尚未落盘。运单数据请在「标准达成」中点「刷新数据」拉取；违规数据由本看板「刷新」按钮独立拉取。
     </el-alert>
     <el-alert v-else-if="dataNote" type="warning" :closable="false" show-icon class="dv-hint">{{ dataNote }}</el-alert>
+    <el-alert v-if="refreshNote" type="error" :closable="false" show-icon class="dv-hint">{{ refreshNote }}</el-alert>
 
     <!-- KPI 汇总卡片（随选中站点聚合，全部站点=各站求和后重算比率） -->
     <div v-if="cards.length" class="dv-cards">
@@ -351,6 +352,12 @@ const dataNote = computed(() => {
   const p = rows.value.find((x) => x.data_status === 'partial');
   return p ? p.data_note || '' : '';
 });
+/* 本次刷新「部分失败」提示（两路取数只要一路失败就置位，成功或未取数时清空）。
+   运单那路失败 → 订单类指标整行不可用（站点行不展示），违规指标是上一次成功数据；
+   违规那路失败 → 违规类指标显示「—」，订单类指标是上一次成功数据。
+   两者都失败 → 看板基本无可展示数据。提示必须常驻，不能只弹一次性 toast
+   （自动轮询时用户根本看不到 toast，会以为看板就是当前数据）。 */
+const refreshNote = ref('');
 
 /* —— 聚合：全部站点时对各站计数求和，比率按口径重算（非直接平均比率）—— */
 function num(x) { const n = Number(x); return Number.isFinite(n) ? n : 0; }
@@ -532,6 +539,22 @@ async function load(silent = false, fetch = false, manual = false) {
           return null;
         }),
       ]);
+      // 任一路失败都要常驻提示：否则成功那一路的新数据会和失败那一路的旧数据/空数据
+      // 混在一起展示，用户无从判断哪些数字是本次的、哪些是历史的。
+      // 冷却中（cooldown）不算失败 —— 那一路本次压根没发起取数，盘上数据就是最新有效数据。
+      const vFail = violationRes != null && violationRes.cooldown !== true && violationRes.ok !== true;
+      const dFail = deliveryRes != null && deliveryRes.cooldown !== true && deliveryRes.ok !== true;
+      const vErr = (violationRes && violationRes.error) || '';
+      const dErr = (deliveryRes && deliveryRes.error) || '';
+      if (vFail && dFail) {
+        refreshNote.value = `本次刷新两路取数都失败（违规${vErr ? '：' + vErr : ''}；运单${dErr ? '：' + dErr : ''}），看板无可展示数据，请稍后重试`;
+      } else if (vFail) {
+        refreshNote.value = `违规处罚明细本次拉取失败${vErr ? '：' + vErr : ''}，投诉/差评/索赔等违规指标显示「—」，订单类指标仍为上一次成功拉取的数据`;
+      } else if (dFail) {
+        refreshNote.value = `运单明细本次拉取失败${dErr ? '：' + dErr : ''}，订单类指标暂不展示（站点行不显示），违规类指标仍为上一次成功拉取的数据`;
+      } else {
+        refreshNote.value = '';
+      }
       if (violationRes && violationRes.cooldown) {
         cooldownRemaining.value = violationRes.remaining_sec || 0;
         startCooldownTick();

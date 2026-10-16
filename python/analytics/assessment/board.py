@@ -30,6 +30,7 @@
   · analytics.teams_config 站点名兜底
   · analytics.assessment.violations   违规处罚明细（投诉/差评/索赔）口径
 """
+import json
 import os
 
 # >>> python-home bootstrap (added by layout migration) >>>
@@ -329,16 +330,24 @@ def latest_assessment_data_time(date=None):
 
     取违规明细与运单明细两份全站单文件的最新落盘时间（max），作为前端「更新时间」来源，
     使页面刷新（仅读盘重算、未真正取数）不再跳动，只在真正重新取数、底层数据文件被覆盖写后才更新。
+
+    取数失败的那一路也会重写文件（fetch_ok=false），mtime 同样变新；若算进来，
+    「更新时间」会跳到现在、像刚取过数一样，误导用户。因此只统计 fetch_ok 不为 false 的文件。
     """
     candidates = []
     for fn in ("违规处罚明细-实时.json", "运单明细-实时.json"):
         p = os.path.join(ROOT, "backend", "data", fn)
-        if os.path.exists(p):
-            try:
-                mt = os.path.getmtime(p)
-                candidates.append(datetime.datetime.fromtimestamp(mt, BJ).replace(microsecond=0))
-            except Exception:
-                pass
+        if not os.path.exists(p):
+            continue
+        try:
+            with open(p, "r", encoding="utf-8") as f:
+                head = json.load(f)
+            if isinstance(head, dict) and head.get("fetch_ok") is False:
+                continue
+            mt = os.path.getmtime(p)
+            candidates.append(datetime.datetime.fromtimestamp(mt, BJ).replace(microsecond=0))
+        except Exception:
+            pass
     if not candidates:
         return None
     return max(candidates).strftime("%Y-%m-%d %H:%M:%S")
@@ -358,12 +367,20 @@ def build_one(team_id, date=None):
         return cached
     orders = DS.load_delivery_orders(team_id)
     if orders is None:
+        # 区分「从未拉取」与「本次拉取失败」：后者必须明说，否则用户看到空看板无从判断
+        st = DS.fetch_status()
+        if st is not None and st.get("fetch_ok") is False:
+            err = (st.get("fetch_error") or "").strip()
+            note = "运单明细本次拉取失败，订单类指标暂不展示%s，请点本看板「刷新」重试" % (
+                ("（%s）" % err) if err else "")
+        else:
+            note = "今日运单明细尚未落盘，请点本看板「刷新」拉取运单明细"
         return {
             "team_id": team_id,
             "team_name": TEAM_NAMES.get(team_id, team_id),
             "need_refresh": True,
             "data_status": "no_data",
-            "data_note": "今日运单明细尚未落盘，请点本看板「刷新」拉取运单明细",
+            "data_note": note,
             "pushed_order_volume": None,
             "delivery_completed": None,
             "weather_level": None,
