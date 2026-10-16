@@ -51,8 +51,8 @@
             :formatter="(v) => cardFmt(v, c)"
             :suffix="c.none ? '' : c.suffix"
           />
-          <!-- 环比预留位：后续在 cards 里补 delta（如「较上期 +0.3%」）字段后，
-               在这里 el-statistic 下方加一行 <span class="dv-card-delta"> 即可 -->
+          <!-- 环比行（较昨日）：当前数值用「-」占位，后续接入昨日数据后由 cards 的 delta 给出 -->
+          <span v-if="c.delta" class="dv-card-delta" :class="c.deltaCls">{{ c.delta }}</span>
         </el-card>
       </div>
 
@@ -399,21 +399,25 @@ const agg = computed(() => {
 
 /* KPI 卡片数据（供 el-statistic 渲染）。
    el-statistic 的 value 只接受 Number，故无数据时传 0、由 formatter 输出「—」（none 标记）；
-   digits>0 表示比率卡（suffix 带 %，最多 digits 位小数）；digits=0 为计数卡。 */
+   digits>0 表示比率卡（suffix 带 %，最多 digits 位小数）；digits=0 为计数卡；
+   delta / deltaCls 为「较昨日」环比行（当前数值以「-」占位，后续接入昨日数据后给出真实值，
+   颜色由调用方按指标语义传 is-good / is-bad，如准时率上升传 is-good）。 */
 const cards = computed(() => {
-  const mk = (label, raw, digits, cls) => ({
+  const mk = (label, raw, digits, cls, delta = '') => ({
     label,
     value: raw == null ? 0 : raw,
     none: raw == null,
     digits,
     suffix: digits > 0 ? '%' : '',
     cls: cls || '',
+    delta,
+    deltaCls: '',
   });
   return [
-    mk('推配送单量', agg.value.pushed, 0),
-    mk('配送完成单', agg.value.completed, 0),
+    mk('推配送单量', agg.value.pushed, 0, '', '较昨日 -'),
+    mk('配送完成单', agg.value.completed, 0, '', '较昨日 -'),
     mk('T8超时单', agg.value.t8, 0),
-    mk('T8准时率', agg.value.ontime, 2, rateClsUp(agg.value.ontime)),
+    mk('T8准时率', agg.value.ontime, 2, rateClsUp(agg.value.ontime), '较昨日 -'),
     mk('投诉', agg.value.complaint, 0),
     mk('差评', agg.value.bad, 0),
     mk('索赔', agg.value.claim, 0),
@@ -663,8 +667,9 @@ onUnmounted(() => { stopPoll(); stopCooldownTick(); });
 
 /* ── KPI 汇总卡片（el-card + el-statistic 统计卡片）──── */
 .dv-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: var(--sp-12); margin-bottom: var(--sp-16); }
-/* el-card 自带边框/圆角/背景（与设计令牌一致），仅去掉默认阴影、把默认 20px 内边距压回 16px */
-.dv-card :deep(.el-card__body) { padding: var(--sp-16); }
+/* el-card 自带边框/圆角/背景（与设计令牌一致），仅去掉默认阴影、把默认 20px 内边距压回 16px；
+   卡片内容整体居中（标题、数值、后续的环比行都跟着居中） */
+.dv-card :deep(.el-card__body) { padding: var(--sp-16); text-align: center; }
 /* 标题（标签）在上、数值在下：EP 默认顺序，也便于后续在数值下方加「环比」行 */
 .dv-card :deep(.el-statistic__head) { font-size: var(--el-font-size-extra-small); color: var(--el-text-color-secondary); }
 .dv-card :deep(.el-statistic__content) { font-size: 24px; font-weight: var(--fw-bold); color: var(--el-color-primary); line-height: 1.2; }
@@ -672,10 +677,10 @@ onUnmounted(() => { stopPoll(); stopCooldownTick(); });
 .dv-card.is-warn :deep(.el-statistic__number) { color: var(--warn, #ed6c02); }
 .dv-card.is-bad :deep(.el-statistic__number) { color: var(--danger, #d32f2f); }
 .dv-card.is-none :deep(.el-statistic__number) { color: var(--el-text-color-secondary); }
-/* 环比行（后续启用）：数值下方一行小字，升绿降红 */
+/* 环比行（较昨日）：数值下方一行小字；颜色由调用方按指标语义传 is-good / is-bad */
 .dv-card-delta { display: block; margin-top: 4px; font-size: var(--el-font-size-extra-small); font-weight: var(--fw-normal); color: var(--el-text-color-secondary); }
-.dv-card-delta.is-up { color: var(--danger, #d32f2f); }
-.dv-card-delta.is-down { color: var(--ok, #2e7d32); }
+.dv-card-delta.is-good { color: var(--ok, #2e7d32); }
+.dv-card-delta.is-bad { color: var(--danger, #d32f2f); }
 
 /* ── 比率单元格 ──────────────────────────────── */
 .rt { font-weight: var(--fw-bold); }
