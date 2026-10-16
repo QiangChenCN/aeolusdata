@@ -442,6 +442,8 @@ const orderRows = computed(() => {
           arrive_dur_sec: o.arrive_dur_sec,
           wait_dur_sec: o.wait_dur_sec,
           deliver_dur_sec: o.deliver_dur_sec,
+          // 是否高比单（后端 det 标记）：供「高比单T8超时」下钻过滤，不在表格展示
+          is_high_value: o.is_high_value,
         });
       }
     }
