@@ -116,16 +116,8 @@
             </div>
         </div>
 
-        <!-- ③ 运单明细：跨所选站点聚合所有超时订单 -->
+        <!-- ③ 运单明细：跨所选站点聚合所有超时订单（考核看板高比单T8超时下钻时经 tt=gaobi 过滤，无可见筛选控件） -->
         <div v-show="activeTab === 'order'" class="dv-pane">
-          <div class="dv-ord-tool">
-            <span class="dv-ord-tool-label">超时口径：</span>
-            <el-select v-model="orderTypeFilter" class="dv-ord-sel" @change="orderPage = 1">
-              <el-option label="全部 T8 超时" value="" />
-              <el-option label="仅高比单 T8 超时" value="gaobi" />
-            </el-select>
-            <span class="dv-ord-tool-hint">T8 超时单即运单明细全部行；选「仅高比单」按是否高比单过滤</span>
-          </div>
           <el-table
             v-loading="loading"
             :data="pagedOrderRows"
@@ -717,9 +709,5 @@ onUnmounted(() => {
 /* 内容区：撑满剩余高度，骑手表格据此计算固定高度（撑满内容页） */
 .dv-body { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .dv-pane { flex: 1; min-height: 0; display: flex; flex-direction: column; }
-.dv-ord-tool { flex: none; display: flex; align-items: center; gap: var(--sp-8); margin-bottom: var(--sp-12); }
-.dv-ord-tool-label { font-size: var(--el-font-size-base); color: var(--el-text-color-regular); }
-.dv-ord-sel { width: 180px; }
-.dv-ord-tool-hint { font-size: var(--el-font-size-small); color: var(--el-text-color-secondary); }
 .dv-pg { flex: none; padding-top: var(--sp-12); display: flex; justify-content: flex-end; }
 </style>
