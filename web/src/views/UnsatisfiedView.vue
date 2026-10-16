@@ -247,6 +247,7 @@
 
 <script setup>
 import { ref, watch, onMounted, computed, nextTick } from 'vue';
+import { useRoute } from 'vue-router';
 import { ElMessage } from 'element-plus';
 import {
   fetchViolationRange,
@@ -254,6 +255,8 @@ import {
   fetchViolationRangeDb,
   saveViolationRows,
 } from '../api/unsatisfied.js';
+
+const route = useRoute();
 
 const tab = ref('realtime');
 const now = new Date();
@@ -340,6 +343,11 @@ const typeLabel = (code) =>
   (CODE_LABELS.violationType && CODE_LABELS.violationType[code]) || code || '—';
 const siteOf = (r) => String(r?.teamName ?? '');
 const siteLabel = (v) => v || '—';
+// 站点ID（teamInfo 拆分出的「站点ID-站点名称」前半）。下钻时考核看板按站点名命中，
+// 这里附带 ID 匹配作为兜底（站点名极端情况下不一致也能命中）。
+const teamIdOf = (r) => String(r?.teamId ?? '');
+// 违规状态（10=成立 / 20=不成立）；仅下钻时传 status=10，普通浏览不受此过滤影响。
+const statusOf = (r) => String(r?.violationStatus ?? '');
 const distinctOf = (rows, fn) => [...new Set((rows || []).map(fn))];
 // 数据刷新后：保留仍存在的旧选择；若此前未选择（含首次加载）则保持为空，默认不筛选
 const mergeSel = (prev, available) => {
@@ -376,6 +384,8 @@ const realtimeSites = ref([]);
 const realtimeSiteOptions = computed(() =>
   distinctOf(realtimeRows.value, siteOf).map((v) => ({ value: v, label: siteLabel(v) })),
 );
+// 违规状态过滤（仅下钻带 status 参数时生效；为空=不过滤，保持普通浏览默认行为）。
+const realtimeStatus = ref([]);
 const monthlySites = ref([]);
 const monthlySiteOptions = computed(() =>
   distinctOf(monthlyRows.value, siteOf).map((v) => ({ value: v, label: siteLabel(v) })),
@@ -395,14 +405,15 @@ function riderOptions(rows) {
 const monthlyRiders = ref([]);
 const monthlyRiderOptions = computed(() => riderOptions(monthlyRows.value));
 
-// 过滤：违规分类 ∧ 违规类型 ∧ 站点 ∧ 骑手 同时命中；某维度为空（已清空）视为不过滤该维度
+// 过滤：违规分类 ∧ 违规类型 ∧ 站点 ∧ 骑手 ∧ 状态 同时命中；某维度为空（已清空）视为不过滤该维度
 const matchSel = (sel, val) => sel.length === 0 || sel.includes(val);
 const realtimeFilteredRows = computed(() =>
   realtimeRows.value.filter(
     (r) =>
       matchSel(realtimeCats.value, catOf(r)) &&
       matchSel(realtimeTypes.value, typeOf(r)) &&
-      matchSel(realtimeSites.value, siteOf(r)),
+      (matchSel(realtimeSites.value, siteOf(r)) || matchSel(realtimeSites.value, teamIdOf(r))) &&
+      matchSel(realtimeStatus.value, statusOf(r)),
   ),
 );
 const monthlyFilteredRows = computed(() =>
@@ -410,7 +421,7 @@ const monthlyFilteredRows = computed(() =>
     (r) =>
       matchSel(monthlyCats.value, catOf(r)) &&
       matchSel(monthlyTypes.value, typeOf(r)) &&
-      matchSel(monthlySites.value, siteOf(r)) &&
+      (matchSel(monthlySites.value, siteOf(r)) || matchSel(monthlySites.value, teamIdOf(r))) &&
       matchSel(monthlyRiders.value, riderOf(r)),
   ),
 );
@@ -740,6 +751,40 @@ watch(realtimeTypes, () => {
 watch(realtimeSites, () => {
   realtimePage.value = 1;
 });
+watch(realtimeStatus, () => {
+  realtimePage.value = 1;
+});
+
+/* ===== 下钻入口：考核看板点击某站点违规计数后，带 query 跳转到本看板并自动套用筛选 =====
+   参数：tab(realtime/monthly，默认 realtime)、site(站点名)、teamId(站点ID，兜底匹配)、
+   cat(违规分类代码，逗号分隔)、type(违规类型代码，逗号分隔)、status(违规状态代码，逗号分隔)。
+   仅实时 tab 支持 status 过滤（月累计无状态维度）；站点同时按 名称/ID 命中。 */
+function applyDrillQuery() {
+  const q = route.query || {};
+  const targetTab = q.tab === 'monthly' ? 'monthly' : 'realtime';
+  tab.value = targetTab;
+  const site = q.site ? String(q.site) : '';
+  const teamId = q.teamId ? String(q.teamId) : '';
+  const cats = q.cat ? String(q.cat).split(',').filter(Boolean) : [];
+  const types = q.type ? String(q.type).split(',').filter(Boolean) : [];
+  const status = q.status ? String(q.status).split(',').filter(Boolean) : [];
+  const sites = [site, teamId].filter(Boolean);
+  if (targetTab === 'monthly') {
+    if (sites.length) monthlySites.value = sites;
+    if (cats.length) monthlyCats.value = cats;
+    if (types.length) monthlyTypes.value = types;
+  } else {
+    if (sites.length) realtimeSites.value = sites;
+    if (cats.length) realtimeCats.value = cats;
+    if (types.length) realtimeTypes.value = types;
+    if (status.length) realtimeStatus.value = status;
+  }
+}
+// 同一路由内再次下钻（query 变化但组件不卸载）：重新套用筛选（数据已加载，仅筛选变化即生效）。
+watch(
+  () => route.query,
+  () => applyDrillQuery(),
+);
 
 // 列宽自适应：数据加载后按“全量数据”重测列宽（与翻页无关，各页列宽保持一致）
 watch(monthlyColumns, () => {
@@ -764,6 +809,8 @@ watch(tab, async () => {
 });
 
 onMounted(() => {
+  // 下钻优先：若带 query（考核看板点计数跳入），先套用筛选再加载，保证首次渲染即过滤。
+  applyDrillQuery();
   // 必须按**当前标签**主动加载一次：watch(tab) 只在标签切换时触发，
   // 首次进入（默认停在「实时」）不会触发 —— 否则即使 violation.db/realtime.db
   // 已有落盘数据，实时表格也会一直空白，必须切到月累计再切回来才显示。

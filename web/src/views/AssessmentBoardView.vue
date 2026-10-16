@@ -133,7 +133,8 @@
         <el-table-column label="违规运单" className="dv-grp-other">
           <el-table-column prop="early_delivered" label="提前点送达" sortable className="dv-g-other">
             <template #default="{ row }">
-              <el-text :class="{ 'dv-zero': num(row.early_delivered) === 0 }">{{ row.early_delivered }}</el-text>
+              <span v-if="num(row.early_delivered) > 0" class="dv-drill" @click="drillTo(row, 'early_delivered')" :title="'查看「' + row.team_name + '」的 ' + row.early_delivered + ' 单提前点送达（违规处罚看板）'">{{ row.early_delivered }}</span>
+              <el-text v-else :class="{ 'dv-zero': true }">0</el-text>
             </template>
           </el-table-column>
           <el-table-column prop="t8_timeout" label="T8超时" sortable className="dv-g-other">
@@ -153,7 +154,8 @@
           </el-table-column>
           <el-table-column prop="cancel_liable" label="物流责取消" sortable className="dv-g-other">
             <template #default="{ row }">
-              <el-text :class="{ 'dv-zero': num(row.cancel_liable) === 0 }">{{ row.cancel_liable }}</el-text>
+              <span v-if="num(row.cancel_liable) > 0" class="dv-drill" @click="drillTo(row, 'cancel_liable')" :title="'查看「' + row.team_name + '」的 ' + row.cancel_liable + ' 单物流责取消（违规处罚看板）'">{{ row.cancel_liable }}</span>
+              <el-text v-else :class="{ 'dv-zero': true }">0</el-text>
             </template>
           </el-table-column>
           <el-table-column prop="gaobi_cancel_liable" label="高比单物流责取消" sortable className="dv-g-other">
@@ -163,7 +165,8 @@
           </el-table-column>
           <el-table-column prop="complaint" label="投诉" sortable className="dv-g-other">
             <template #default="{ row }">
-              <el-text :class="{ 'dv-zero': num(row.complaint) === 0 }">{{ row.complaint }}</el-text>
+              <span v-if="num(row.complaint) > 0" class="dv-drill" @click="drillTo(row, 'complaint')" :title="'查看「' + row.team_name + '」的 ' + row.complaint + ' 单投诉（违规处罚看板）'">{{ row.complaint }}</span>
+              <el-text v-else :class="{ 'dv-zero': true }">0</el-text>
             </template>
           </el-table-column>
           <el-table-column prop="bad_review" label="差评" sortable className="dv-g-other">
@@ -198,6 +201,25 @@ import { computed, onMounted, onUnmounted, ref } from 'vue';
 import { ElMessage } from 'element-plus';
 
 import { fetchTeams, fetchAssessmentStation, refreshAssessment, refreshAssessmentDelivery, fetchRefreshCooldown, markRefreshCooldown, fetchAssessmentTeams, saveAssessmentTeams } from '../api/dashboards.js';
+import { useRouter } from 'vue-router';
+
+const router = useRouter();
+
+/* 违规运单下钻：点击考核看板某站点的违规计数，跳转到「违规处罚」看板（实时 tab）并按
+   站点 + 违规分类/类型 + 成立状态 筛选逐单明细。仅违规分类/类型可干净映射的列支持下钻。 */
+const DRILL = {
+  complaint: { cat: 'COMPLAIN' },        // 投诉 → 违规分类 COMPLAIN
+  cancel_liable: { cat: 'CANCEL' },      // 物流责取消 → 违规分类 CANCEL
+  early_delivered: { type: '1039' },     // 提前点送达 → 违规类型 1039（提前点送达（索赔））
+};
+function drillTo(row, metric) {
+  const d = DRILL[metric];
+  if (!d || num(row[metric]) === 0) return;
+  const q = { tab: 'realtime', site: row.team_name, status: '10' };
+  if (d.cat) q.cat = d.cat;
+  if (d.type) q.type = d.type;
+  router.push({ name: 'unsatisfied', query: q });
+}
 
 
 const teams = ref([]);
@@ -567,6 +589,13 @@ onUnmounted(() => { stopPoll(); stopCooldownTick(); });
 .rt { font-weight: var(--fw-bold); }
 /* 非百分比数值为 0 时置灰（配合单元格内 el-text 使用） */
 .dv-zero { color: var(--el-text-color-placeholder); }
+/* 违规计数可下钻：>0 时显示为蓝色可点击链接，hover 加下划线 */
+.dv-drill {
+  color: var(--el-color-primary);
+  cursor: pointer;
+  font-weight: var(--fw-semibold);
+}
+.dv-drill:hover { text-decoration: underline; }
 .dv-muted { color: var(--el-text-color-secondary); }
 .dv-ratio-ok { color: var(--el-text-color-regular); }
 .dv-ratio-warn { color: var(--el-color-warning); font-weight: var(--fw-semibold); }
