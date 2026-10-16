@@ -13,9 +13,9 @@
   ⇒ 本模块按「参与站点」逐站拉取（退化方案），再合并生成全量站点报表。
 
 对外 API：
-  valid_all(teams, date, cookie=None)      —— 时段有效：逐站 compute_valid → 按 time_code 合并
-                                             人数/目标/在线/缺勤/有效在线时长。
-  rider_detail_all(teams, date, cookie=None)—— 骑手明细：逐站 compute → 行级拼接（每行自带 team_name/team_id）。
+  valid_all(teams, date)      —— 时段有效：逐站 compute_valid → 按 time_code 合并
+                                 人数/目标/在线/缺勤/有效在线时长。
+  rider_detail_all(teams, date)—— 骑手明细：逐站 compute → 行级拼接（每行自带 team_name/team_id）。
 
 边界：
   · 某站当天无数据 / 拉取异常 → 记入 missing_teams，其余站照常展示；仅全部失败才置 need_refresh。
@@ -78,7 +78,7 @@ def _fmt_dur(sec):
 
 
 # ===================== 时段有效：全量合并 =====================
-def valid_all(teams, date, cookie=None):
+def valid_all(teams, date):
     """teams: 站点 id 列表。返回与 attend_period.compute_valid 同结构的合并结果（team="__all__"）。"""
     per, missing = [], []
 
@@ -220,13 +220,13 @@ def valid_all(teams, date, cookie=None):
 
 
 # ===================== 骑手明细：全量拼接 =====================
-def rider_detail_all(teams, date, cookie=None):
+def rider_detail_all(teams, date):
     """teams: 站点 id 列表。返回与 rider_period_detail.compute 同结构的拼接结果（team="__all__"）。"""
     rows, per, missing = [], [], []
     periods_index = {}
     for tid in teams:
         try:
-            res = RPD.compute(tid, date, cookie=cookie)
+            res = RPD.compute(tid, date)
         except Exception as e:
             missing.append({"team": str(tid),
                             "name": RPD.TEAM_NAMES.get(str(tid), str(tid)),

@@ -23,6 +23,7 @@ import { StatusModule } from './modules/status/status.module';
 import { ConfigModule as AppConfigModule } from './modules/config/config.module';
 import { BotsModule } from './modules/bots/bots.module';
 import { AssessmentModule } from './modules/assessment/assessment.module';
+import { StandardModule } from './modules/standard/standard.module';
 
 @Module({
   imports: [
@@ -58,6 +59,7 @@ import { AssessmentModule } from './modules/assessment/assessment.module';
     StatusModule,
     BotsModule,
     AssessmentModule,
+    StandardModule,
   ],
   // 统一访问闸门：机器令牌闸门 + RBAC 会话鉴权（见 AccessGuard）
   providers: [{ provide: APP_GUARD, useClass: AccessGuard }],

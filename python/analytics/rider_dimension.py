@@ -780,13 +780,12 @@ def _empty(team_id, start, end, source, error=None, need_refresh=False,
     }
 
 
-def compute(team_id, time_code=None, start=None, end=None, cookie=None, month=None,
+def compute(team_id, time_code=None, start=None, end=None, month=None,
             reuse_orders=False):
     """实时拉取路径 —— 仅点「查询」按钮时走。
 
     拉考勤 + 运单明细 → 原始层落盘 → 调 _build 组装。要点：
       · 运单明细复用阶段 0 落盘结果（取数归 NestJS，本地拉取路径已移除）
-        + AuthError 自动重登 5 次
       · 考勤连同时段码 tc 一起落盘，供本地重算复用同一口径
 
     reuse_orders=True（全量刷新用）：若当天运单原始层已有落盘就直接复用。
@@ -801,7 +800,6 @@ def compute(team_id, time_code=None, start=None, end=None, cookie=None, month=No
         month = today.strftime("%Y-%m")
     try:
         # 取数（考勤 / 运单）都在 NestJS；这里不再需要本地会话对象。
-        cookie = None
         # 考勤已由 Nest 刷新落盘（RefreshAllService.fetchAttendance），这里只读取、
         # 不再自行拉取或回写；缺失即视为尚未刷新，返回 need_refresh。
         att_payload = CACHE.load_raw("att", team_id, s)

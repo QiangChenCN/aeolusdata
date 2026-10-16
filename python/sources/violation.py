@@ -35,23 +35,20 @@ from .session import ApiError  # noqa: E402  统一的 get_data 会话失效约�
 class ViolationApiError(ApiError):
     """风控处罚明细接口错误（继承 `sources.session.ApiError` 这一统一类型）。
 
-    保留此类是为了兼容既有引用；转发层现在直接抛 `ApiError` / `AuthError`，
-    两者都能被 `sources.session.is_session_error` 正确判定。
+    保留此类是为了兼容既有引用；转发层现在直接抛 `ApiError` / `AuthError`。
     """
 
 
-def download_csv(start_ms, end_ms, cookie=None):
+def download_csv(start_ms, end_ms):
     """拉取 [start_ms, end_ms] 区间的风控处罚 CSV，返回 `(text, file_url)`。
 
-    cookie 可选（不传则由 Nest 读共享 cookie）。
     text 为解码后的 CSV 文本（GBK 优先，回退 UTF-8），file_url 为风神 OSS 签名链接。
-    不含自动重登 / 落盘 / 筛选；会话失效抛 `AuthError` 由调用方重登重试。
+    不含落盘 / 筛选；会话失效抛 `AuthError`，由上层作为失败上报（重登已归 Nest 独占）。
     """
     j = _http.unwrap(
-        _http.call_with_cookie(
+        _http.call(
             "/api/fetch/violation-csv",
             {"start_ms": int(start_ms), "end_ms": int(end_ms)},
-            cookie,
         ),
         "违规明细",
     )

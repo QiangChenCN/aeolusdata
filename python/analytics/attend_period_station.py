@@ -83,7 +83,7 @@ def _rate(actual, target):
     return round(actual / target * 1000) / 10
 
 
-def _station_metrics(team_id, date, cookie):
+def _station_metrics(team_id, date):
     """返回该站点的 (periods, metrics_by_tc)。
 
     periods : 时段列表（含全天，全天排第一），每项 {time_code, time_name, start_time, end_time, is_full_day}
@@ -94,7 +94,7 @@ def _station_metrics(team_id, date, cookie):
     sched_by_tc = {str(r.get("time_code")): r for r in sched_rows}
 
     # 2) 骑手明细（per-rider cells：scheduled/orders/achieved；full_day_*）
-    res = RPD.compute(team_id, date, cookie=cookie)
+    res = RPD.compute(team_id, date)
     rows = res.get("rows") or []
     rpd_periods = res.get("periods") or []
 
@@ -148,11 +148,10 @@ def _station_metrics(team_id, date, cookie):
     return periods, metrics
 
 
-def station_data(team_id, date, cookie=None):
+def station_data(team_id, date):
     """单站：站点数据聚合。返回与 station_data_all 同结构的单行结果。"""
     team_id = str(team_id)
-    # cookie 不再由本进程读取：不传则 Nest 自行补齐（登录态/重登归 Nest 独占）。
-    periods, metrics = _station_metrics(team_id, date, cookie)
+    periods, metrics = _station_metrics(team_id, date)
     _log("站点数据聚合完成：%s，%d 个时段" % (team_id, len(periods)))
     return {
         "ok": True,
@@ -172,12 +171,12 @@ def station_data(team_id, date, cookie=None):
     }
 
 
-def station_data_all(teams, date, cookie=None):
+def station_data_all(teams, date):
     """全量站点：逐站 station_data → 行级拼接（每行一站）。时段列以首个非空站点为准。"""
     rows, missing, periods_tpl = [], [], None
     for tid in teams:
         try:
-            res = station_data(tid, date, cookie=cookie)
+            res = station_data(tid, date)
         except Exception as e:
             missing.append({"team": str(tid),
                             "name": TEAM_NAMES.get(str(tid), str(tid)),

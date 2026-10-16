@@ -162,62 +162,13 @@ def test_all_modules_share_one_autherror_type():
     assert SS.AuthError is GA.AuthError, "schedule 仍在用自己的本地 AuthError"
 
 
-def test_call_with_relogin_respects_max(monkeypatch):
-    """max_relogin=N → 最多 N 次重登，即总共 N+1 次尝试。"""
+def test_python_no_longer_triggers_relogin():
+    """重登已整体迁 NestJS；Python 侧不得再持有触发/编排重登的原语。"""
     from sources import session as GA
 
-    attempts = []
-
-    def fn(cookie=None):
-        attempts.append(cookie)
-        if len(attempts) <= 3:
-            raise GA.AuthError("会话失效")
-        return "ok"
-
-    monkeypatch.setattr(GA, "refresh_cookie", lambda: "c%d" % len(attempts))
-
-    out, cookie = GA.call_with_relogin(fn, cookie="c0", max_relogin=5)
-    assert out == "ok"
-    assert len(attempts) == 4, "第 4 次成功即止，不必用满 max_relogin"
-    assert attempts == ["c0", "c1", "c2", "c3"], "每次重登后必须用新 cookie"
-
-
-def test_call_with_relogin_backoff_called_before_relogin(monkeypatch):
-    """backoff 回调应在每次重登前被调用（给服务端留出新会话生效窗口）。"""
-    from sources import session as GA
-
-    backoffs, refreshed = [], []
-
-    def fn(cookie=None):
-        raise GA.AuthError("会话失效")
-
-    monkeypatch.setattr(GA, "refresh_cookie", lambda: (refreshed.append(1), "new")[1])
-
-    with pytest.raises(GA.AuthError):
-        GA.call_with_relogin(fn, cookie="c0", max_relogin=3,
-                             backoff=lambda n: backoffs.append(n))
-
-    assert backoffs == [0, 1, 2]
-    assert len(refreshed) == 3
-
-
-def test_call_with_relogin_does_not_retry_other_errors(monkeypatch):
-    """非会话错误（限流/服务异常）一律不重试 —— 避免一出故障就反复登录。"""
-    from sources import session as GA
-
-    calls = []
-
-    def fn(cookie=None):
-        calls.append(cookie)
-        raise RuntimeError("请求太频繁")
-
-    monkeypatch.setattr(
-        GA, "refresh_cookie",
-        lambda: pytest.fail("非会话错误不应触发重登"))
-
-    with pytest.raises(RuntimeError):
-        GA.call_with_relogin(fn, cookie="c0", max_relogin=5)
-    assert len(calls) == 1
+    assert not hasattr(GA, "call_with_relogin"), "Python 不应再触发重登"
+    assert not hasattr(GA, "refresh_cookie"), "Python 不应再实现重登"
+    assert not hasattr(GA, "is_session_error"), "is_session_error 仅随 call_with_relogin 存在"
 
 
 # 注：原 3 个 `orders_fetch.Session` 用例（重登上限 / 重登后恢复 / 限流不重登）随之删除 ——

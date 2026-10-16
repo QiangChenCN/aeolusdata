@@ -33,7 +33,7 @@
 骑手在该时段单元格记为 None（无法判定），不计入达成统计。
 
 对外 API：
-  compute(team_id, date, cookie=None) -> dict
+  compute(team_id, date) -> dict
 """
 import os
 
@@ -57,7 +57,6 @@ import datetime
 from sources import (
     fetch_schedule, fetch_attendance, flatten_schedule, TEAM_NAMES,
 )
-from sources.session import call_with_relogin
 from analytics import period_config as PC
 
 BJ = datetime.timezone(datetime.timedelta(hours=8))
@@ -118,21 +117,19 @@ def _hm_to_min(s):
 
 
 # ===================== 主聚合：骑手明细 =====================
-def compute(team_id, date, cookie=None):
+def compute(team_id, date):
     """骑手明细：排班目标 + 逐时段实时考勤 → 骑手×时段达标矩阵。
 
     参数：
       team_id  站点 teamId（str/int）
       date     'YYYY-MM-DD'（调用方传，默认当天）
-      cookie   风神 SSO cookie；不传则自动登录
     返回 dict：{ ok, team, teamName, date, periods[], rows[], summary, fetched_at, source }
     """
     team_id = str(team_id)
-    # cookie 不再由本进程读取：不传则 Nest 自行补齐（登录态/重登归 Nest 独占）。
 
-    # 1) 排班目标（展平成 站×日期×时段 一行），仅保留真实排班时段
-    #    call_with_relogin：风神 cookie 失效时强制重登后重试一次（会话失效兜底）。
-    sched_rows = flatten_schedule(call_with_relogin(fetch_schedule, team_id, date, date)[0])
+    # 1) 排班目标（展平成 站×日期×时段 一行），仅保留真实排班时段。
+    #    取数与登录态（含失效重登）均归 Nest 独占，本进程不再持有/触发任何登录逻辑。
+    sched_rows = flatten_schedule(fetch_schedule(team_id, date, date))
     periods = [r for r in sched_rows
                if str(r.get("time_code")) not in (DAY_TIME_CODE, REST_TIME_CODE)]
     # 排班目标「全天」行（time_code=9999）：其 predict_num/actual_num 供站点数据「全天」列投影，
@@ -177,9 +174,8 @@ def compute(team_id, date, cookie=None):
     import concurrent.futures as _cf
     def _fetch_one(_tc):
         try:
-            # call_with_relogin：风神 cookie 失效时强制重登后重试（并发考勤拉取同样需要兜底）。
-            # 不传 cookie：登录态由 Nest 自行补齐（本进程不再持有/传递 cookie）。
-            _d = call_with_relogin(fetch_attendance, team_id, _tc)[0]
+            # 登录态由 Nest 自行补齐（本进程不再持有/传递 cookie、也不再触发重登）。
+            _d = fetch_attendance(team_id, _tc)
             return _tc, (_d.get("result") or {}).get("data") or []
         except Exception as _e:
             return _tc, _e

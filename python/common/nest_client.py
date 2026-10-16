@@ -9,7 +9,7 @@
     打风神接口的**取数**已整体迁到 Nest（分页 / 反爬节奏 / 限流退避 / 会话重登）。
     Python 的 `sources/*` 现在是转发层：用 `post_json` 把参数交给 Nest 的 `/api/fetch/*`，
     再把原始数据结构交回上层计算。`sources/_http.py` 在此之上加了「会话失效 → AuthError」
-    的判定，供 `sources.session.call_with_relogin` 触发强制重登。
+    的判定；重登已归 Nest 独占，Python 不再触发重登。
 
 两者的错误口径不同，故有两套封装：
   · `_post` / `_get`（钉钉）：面向「成功即用」的业务调用，HTTP ≥400 或 ok=false 直接抛。

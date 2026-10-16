@@ -252,7 +252,7 @@ def _time_name(sched_rows, tc):
     return None
 
 
-def fetch_attendance(team_id, sched_rows, cookie=None):
+def fetch_attendance(team_id, sched_rows):
     """实时拉取「当前时段」考勤，返回落盘用 payload {"tc","time_name","rows","fetched_at"}。
 
     当前不在任何排班时段内时返回 None（对应前端「不在时段内」提示）。
@@ -261,7 +261,7 @@ def fetch_attendance(team_id, sched_rows, cookie=None):
     if not slot:
         return None
     tc, tn = slot
-    data = _att_fetch(int(team_id), tc, cookie=cookie)
+    data = _att_fetch(int(team_id), tc)
     riders = (data.get("result") or {}).get("data") or []
     return {"tc": tc, "time_name": tn, "rows": riders,
             "fetched_at": datetime.datetime.now(BJ).isoformat(timespec="seconds")}
@@ -507,7 +507,6 @@ def compute(team_id, start, end, reuse_orders=False, reuse_att=False,
         # 取数（排班 / 考勤 / 运单）都已迁 NestJS：刷新编排（RefreshAllService）先落盘
         # sched/att/orders 原始层，这里只读取、不再自行拉取或回写。
         # 任一必要源缺失即视为「尚未刷新」，返回 need_refresh 由前端提示点查询。
-        cookie = None
 
         # 1) 排班目标（已由 Nest 刷新落盘）
         sched_rows = CACHE.load_raw("sched", team_id, date)

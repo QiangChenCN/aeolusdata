@@ -7,8 +7,8 @@
 上层（`analytics/*`、`analytics/assessment/*`）无需任何改动。
 
 会话失效：Nest 的失败响应里带 `code`；`unwrap` 拿它与 `sources.session.SESSION_CODES`
-比对，命中即抛 `AuthError`，让 `call_with_relogin` 照旧强制重登后重试
-（重登也已迁 Nest：`POST /api/fetch/aeolus-relogin` —— Python 侧不再持有任何登录实现）。
+比对，命中即抛 `AuthError`。重登已归 Nest 独占（Nest 侧 `AeolusCookieService` 负责 validToken
+探针 + 强制重登），Python 侧不再触发重登 —— 会话失效错误由上层作为失败上报即可。
 """
 import os
 
@@ -52,19 +52,6 @@ def nest_base():
 def call(path, payload=None, timeout=180):
     """POST 到 Nest 的 `/api/fetch/*`，返回完整响应体（扁平 `{ok, ...}`）。"""
     return nest_client.post_json(path, payload, timeout=timeout)
-
-
-def call_with_cookie(path, payload, cookie, timeout=180):
-    """同上，但把调用方传入的 cookie 一并转发。
-
-    为什么保留 cookie 透传：会话失效时上层（`call_with_relogin`）会强制重登并拿到新
-    cookie，转发它可让后续调用直接复用该新会话（不传则由 Nest 读共享 cookie.txt）。
-    空值不传，避免覆盖 Nest 侧的默认取值。
-    """
-    p = dict(payload or {})
-    if cookie:
-        p["cookie"] = cookie
-    return call(path, p, timeout=timeout)
 
 
 def unwrap(j, what):

@@ -167,14 +167,13 @@ def _station_periods(periods):
 
 
 # ----------------------- 构建唯一真相源 -----------------------
-def build_dataset(team, date, cookie=None, teams=None):
+def build_dataset(team, date, teams=None):
     """构建统一数据集。team="__all__" 时逐站 compute 一次、合并 rider_rows 并逐站投影站点行。
 
     teams: 显式站点 id 列表，覆盖 team=="__all__" 时的默认 attend_period_teams 配置，
            用于数据权限裁剪（服务端已过滤出用户可见站点）。
     """
     team = str(team)
-    # cookie 不再由本进程读取：不传则 Nest 自行补齐（登录态/重登归 Nest 独占）。
     if teams is not None:
         teams = [str(t) for t in teams]
     else:
@@ -185,7 +184,7 @@ def build_dataset(team, date, cookie=None, teams=None):
     periods_tpl = None
     fd_sched_tpl = None
     for tid in teams:
-        res = RPD.compute(tid, date, cookie=cookie)
+        res = RPD.compute(tid, date)
         rows = res.get("rows") or []
         pers = res.get("periods") or []
         rider_rows.extend(rows)

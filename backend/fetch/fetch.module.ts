@@ -1,9 +1,7 @@
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../src/modules/auth/auth.module';
 import { ComputeModule } from '../src/modules/compute/compute.module';
-import { RefreshController } from './controllers/refresh.controller';
 import { RefreshRunnerService } from './runners/refresh-runner.service';
-import { DeliveryTimeoutController } from './controllers/delivery-timeout.controller';
 import { DeliveryTimeoutRefreshService } from './sources/delivery-timeout-refresh.service';
 import { FetchPaceService } from './runners/fetch-pace.service';
 import { DeliveryQueryService } from './sources/delivery-query.service';
@@ -49,13 +47,15 @@ import { RawCacheService } from './storage/raw-cache.service';
  *
  * 对外出口：
  *   · `GET /api/fetch/*`  —— 内部取数接口（机器令牌；`teams` 同时供 Python 回调）
- *   · `POST /api/delivery-timeout/raw` / `POST /api/standard/raw` —— 原始层落盘（Nest 调用方直接写，不再经 Python 回调）
+ *   · `POST /api/delivery-timeout/raw` / `POST /api/standard/raw` —— 原始层落盘（Nest 调用方直接写，
+ *     不再经 Python 回调）；这两个写端点现已分别随 DeliveryTimeoutController / RefreshController
+ *     迁到 `src/modules/delivery-timeout`、`src/modules/standard`，但落盘服务仍由本模块提供
  *   · `TeamsModule` / `StatusModule` 复用本模块的 TeamsFetchService / CookieStatusService
  *     提供前端用的 `GET /api/teams` / `GET /api/cookies/status`
  */
 @Module({
   imports: [AuthModule, ComputeModule],
-  controllers: [FetchController, RefreshController, DeliveryTimeoutController],
+  controllers: [FetchController],
   providers: [
     FetchPaceService,
     DeliveryQueryService,

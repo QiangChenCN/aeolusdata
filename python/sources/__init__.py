@@ -24,8 +24,8 @@ if PY_HOME and PY_HOME not in _sys.path:
 - 查询参数（日期 / 站点 / page / period …）由调用方传入；模块内不做选日期、选站点
 - 禁止在模块内做：统计 / 筛选 / 格式化、落盘写文件、CLI 解析、自动重登循环
 - 会话失效：Nest 返回的 `code` 命中 `sources.session.SESSION_CODES` 时抛 `AuthError`，
-  由调用方用共享原语 `sources.session.call_with_relogin` 强制重登后重试
-  （重登本身已迁 Nest：`POST /api/fetch/aeolus-relogin`；本原语只剩「重试一次」的编排）
+  由上层作为失败上报即可 —— 重登已归 Nest 独占（`POST /api/fetch/aeolus-relogin` 由
+  Nest 侧 `AeolusCookieService` 实现），Python 不再持有或触发任何登录逻辑
 
 成员：
 - attendance : 实时考勤 → `POST /api/fetch/attendance-raw`，`fetch_team(team_id, time_code, cookie=None)`
@@ -74,11 +74,11 @@ __all__ = [
 # 也避免了 Python 读到一个正在被 Nest 原子重写的半截文件。
 
 
-def fetch_schedule(team_id, start_date, end_date, cookie=None):
+def fetch_schedule(team_id, start_date, end_date):
     """排班目标：按 站点×日期 拉取，返回接口原始数据（每天含 timeList 时段明细）。
 
-    不传 cookie —— 登录态由 Nest 自行补齐（见上方 ensure_cookies 删除处的说明）。
-    cookie 形参仅为兼容 `call_with_relogin` 统一透传约定，本函数忽略之。
+    登录态由 Nest 自行补齐（见上方 ensure_cookies 删除处的说明）；Python 不传 cookie、
+    也不触发重登 —— 重登已归 Nest 独占。
     """
     return _sched_query(int(team_id), start_date, end_date)
 

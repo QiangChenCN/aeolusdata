@@ -123,13 +123,12 @@ def _rate(actual, target):
 
 
 # ===================== 主聚合：时段有效 =====================
-def compute_valid(team_id, date, cookie=None):
+def compute_valid(team_id, date):
     """时段有效：当天排班目标 + 逐时段实时考勤 → 每时段有效出勤行。
 
     参数：
       team_id  站点 teamId（str/int）
       date     'YYYY-MM-DD'（默认当天，调用方传）
-      cookie   风神 SSO cookie；不传则自动登录
     返回 dict：{ ok, team, teamName, date, rows[], summary, fetched_at, source }
     """
     team_id = str(team_id)

@@ -32,7 +32,7 @@ if PY_HOME and PY_HOME not in _sys.path:
 - query(team_id, start_date, end_date, retries=8, cookie=None) -> rows
   单站请求，返回 result.data（按天列表）
 - build_body(team_id, start_date, end_date)   组装请求体（现由 Nest 侧组装，此函数保留作对照）
-- AuthError                                   会话失效异常（调用方捕获后重登）
+- AuthError                                   会话失效异常（由上层作为失败上报）
 
 上游接口地址与请求头**只保留在 Nest 侧**（`backend/src/modules/fetch/schedule-fetch.service.ts`）：
 本模块不再持有任何风神 URL / headers 常量（2026-09-24 清理）。
@@ -62,19 +62,18 @@ def build_body(team_id, start_date, end_date):
     }}}
 
 
-def query(team_id, start_date, end_date, retries=8, cookie=None):
+def query(team_id, start_date, end_date, retries=8):
     """单站排班统计 → `result.data`（按天列表）。
 
     `retries` 仅为**签名兼容**保留：网络/限流退避现由 Nest 承担
     （`schedule-fetch.service.ts`，退避节奏 `2+2n` / `3+3n` 与迁移前逐字一致）。
-    会话失效（result 为 null / 401 / 账户下线）抛 `AuthError`，
-    由上层 `Session` / `fetch` 捕获后重登重试。
+    会话失效（result 为 null / 401 / 账户下线）抛 `AuthError`，由上层作为失败上报
+    （重登已归 Nest 独占，Python 不再触发）。
     """
     j = _http.unwrap(
-        _http.call_with_cookie(
+        _http.call(
             "/api/fetch/sched-raw",
             {"team_id": team_id, "start": _as_date_str(start_date), "end": _as_date_str(end_date)},
-            cookie,
         ),
         "排班",
     )
