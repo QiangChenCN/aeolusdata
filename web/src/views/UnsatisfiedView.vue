@@ -517,6 +517,26 @@ const CODE_LABELS = {
     '-1': '不可申诉',
   },
 };
+// 中文维度值 → 英文代码：风神 queryList 透传的原始值可能是中文（投诉/提前点送达（索赔）/成立…），
+// 而下钻传递的是英文代码（COMPLAIN/1039/10），二者必须统一；已是代码或无可逆中文则原样保留。
+function _reverse(map) {
+  const r = {};
+  for (const k of Object.keys(map)) r[map[k]] = k;
+  return r;
+}
+const LABEL_TO_CODE = {
+  violationCategory: _reverse(CODE_LABELS.violationCategory),
+  violationType: _reverse(CODE_LABELS.violationType),
+  violationStatus: _reverse(CODE_LABELS.violationStatus),
+  appealStatus: _reverse(CODE_LABELS.appealStatus),
+  eventSource: _reverse(CODE_LABELS.eventSource),
+};
+function toCode(field, val) {
+  if (val == null) return val;
+  const m = LABEL_TO_CODE[field];
+  const s = String(val);
+  return m && m[s] != null ? String(m[s]) : s;
+}
 // 代码列 formatter：命中映射则显示中文，否则原样显示（避免误标）
 function fmtCode(_row, column, value) {
   if (!value) return '';
@@ -525,11 +545,14 @@ function fmtCode(_row, column, value) {
   return (m && m[value]) || value;
 }
 function normalizeRows(rows) {
-  return (rows || []).map(({ knightInfo, teamInfo, ...rest }) => ({
-    ...rest,
-    ...splitKnight(knightInfo),
-    ...splitTeam(teamInfo),
-  }));
+  return (rows || []).map(({ knightInfo, teamInfo, ...rest }) => {
+    const r = { ...rest, ...splitKnight(knightInfo), ...splitTeam(teamInfo) };
+    // 统一维度值形态：中文 → 英文代码（已是代码 / 未知中文则保留），保证下钻代码与数据匹配
+    for (const f of CODE_FIELDS) {
+      if (r[f] != null) r[f] = toCode(f, r[f]);
+    }
+    return r;
+  });
 }
 
 // 明确不展示的字段（数据里有但表格不渲染）
