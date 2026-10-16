@@ -149,7 +149,8 @@
           </el-table-column>
           <el-table-column prop="false_report_slow_unfinished" label="虚假报备商户出餐慢取消" sortable className="dv-col-fake dv-g-other">
             <template #default="{ row }">
-              <el-text :class="{ 'dv-zero': num(row.false_report_slow_unfinished) === 0 }">{{ row.false_report_slow_unfinished }}</el-text>
+              <span v-if="num(row.false_report_slow_unfinished) > 0" class="dv-drill" @click="drillTo(row, 'false_report_slow_unfinished')" :title="'查看「' + row.team_name + '」的 ' + row.false_report_slow_unfinished + ' 单违规取消（违规处罚看板，按违规类型=违规取消；含虚假报备，可再按违规原因手筛）'">{{ row.false_report_slow_unfinished }}</span>
+              <el-text v-else :class="{ 'dv-zero': true }">0</el-text>
             </template>
           </el-table-column>
           <el-table-column prop="cancel_liable" label="物流责取消" sortable className="dv-g-other">
@@ -160,7 +161,8 @@
           </el-table-column>
           <el-table-column prop="gaobi_cancel_liable" label="高比单物流责取消" sortable className="dv-g-other">
             <template #default="{ row }">
-              <el-text :class="{ 'dv-zero': num(row.gaobi_cancel_liable) === 0 }">{{ row.gaobi_cancel_liable }}</el-text>
+              <span v-if="num(row.gaobi_cancel_liable) > 0" class="dv-drill" @click="drillTo(row, 'gaobi_cancel_liable')" :title="'查看「' + row.team_name + '」的 ' + row.gaobi_cancel_liable + ' 单物流责取消（违规处罚看板，按违规分类=取消；无法在处罚看板再按高比单细分）'">{{ row.gaobi_cancel_liable }}</span>
+              <el-text v-else :class="{ 'dv-zero': true }">0</el-text>
             </template>
           </el-table-column>
           <el-table-column prop="complaint" label="投诉" sortable className="dv-g-other">
@@ -171,12 +173,14 @@
           </el-table-column>
           <el-table-column prop="bad_review" label="差评" sortable className="dv-g-other">
             <template #default="{ row }">
-              <el-text :class="{ 'dv-zero': num(row.bad_review) === 0 }">{{ row.bad_review }}</el-text>
+              <span v-if="num(row.bad_review) > 0" class="dv-drill" @click="drillTo(row, 'bad_review')" :title="'查看「' + row.team_name + '」的 ' + row.bad_review + ' 单差评（违规处罚看板）'">{{ row.bad_review }}</span>
+              <el-text v-else :class="{ 'dv-zero': true }">0</el-text>
             </template>
           </el-table-column>
           <el-table-column prop="claim" label="索赔" sortable className="dv-g-other">
             <template #default="{ row }">
-              <el-text :class="{ 'dv-zero': num(row.claim) === 0 }">{{ row.claim }}</el-text>
+              <span v-if="num(row.claim) > 0" class="dv-drill" @click="drillTo(row, 'claim')" :title="'查看「' + row.team_name + '」的 ' + row.claim + ' 单索赔（违规处罚看板）'">{{ row.claim }}</span>
+              <el-text v-else :class="{ 'dv-zero': true }">0</el-text>
             </template>
           </el-table-column>
         </el-table-column>
@@ -206,11 +210,21 @@ import { useRouter } from 'vue-router';
 const router = useRouter();
 
 /* 违规运单下钻：点击考核看板某站点的违规计数，跳转到「违规处罚」看板（实时 tab）并按
-   站点 + 违规分类/类型 + 成立状态 筛选逐单明细。仅违规分类/类型可干净映射的列支持下钻。 */
+   站点 + 违规分类/类型 + 成立状态 筛选逐单明细。
+   映射以 python/analytics/assessment/violations.py 的计数口径为准：
+     · 投诉/差评/索赔/物流责取消 → 违规分类 精确相等（COMPLAIN/BAD_REVIEW/CLAIM/CANCEL）
+     · 提前点送达 → 违规类型 1039（提前点送达（索赔））
+     · 虚假报备商户出餐慢取消 → 违规类型 1004（违规取消，含虚假报备，看板可按违规原因手筛）
+     · 高比单物流责取消 → 违规分类 CANCEL（处罚看板无「高比单」字段，仅能落到取消大类）
+   T8超时 / 高比单T8超时 是订单口径（非处罚明细），无对应处罚记录，不下钻。 */
 const DRILL = {
-  complaint: { cat: 'COMPLAIN' },        // 投诉 → 违规分类 COMPLAIN
-  cancel_liable: { cat: 'CANCEL' },      // 物流责取消 → 违规分类 CANCEL
-  early_delivered: { type: '1039' },     // 提前点送达 → 违规类型 1039（提前点送达（索赔））
+  complaint:                   { cat: 'COMPLAIN' },  // 投诉 → 违规分类 COMPLAIN
+  bad_review:                  { cat: 'BAD_REVIEW' }, // 差评 → 违规分类 BAD_REVIEW
+  claim:                       { cat: 'CLAIM' },     // 索赔 → 违规分类 CLAIM（餐货损）
+  cancel_liable:               { cat: 'CANCEL' },    // 物流责取消 → 违规分类 CANCEL
+  gaobi_cancel_liable:         { cat: 'CANCEL' },    // 高比单物流责取消 → 违规分类 CANCEL（无法再按高比单细分）
+  early_delivered:             { type: '1039' },     // 提前点送达 → 违规类型 1039（提前点送达（索赔））
+  false_report_slow_unfinished: { type: '1004' },     // 虚假报备商户出餐慢取消 → 违规类型 1004（违规取消）
 };
 function drillTo(row, metric) {
   const d = DRILL[metric];

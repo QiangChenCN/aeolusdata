@@ -652,6 +652,8 @@ async function loadMonthly() {
     monthlySites.value = mergeSel(monthlySites.value, distinctOf(monthlyRows.value, siteOf));
     monthlyRiders.value = mergeSel(monthlyRiders.value, riderOptions(monthlyRows.value).map((o) => o.value));
     monthlyPage.value = 1;
+    // 月累计下钻（考核看板带的 tab=monthly）同样在数据渲染后重新套用筛选
+    applyDrillQuery();
     // 已入库天数（区间内按 stat_date 去重统计，优先用后端返回）
     monthDays.value =
       r.days ??
@@ -670,6 +672,9 @@ function renderRealtime(rows) {
   realtimeCats.value = mergeSel(realtimeCats.value, distinctOf(realtimeRows.value, catOf));
   realtimeTypes.value = mergeSel(realtimeTypes.value, distinctOf(realtimeRows.value, typeOf));
   realtimeSites.value = mergeSel(realtimeSites.value, distinctOf(realtimeRows.value, siteOf));
+  // 数据渲染后重新套用下钻筛选：抵消 mergeSel 在「空数据渲染（实时库尚未落盘）」
+  // 时把已设好的分类/类型筛选清空成 [] 的问题，确保点投诉只看到投诉单而非全站违规。
+  applyDrillQuery();
 }
 
 // 读本地已落盘缓存（不请求风神）：切换标签/改区间时调用
@@ -756,20 +761,23 @@ watch(realtimeStatus, () => {
 });
 
 /* ===== 下钻入口：考核看板点击某站点违规计数后，带 query 跳转到本看板并自动套用筛选 =====
-   参数：tab(realtime/monthly，默认 realtime)、site(站点名)、teamId(站点ID，兜底匹配)、
+   参数：tab(realtime/monthly)、site(站点名)、teamId(站点ID，兜底匹配)、
    cat(违规分类代码，逗号分隔)、type(违规类型代码，逗号分隔)、status(违规状态代码，逗号分隔)。
-   仅实时 tab 支持 status 过滤（月累计无状态维度）；站点同时按 名称/ID 命中。 */
+   仅实时 tab 支持 status 过滤（月累计无状态维度）；站点同时按 名称/ID 命中。
+   关键：仅当 query 带对应参数时才覆盖该维度——普通浏览（无 query）绝不改动用户手动选择；
+   且本函数会在「数据渲染后」被再次调用（renderRealtime / loadMonthly 末尾），以抵消
+   mergeSel 在空数据渲染时把下钻筛选清空的问题（见下）。 */
 function applyDrillQuery() {
   const q = route.query || {};
-  const targetTab = q.tab === 'monthly' ? 'monthly' : 'realtime';
-  tab.value = targetTab;
+  // 仅在带 tab 参数时切页签，避免普通浏览覆盖用户手动选择的页签
+  if (q.tab) tab.value = q.tab === 'monthly' ? 'monthly' : 'realtime';
   const site = q.site ? String(q.site) : '';
   const teamId = q.teamId ? String(q.teamId) : '';
   const cats = q.cat ? String(q.cat).split(',').filter(Boolean) : [];
   const types = q.type ? String(q.type).split(',').filter(Boolean) : [];
   const status = q.status ? String(q.status).split(',').filter(Boolean) : [];
   const sites = [site, teamId].filter(Boolean);
-  if (targetTab === 'monthly') {
+  if (q.tab === 'monthly') {
     if (sites.length) monthlySites.value = sites;
     if (cats.length) monthlyCats.value = cats;
     if (types.length) monthlyTypes.value = types;
