@@ -65,8 +65,6 @@ if PY_HOME and PY_HOME not in _sys.path:
 import sys
 import json
 import datetime
-from sources.schedule import query as _sched_query
-from sources import flatten_schedule as _sched_flatten
 from sources.attendance import fetch_team as _att_fetch
 from analytics import cache as CACHE
 from analytics import order_rules as OR
@@ -506,18 +504,15 @@ def compute(team_id, start, end, reuse_orders=False, reuse_att=False,
     team_id = str(team_id)
     date = start
     try:
-        # 取数（排班 / 考勤 / 运单）都在 NestJS；这里不再需要本地会话对象。
+        # 取数（排班 / 考勤 / 运单）都已迁 NestJS：刷新编排（RefreshAllService）先落盘
+        # sched/att/orders 原始层，这里只读取、不再自行拉取或回写。
+        # 任一必要源缺失即视为「尚未刷新」，返回 need_refresh 由前端提示点查询。
         cookie = None
 
-        # 1) 排班目标（当天缓存优先：当天数据不会变）
+        # 1) 排班目标（已由 Nest 刷新落盘）
         sched_rows = CACHE.load_raw("sched", team_id, date)
         if sched_rows is None:
-            raw = _sched_query(int(team_id), start, end, cookie=cookie)
-            sched_rows = _sched_flatten(raw)
-            CACHE.save_raw("sched", team_id, sched_rows, date)
-            _log("排班目标实时拉取 %d 行" % len(sched_rows))
-        else:
-            _log("排班目标命中当天缓存 %d 行（跳过拉取）" % len(sched_rows))
+            return _empty(team_id, start, end, "none", need_refresh=True)
 
         # 2) 运单明细：**唯一来源是阶段 0** —— NestJS 一次拉全量（终态时间 trackingFinish）
         #    再按 teamId 分组落盘。本地拉取路径已按「取数归 NestJS」移除，不再有第二套实现兜底。
@@ -528,16 +523,10 @@ def compute(team_id, start, end, reuse_orders=False, reuse_att=False,
         orders = CACHE.load_raw("orders", team_id, date) or []
         _log("运单明细复用已落盘 %d 条" % len(orders))
 
-        # 3) 实时考勤（连同时段码落盘）
-        #    reuse_att：复用骑手维度刚落盘的同一份考勤，避免一次全量刷新里
-        #    每站考勤被拉两次（耗时翻倍 + 平白增加限流风险）。
-        att_payload = None
-        if reuse_att:
-            att_payload = CACHE.load_raw("att", team_id, date)
-        if att_payload is None and sched_rows:
-            att_payload = fetch_attendance(team_id, sched_rows, cookie=cookie)
-        if att_payload:
-            CACHE.save_raw("att", team_id, att_payload, date)
+        # 3) 实时考勤（已由 Nest 刷新落盘；reuse_att 仅作语义保留，实际都从原始层读）
+        att_payload = CACHE.load_raw("att", team_id, date)
+        if att_payload is None:
+            return _empty(team_id, start, end, "none", need_refresh=True)
     except Exception as e:
         return _empty(team_id, start, end, "error",
                       "%s: %s" % (type(e).__name__, e))

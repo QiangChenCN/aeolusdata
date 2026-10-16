@@ -35,7 +35,6 @@ import { TeamsFetchService } from './sources/teams-fetch.service';
 import { CookieStatusService } from './runners/cookie-status.service';
 import { ScheduleFetchService } from './sources/schedule-fetch.service';
 import { RawCacheService } from './storage/raw-cache.service';
-import { CacheController } from './controllers/cache.controller';
 
 /**
  * 取数模块（原属 Python：get_data.* + dashboard/standard/orders_fetch）。
@@ -50,13 +49,13 @@ import { CacheController } from './controllers/cache.controller';
  *
  * 对外出口：
  *   · `GET /api/fetch/*`  —— 内部取数接口（机器令牌；`teams` 同时供 Python 回调）
- *   · `POST /api/cache/raw` —— Python 计算侧把原始 payload 交回落盘（见 CacheController）
+ *   · `POST /api/delivery-timeout/raw` / `POST /api/standard/raw` —— 原始层落盘（Nest 调用方直接写，不再经 Python 回调）
  *   · `TeamsModule` / `StatusModule` 复用本模块的 TeamsFetchService / CookieStatusService
  *     提供前端用的 `GET /api/teams` / `GET /api/cookies/status`
  */
 @Module({
   imports: [AuthModule, ComputeModule],
-  controllers: [FetchController, RefreshController, CacheController, DeliveryTimeoutController],
+  controllers: [FetchController, RefreshController, DeliveryTimeoutController],
   providers: [
     FetchPaceService,
     DeliveryQueryService,

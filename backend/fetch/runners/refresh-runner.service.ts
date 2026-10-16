@@ -404,6 +404,13 @@ export class RefreshRunnerService {
       for (const tid of teams) {
         const name = this.state.teams.find((t) => t.id === String(tid))?.name || String(tid);
         try {
+          this.setCurrent(tid, '拉取排班目标 / 实时考勤');
+          const sres = await this.ordersStage.fetchSchedule(tid, start);
+          if (!sres.ok) throw new Error('排班目标取数失败');
+          const ares = await this.ordersStage.fetchAttendance(tid, start);
+          if (!ares.ok) throw new Error('实时考勤取数失败');
+          this.log(`站点 ${tid} 排班 ${sres.rows} 行 / 考勤 ${ares.rows} 人 已落盘`);
+
           this.setCurrent(tid, '拉取考勤 / 生成骑手数据');
           const rd = await this.callCompute('/api/compute/rider-dimension', {
             team: tid,

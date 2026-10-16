@@ -8,10 +8,10 @@
         load_raw / raw_exists / latest_cache_time
     计算的输入就在本地磁盘上，绕一圈 HTTP 没有收益。
 
-  · **写** —— 全部委托 NestJS（`POST /api/cache/raw` → backend 的 `RawCacheService`）。
-    取数已归 Nest，而「原始层落盘的时机」正是取数成功的瞬间；格式（路径 / 非空判定 /
-    违规明细的 `fetch_ok` 包装）因此只写在 Nest 一侧，本模块只转发。
-    保留 `save_raw` / `save_violation` 原名，使调用点零改动。
+  · **写** —— 全部在 NestJS（`RawCacheService`）：取数已归 Nest，原始层落盘时机即取数成功
+    瞬间，格式（路径 / 非空判定 / 违规明细的 `fetch_ok` 包装）只写在 Nest 一侧。
+    本模块（`analytics/cache.py`）只保留**读**（`load_raw` 等，计算的输入端口）与进程内
+    结果缓存，**不再写原始层**。
 
   · **进程内结果缓存** —— `get_result` / `put_result` / `clear_results` **不迁**：
     它是计算进程内的 memoization（省掉反复 json.load 数 MB 原始 JSON + 全量扫描 + 聚合）。
@@ -160,68 +160,14 @@ def latest_cache_time_all(date=None):
     return latest.strftime("%Y-%m-%d %H:%M:%S") if latest else None
 
 
-# ===================== 原始数据层：写（委托 Nest 落盘）=====================
-def _is_empty(v):
-    if v is None:
-        return True
-    if isinstance(v, (list, tuple, dict, str)):
-        return len(v) == 0
-    return False
-
-
-def _call_nest(payload, what):
-    """转发到 Nest 落盘端点；失败抛 RuntimeError。"""
-    from common import nest_client
-    r = nest_client.post_json("/api/cache/raw", payload, timeout=60)
-    if not isinstance(r, dict) or not r.get("ok"):
-        # 带上目标基址：落盘失败最常见的原因是「打到了另一个 Nest 实例 / 基址配错」，
-        # 而 404 的正文只说路由不存在，看不出打给了谁。
-        raise RuntimeError("%s 落盘失败（nest=%s）：%s"
-                           % (what, nest_client.nest_base(), (r or {}).get("error") or r))
-    return r
-
-
-def save_raw(kind, team, payload, date=None):
-    """原始数据落盘（转发 Nest 写文件）。成功返回 True。
-
-    空 payload 在本地就先拦掉：没必要为「什么都没有」打一次 HTTP。
-    （Nest 侧会再判一次 —— 双保险，防止别的调用方绕过这里。）
-    """
-    if kind not in RAW_KINDS:
-        raise ValueError("未知原始数据类型: %r（可用 %s）" % (kind, "/".join(RAW_KINDS)))
-    if _is_empty(payload):
-        return False
-    if date is None:
-        date = today_ymd()
-    r = _call_nest(
-        {"kind": kind, "team": str(team), "date": str(date), "payload": payload},
-        "%s_%s_%s" % (kind, team, date),
-    )
-    # 失效本进程的结果缓存：它就是**本进程**的内存对象，自己清最快
-    # （Nest 不知道自己写的文件会脏掉哪个进程的哪条缓存）。
-    invalidate_results(team, date)
-    return bool(r.get("saved"))
-
-
-def save_violation(team, date, rows, ok=True, error=None):
-    """违规明细落盘（转发 Nest）。
-
-    包装格式（`fetch_ok` / `fetch_error` / `fetched_at`）由 Nest 的 `saveViolation` 组装 ——
-    该格式的读侧是 `analytics/assessment/violations.load_team_raw`，把「写」的知识集中到
-    Nest 一侧后，这里只交原始行与成败标记。
-    """
-    r = _call_nest(
-        {"kind": "violation", "team": str(team), "date": str(date),
-         "rows": list(rows or []), "ok": bool(ok), "error": error},
-        "violation_%s_%s" % (team, date),
-    )
-    invalidate_results(team, date)
-    return bool(r.get("saved"))
+# ===================== 原始数据层：写 —— 已迁 NestJS（RawCacheService）=====================
+# Python 不再写原始层；落盘由 Nest 的刷新编排（RefreshAllService.fetchSchedule /
+# fetchAttendance）与配送超时刷新（DeliveryTimeoutRefreshService）统一完成，本模块只保留读。
 
 
 # ===================== 进程内结果缓存 =====================
 # 解决「切站点 / 切维度 / 首屏加载」每次都重新读数 MB 原始 JSON + 重跑聚合的体感卡顿。
-# 生命周期：原始层写入后失效对应 team/date 的结果（save_raw / save_violation 里已接）；
+# 生命周期：原始层写入后（由 Nest 落盘并通知）失效对应 team/date 的结果；
 # 等级标准 / 门槛配置变更时由对应接口调用 clear_results() 整体清空（避免旧口径）。
 # 命中即返回浅拷贝（覆盖 source 字段），不改动缓存中的原对象。
 #
@@ -278,7 +224,7 @@ def invalidate_results(team_id, date):
     """失效该 team/date 下所有模块/口径的结果缓存。
 
     调用方有两类：
-      · 本模块的 save_raw / save_violation（本进程刚写了原始层）；
+      · Nest 落盘原始层后回调本进程（见下方 /api/cache/invalidate 端点）；
       · `compute_api` 的 `/api/cache/invalidate` 端点 —— Nest 直接写文件后回调本进程清缓存。
     """
     tid, d = str(team_id), str(date)

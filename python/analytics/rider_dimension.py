@@ -56,7 +56,6 @@ if PY_HOME and PY_HOME not in _sys.path:
 import sys
 import json
 import datetime
-from sources.attendance import fetch_team as _att_fetch
 from analytics import grade_standards as GS
 from analytics import cache as CACHE
 from analytics import order_rules as OR
@@ -803,9 +802,14 @@ def compute(team_id, time_code=None, start=None, end=None, cookie=None, month=No
     try:
         # 取数（考勤 / 运单）都在 NestJS；这里不再需要本地会话对象。
         cookie = None
-        target_tc = int(time_code) if time_code else current_slot_code()
-        data = _att_fetch(int(team_id), target_tc, cookie=cookie)
-        riders_raw = (data.get("result") or {}).get("data") or []
+        # 考勤已由 Nest 刷新落盘（RefreshAllService.fetchAttendance），这里只读取、
+        # 不再自行拉取或回写；缺失即视为尚未刷新，返回 need_refresh。
+        att_payload = CACHE.load_raw("att", team_id, s)
+        if att_payload is None:
+            return _empty(team_id, s, e, "none", need_refresh=True,
+                          month=month, time_code=time_code)
+        target_tc = att_payload.get("tc")
+        riders_raw = att_payload.get("rows") or []
         # 运单明细：**唯一来源是阶段 0** —— NestJS 一次拉全量（终态时间 trackingFinish）
         # 再按 teamId 分组落盘。本地拉取路径已按「取数归 NestJS」移除，不再有第二套实现兜底。
         # reuse_orders 现在的含义是「阶段 0 已完成」：为真时缺文件视为当日 0 单（不是错误）。
@@ -813,11 +817,7 @@ def compute(team_id, time_code=None, start=None, end=None, cookie=None, month=No
             raise RuntimeError("运单明细只能由阶段 0（NestJS 全量取数）落盘；本地拉取路径已移除")
         orders = CACHE.load_raw("orders", team_id, s) or []
         _log("运单明细复用已落盘 %d 条" % len(orders))
-        CACHE.save_raw("att", team_id, {
-            "tc": target_tc, "rows": riders_raw,
-            "fetched_at": today.isoformat(timespec="seconds"),
-        }, s)
-        _log("实时拉取完成 考勤%d人 运单%d条" % (len(riders_raw), len(orders)))
+        _log("实时考勤复用已落盘 %d 人（时段 %s）" % (len(riders_raw), target_tc))
     except Exception as ex:
         return _empty(team_id, s, e, "error",
                       "%s: %s" % (type(ex).__name__, ex),

@@ -12,11 +12,9 @@
 用例随之迁到 `backend/src/modules/fetch/refresh-runner.spec.ts` —— 跨语言两层各测各的，
 比在 Python 里测一个已不存在的 handler 更准确。
 
-落盘侧（写）自 2026-09-23 起在 NestJS（`RawCacheService`，Python 的 `cache.save_*` 只转发），
-故本文件：
-  · 「读侧拿到某种文件时的行为」用**直接落盘的种子文件**验证（见 `_seed_violation`）；
-  · 「转发是否发出正确的请求」用打桩 `nest_client.post_json` 验证。
-两者都不需要有一个在跑的 Nest —— 单元测试不该依赖运行中的服务。
+落盘侧（写）已整体迁到 NestJS（`RawCacheService`），Python 不再写原始层，
+故本文件只覆盖「读侧」行为：用**直接落盘的种子文件**验证（见 `_seed_violation`）。
+单元测试不该依赖运行中的服务。
 """
 import json
 import os
@@ -114,21 +112,7 @@ def test_recovered_fetch_restores_rows(tmp_data):
     assert RV.load_team_raw(tid, date)["fetch_ok"] is True
 
 
-# ---------------- 落盘已委托 Nest：转发契约 ----------------
-
-def _stub_post(monkeypatch, result=None):
-    """打桩 nest_client.post_json，返回记录到的 (path, payload) 列表。"""
-    from common import nest_client
-
-    sent = []
-
-    def _fake(path, payload=None, timeout=None):
-        sent.append((path, payload))
-        return result or {"ok": True, "saved": True}
-
-    monkeypatch.setattr(nest_client, "post_json", _fake)
-    return sent
-
+# ---------------- 读侧行为 ----------------
 
 def test_load_team_reads_own_namespace_and_ignores_shared_raw(tmp_data):
     """考核看板违规读侧只认自有单文件 违规处罚明细-实时.json；
@@ -146,16 +130,6 @@ def test_load_team_reads_own_namespace_and_ignores_shared_raw(tmp_data):
     # 自有命名空间落同样数据 —— 读侧认
     _seed_violation(tid, date, [{"团队ID": tid}])
     assert RV.load_team(tid, date) is not None
-
-
-def test_save_raw_refuses_empty_payload_without_calling_nest(tmp_data, monkeypatch):
-    """空 payload 本地就拦掉：不该为空数据打一次 HTTP（Nest 侧还会再判一次）。"""
-    sent = _stub_post(monkeypatch)
-    assert CACHE.save_raw("orders", "917521136", [], "2026-09-21") is False
-    assert sent == []
-    with pytest.raises(ValueError):
-        CACHE.save_raw("not-a-kind", "917521136", [{"a": 1}], "2026-09-21")
-    assert sent == []
 
 
 # ---------------- 会话失效自愈：401 → 强制重登 → 重试一次 ----------------

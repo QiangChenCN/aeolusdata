@@ -40,9 +40,9 @@ export type RawKind = (typeof RAW_KINDS)[number];
  * 那条 /api/cache/invalidate 链路 milli 级别的疏漏，排查成本极高）。
  * 把「记得调 invalidate」改成「除非显式豁免，否则自动通知」，新增写入入口就不可能漏。
  *
- * 唯一需要豁免的是 `POST /api/cache/raw`（见 CacheController）：那是 Python 自己把 payload
- * 交回来落盘的，它在发请求前已经在**同进程** `invalidate_results()` 过了，再回调一次就是
- * Python → Nest → Python 的无谓往返。
+ * 唯一需要豁免的场景已不存在：原先 `POST /api/cache/raw` 由 Python 把 payload 交回 Nest 落盘，
+ * 因 Python 同进程已失效过结果缓存，再回调是无谓往返；现原始层写已整体迁到 Nest（刷新编排与
+ * 各看板 controller 直接写），不再有 Python → Nest 的写回，故默认即通知、无需豁免。
  */
 export interface RawWriteOptions {
   notify?: boolean;
