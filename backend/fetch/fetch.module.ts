@@ -1,40 +1,41 @@
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../src/modules/auth/auth.module';
 import { ComputeModule } from '../src/modules/compute/compute.module';
-import { RefreshController } from './refresh.controller';
-import { RefreshRunnerService } from './refresh-runner.service';
-import { DeliveryTimeoutController } from './delivery-timeout.controller';
-import { DeliveryTimeoutRefreshService } from './delivery-timeout-refresh.service';
-import { FetchPaceService } from './fetch-pace.service';
-import { DeliveryQueryService } from './delivery-query.service';
-import { DeliveryExportService } from './delivery-export.service';
-import { AeolusCookieService } from './aeolus-cookie.service';
-import { AeolusLoginService } from './aeolus-login.service';
-import { AeolusCredentialsService } from './aeolus-credentials.service';
-import { OrdersFetchService } from './orders-fetch.service';
-import { RefreshAllService } from './refresh-all.service';
+import { RefreshController } from './controllers/refresh.controller';
+import { RefreshRunnerService } from './runners/refresh-runner.service';
+import { DeliveryTimeoutController } from './controllers/delivery-timeout.controller';
+import { DeliveryTimeoutRefreshService } from './sources/delivery-timeout-refresh.service';
+import { FetchPaceService } from './runners/fetch-pace.service';
+import { DeliveryQueryService } from './sources/delivery-query.service';
+import { DeliveryExportService } from './sources/delivery-export.service';
+import { AeolusCookieService } from './creds/aeolus-cookie.service';
+import { AeolusLoginService } from './creds/aeolus-login.service';
+import { AeolusCredentialsService } from './creds/aeolus-credentials.service';
+import { OrdersFetchService } from './sources/orders-fetch.service';
+import { RefreshAllService } from './runners/refresh-all.service';
 import { FetchController } from './fetch.controller';
-import { RushFetchService } from './rush-fetch.service';
-import { OrangeStormFetchService } from './orange-storm-fetch.service';
-import { RuledocFetchService } from './ruledoc-fetch.service';
-import { DeliveryRawService } from './delivery-raw.service';
-import { DeliveryDbService } from './delivery-db.service';
-import { DeliveryCsvService } from './delivery-csv.service';
-import { BoardFetchService } from './board-fetch.service';
-import { ViolationFetchService } from './violation-fetch.service';
-import { ViolationListFetchService } from './violation-list-fetch.service';
-import { ViolationStoreService } from './violation-store.service';
-import { RealtimeStoreService } from './realtime-store.service';
-import { ViolationSchedulerService } from './violation-scheduler.service';
-import { AttendanceFetchService } from './attendance-fetch.service';
-import { QuarkCredsService } from './quark-creds.service';
-import { EquipmentFetchService } from './equipment-fetch.service';
-import { UnsatStoreService } from './unsat-store.service';
-import { TeamsFetchService } from './teams-fetch.service';
-import { CookieStatusService } from './cookie-status.service';
-import { ScheduleFetchService } from './schedule-fetch.service';
-import { RawCacheService } from './raw-cache.service';
-import { CacheController } from './cache.controller';
+import { RushFetchService } from './sources/rush-fetch.service';
+import { OrangeStormFetchService } from './sources/orange-storm-fetch.service';
+import { RuledocFetchService } from './sources/ruledoc-fetch.service';
+import { DeliveryRawService } from './sources/delivery-raw.service';
+import { DeliveryDbService } from './storage/delivery-db.service';
+import { DeliveryCsvService } from './sources/delivery-csv.service';
+import { BoardFetchService } from './sources/board-fetch.service';
+import { ViolationFetchService } from './sources/violation-fetch.service';
+import { ViolationListFetchService } from './sources/violation-list-fetch.service';
+import { ViolationStoreService } from './storage/violation-store.service';
+import { RealtimeStoreService } from './storage/realtime-store.service';
+import { ViolationSchedulerService } from './runners/violation-scheduler.service';
+import { AttendanceFetchService } from './sources/attendance-fetch.service';
+import { QuarkCredsService } from './creds/quark-creds.service';
+import { EquipmentFetchService } from './sources/equipment-fetch.service';
+import { ContactImFetchService } from './sources/contact-im-fetch.service';
+import { UnsatStoreService } from './storage/unsat-store.service';
+import { TeamsFetchService } from './sources/teams-fetch.service';
+import { CookieStatusService } from './runners/cookie-status.service';
+import { ScheduleFetchService } from './sources/schedule-fetch.service';
+import { RawCacheService } from './storage/raw-cache.service';
+import { CacheController } from './controllers/cache.controller';
 
 /**
  * 取数模块（原属 Python：get_data.* + dashboard/standard/orders_fetch）。
@@ -76,6 +77,7 @@ import { CacheController } from './cache.controller';
     AttendanceFetchService,
     QuarkCredsService,
     EquipmentFetchService,
+    ContactImFetchService,
     UnsatStoreService,
     TeamsFetchService,
     CookieStatusService,
@@ -108,6 +110,7 @@ import { CacheController } from './cache.controller';
     AttendanceFetchService,
     QuarkCredsService,
     EquipmentFetchService,
+    ContactImFetchService,
     UnsatStoreService,
     TeamsFetchService,
     CookieStatusService,

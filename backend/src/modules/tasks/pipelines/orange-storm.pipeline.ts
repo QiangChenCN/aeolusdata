@@ -5,7 +5,7 @@ import * as path from 'path';
 import { TaskHandler, TaskRunContext, TaskStage, TaskStop } from '../task-handler';
 import { Pipeline } from '../pipeline';
 import { TaskHandlersService } from '../task-handlers.service';
-import { OrangeStormFetchService } from '../../../../fetch/orange-storm-fetch.service';
+import { OrangeStormFetchService } from '../../../../fetch/sources/orange-storm-fetch.service';
 
 /** 毫秒时间戳字段（追加可读列 + 保留 <字段>_ms）。 */
 const TS_FIELDS = new Set([

@@ -2,8 +2,8 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService as NestConfigService } from '@nestjs/config';
 import * as fs from 'fs';
 import * as path from 'path';
-import { TeamsFetchService, TeamRef, readKnownTeams } from '../../../fetch/teams-fetch.service';
-import { RawCacheService } from '../../../fetch/raw-cache.service';
+import { TeamsFetchService, TeamRef, readKnownTeams } from '../../../fetch/sources/teams-fetch.service';
+import { RawCacheService } from '../../../fetch/storage/raw-cache.service';
 
 /**
  * 配置层（原 Python `dashboard/standard/{teams_config,grade_standards,threshold_config,

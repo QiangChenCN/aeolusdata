@@ -1,7 +1,7 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
-import { ViolationStoreService } from './violation-store.service';
-import { ViolationListFetchService } from './violation-list-fetch.service';
+import { ViolationStoreService } from '../storage/violation-store.service';
+import { ViolationListFetchService } from '../sources/violation-list-fetch.service';
 
 /**
  * 违规处罚明细定时同步。

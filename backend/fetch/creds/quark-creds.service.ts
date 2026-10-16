@@ -31,9 +31,8 @@ export interface QuarkCreds {
   metaTime: string;
 }
 
-const REPORT_ID = '860325';
+/** quark 域（读 DA cookie 罐时按此域名筛选）。报表 ID 由各调用方显式传入，不在此设默认。 */
 const QUARK_DOMAIN = 'quark.alibaba.com';
-const GET_REPORT_URL = `https://app2-edu.ele.me/kunkka-svr/fs/fbi/getReport?reportId=${REPORT_ID}`;
 /** DA cookie 健康探针：/fbi/** 受 DA 网关保护（无效 cookie 会被踢回 HTML 登录页）。 */
 const DA_HEALTH_URL =
   'https://quark.alibaba.com/fbi/fbi.json?action=site/FbiSiteAction&event_submit_doGetSite=true';
@@ -284,9 +283,10 @@ export class QuarkCredsService {
   }
 
   // ───────────── 兑换 ─────────────
-  /** GET getReport → 带 QUARK_PARAMS 的 iframe URL。 */
-  private async getReportUrl(aeoCookie: string): Promise<string> {
-    const res = await fetch(GET_REPORT_URL, {
+  /** GET getReport → 带 QUARK_PARAMS 的 iframe URL（reportId 决定取哪个报表的 token）。 */
+  private async getReportUrl(aeoCookie: string, reportId: string): Promise<string> {
+    const endpoint = `https://app2-edu.ele.me/kunkka-svr/fs/fbi/getReport?reportId=${reportId}`;
+    const res = await fetch(endpoint, {
       headers: {
         accept: 'application/json, text/plain, */*',
         cookie: aeoCookie,
@@ -304,9 +304,9 @@ export class QuarkCredsService {
   }
 
   /** 纯 HTTP 兑换 DA_TOKEN，写 curl 罐，返回 quark 域 cookie 串。 */
-  private async acquireDaToken(aeoCookie: string): Promise<string> {
+  private async acquireDaToken(aeoCookie: string, reportId: string): Promise<string> {
     if (!aeoCookie) throw new Error('缺少 Aeolus cookie（AEOLUS_MOZI_TOKEN），无法兑换 DA_TOKEN');
-    const reportUrl = await this.getReportUrl(aeoCookie);
+    const reportUrl = await this.getReportUrl(aeoCookie, reportId);
     this.logger.log(`[da] getReport ok（QUARK_PARAMS 长度 ${reportUrl.split('QUARK_PARAMS=')[1]?.length ?? 0}）`);
 
     fs.mkdirSync(this.dataDir, { recursive: true });
@@ -363,8 +363,9 @@ export class QuarkCredsService {
 
   private async fetchTokens(
     aeoCookie: string,
+    reportId: string,
   ): Promise<{ token: string; secure: string; metaTime: string }> {
-    const reportUrl = await this.getReportUrl(aeoCookie);
+    const reportUrl = await this.getReportUrl(aeoCookie, reportId);
     const { stdout: html } = await this.curl([reportUrl, '-L'], {
       jar: this.jarPath,
       timeout: 90,
@@ -384,7 +385,7 @@ export class QuarkCredsService {
 
   // ───────────── 对外入口 ─────────────
   /** 取一次凭证三件套；forceRefresh=true 时忽略缓存强制重兑。 */
-  async fetch(forceRefresh = false): Promise<QuarkCreds> {
+  async fetch(forceRefresh = false, reportId: string): Promise<QuarkCreds> {
     // Aeolus cookie：读本地共享文件（失效时才由 AeolusCookieService 触发 Python 重登）；
     // 不在此强踢登录 —— 会顶掉浏览器会话并加剧 SSO 乒乓。
     const aeoCookie = await this.aeolus.ensure();
@@ -415,14 +416,14 @@ export class QuarkCredsService {
         this.logger.log('[da-cache] 无可用缓存，走完整兑换链路');
       }
       if (!daCookie) {
-        daCookie = await this.acquireDaToken(aeoCookie);
+        daCookie = await this.acquireDaToken(aeoCookie, reportId);
         daSource = 'fresh';
         this.saveCache(daCookie, this.jarPath);
       }
     }
 
     // 2) 报表页三件套（需要 jar 里的 DA cookie 才能过 DA 网关）
-    const { token, secure, metaTime } = await this.fetchTokens(aeoCookie);
+    const { token, secure, metaTime } = await this.fetchTokens(aeoCookie, reportId);
 
     return {
       daCookie,

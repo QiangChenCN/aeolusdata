@@ -5,7 +5,7 @@ import * as path from 'path';
 import { TaskHandler, TaskRunContext, TaskStage } from '../task-handler';
 import { Pipeline } from '../pipeline';
 import { TaskHandlersService } from '../task-handlers.service';
-import { RuledocFetchService } from '../../../../fetch/ruledoc-fetch.service';
+import { RuledocFetchService } from '../../../../fetch/sources/ruledoc-fetch.service';
 
 const TAG_TO_DT: Record<string, string> = {
   h1: 'heading-1',

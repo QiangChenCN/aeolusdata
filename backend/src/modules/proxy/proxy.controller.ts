@@ -5,7 +5,7 @@ import { ComputeService } from '../compute/compute.service';
 import { ComputeResult } from '../compute/compute.port';
 import { AuthService } from '../auth/auth.service';
 import { DataPermService } from '../auth/data-perm.service';
-import { RefreshRunnerService } from '../../../fetch/refresh-runner.service';
+import { RefreshRunnerService } from '../../../fetch/runners/refresh-runner.service';
 import { ConfigService } from '../config/config.service';
 import { DeliveryTimeoutConfigService } from '../delivery-timeout/delivery-timeout-config.service';
 import { extractToken } from '../../common/token.util';

@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as fs from 'fs';
 import * as path from 'path';
-import { ViolationFetchService } from '../../../fetch/violation-fetch.service';
+import { ViolationFetchService } from '../../../fetch/sources/violation-fetch.service';
 
 /**
  * 考核看板 —— 违规处罚明细「自有取数」（与标准达成 / 服务质量完全解耦）。

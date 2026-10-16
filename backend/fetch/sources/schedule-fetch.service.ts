@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { AeolusCookieService } from './aeolus-cookie.service';
+import { AeolusCookieService } from '../creds/aeolus-cookie.service';
 
 /**
  * 排班目标（排班统计）取数 —— 原 Python `get_data/schedule_statistics.py`。

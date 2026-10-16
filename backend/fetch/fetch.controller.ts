@@ -1,19 +1,20 @@
 import { Body, Controller, Get, Logger, Post, Query } from '@nestjs/common';
-import { OrdersFetchService } from './orders-fetch.service';
-import { FetchPaceService } from './fetch-pace.service';
-import { RefreshAllService } from './refresh-all.service';
-import { TIME_FIELDS, TIME_FIELD } from './delivery-query.service';
-import { QuarkCredsService } from './quark-creds.service';
-import { TeamsFetchService } from './teams-fetch.service';
-import { AttendanceFetchService } from './attendance-fetch.service';
-import { AeolusCookieService } from './aeolus-cookie.service';
-import { AeolusCredentialsService } from './aeolus-credentials.service';
-import { ScheduleFetchService } from './schedule-fetch.service';
-import { ViolationFetchService } from './violation-fetch.service';
-import { ViolationListFetchService } from './violation-list-fetch.service';
-import { ViolationStoreService } from './violation-store.service';
-import { RealtimeStoreService } from './realtime-store.service';
-import { ViolationSchedulerService } from './violation-scheduler.service';
+import { OrdersFetchService } from './sources/orders-fetch.service';
+import { FetchPaceService } from './runners/fetch-pace.service';
+import { RefreshAllService } from './runners/refresh-all.service';
+import { TIME_FIELDS, TIME_FIELD } from './sources/delivery-query.service';
+import { QuarkCredsService } from './creds/quark-creds.service';
+import { TeamsFetchService } from './sources/teams-fetch.service';
+import { ContactImFetchService } from './sources/contact-im-fetch.service';
+import { AttendanceFetchService } from './sources/attendance-fetch.service';
+import { AeolusCookieService } from './creds/aeolus-cookie.service';
+import { AeolusCredentialsService } from './creds/aeolus-credentials.service';
+import { ScheduleFetchService } from './sources/schedule-fetch.service';
+import { ViolationFetchService } from './sources/violation-fetch.service';
+import { ViolationListFetchService } from './sources/violation-list-fetch.service';
+import { ViolationStoreService } from './storage/violation-store.service';
+import { RealtimeStoreService } from './storage/realtime-store.service';
+import { ViolationSchedulerService } from './runners/violation-scheduler.service';
 
 /** 北京时间（UTC+8）某天的 [00:00:00.000, 23:59:59.999] 毫秒区间。 */
 function dayRangeMs(date: string): [number, number] {
@@ -39,6 +40,7 @@ export class FetchController {
     private readonly violationStore: ViolationStoreService,
     private readonly realtimeStore: RealtimeStoreService,
     private readonly violationScheduler: ViolationSchedulerService,
+    private readonly contactImSvc: ContactImFetchService,
   ) {}
 
   /**
@@ -348,6 +350,37 @@ export class FetchController {
     if (!date) return { ok: false, error: 'date 必填（YYYY-MM-DD）' };
     const rows = this.violationStore.getDay(date);
     return { ok: true, date, total: rows.length, rows };
+  }
+
+  /**
+   * 电联 & IM 回复看板取数（Quark/FBI 报表 473269，透视表）。
+   * 入参：startDate / endDate（YYYY-MM-DD，必填）、region（大区数组，可选，默认全部）。
+   * 凭证（DA cookie / 三件套 token）由 QuarkCredsService 自动兑换，本端点只负责取数 + 透出。
+   */
+  @Post('contact-im')
+  async contactIm(
+    @Body() b: { startDate?: string; endDate?: string; region?: string[] },
+  ) {
+    if (!b?.startDate || !b?.endDate) {
+      return { ok: false, error: 'startDate / endDate 必填（YYYY-MM-DD）' };
+    }
+    try {
+      const view = await this.contactImSvc.fetchReportView({
+        startDate: b.startDate,
+        endDate: b.endDate,
+        region: Array.isArray(b.region) ? b.region : [],
+      });
+      return {
+        ok: true,
+        shape: view.shape,
+        headers: view.headers,
+        rows: view.rows,
+        labels: view.labels,
+        raw: view.raw,
+      };
+    } catch (e) {
+      return this.fail(e);
+    }
   }
 
   /** 统一失败包装：把异常的 `code` 透出，供 Python 判定会话失效（401/UNAUTHORIZED）。 */

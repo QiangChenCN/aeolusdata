@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { FetchPaceService, MAX_RETRIES, RELOGIN_MAX, RELOGIN_BACKOFF_BASE, BACKOFF_BASE } from './fetch-pace.service';
+import { FetchPaceService, MAX_RETRIES, RELOGIN_MAX, RELOGIN_BACKOFF_BASE, BACKOFF_BASE } from '../runners/fetch-pace.service';
 import { DeliveryQueryService, AuthError, PAGE_SIZE } from './delivery-query.service';
-import { AeolusCookieService } from './aeolus-cookie.service';
+import { AeolusCookieService } from '../creds/aeolus-cookie.service';
 import { DeliveryExportService } from './delivery-export.service';
 
 /** 单站单日超过此量则按时段切片（避免单段页码超限 / 长时间占用配额）。 */

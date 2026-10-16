@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as fs from 'fs';
 import * as path from 'path';
-import { AeolusCookieService } from './aeolus-cookie.service';
+import { AeolusCookieService } from '../creds/aeolus-cookie.service';
 import { AuthError, DeliveryQueryService, PAGE_SIZE } from './delivery-query.service';
 
 /**

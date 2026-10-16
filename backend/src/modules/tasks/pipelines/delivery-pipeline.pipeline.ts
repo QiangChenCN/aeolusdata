@@ -8,9 +8,9 @@ import {
   DeliveryRawService,
   SLEEP_MAX,
   coarseSleep,
-} from '../../../../fetch/delivery-raw.service';
-import { DbCfg, DeliveryDbService } from '../../../../fetch/delivery-db.service';
-import { DeliveryCsvService } from '../../../../fetch/delivery-csv.service';
+} from '../../../../fetch/sources/delivery-raw.service';
+import { DbCfg, DeliveryDbService } from '../../../../fetch/storage/delivery-db.service';
+import { DeliveryCsvService } from '../../../../fetch/sources/delivery-csv.service';
 
 const DB_ARG_KEYS: (keyof DbCfg)[] = ['host', 'port', 'user', 'password', 'database'];
 

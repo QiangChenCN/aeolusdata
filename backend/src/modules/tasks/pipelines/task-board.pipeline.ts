@@ -5,7 +5,7 @@ import * as path from 'path';
 import { TaskHandler, TaskRunContext, TaskStage, TaskStop } from '../task-handler';
 import { Pipeline } from '../pipeline';
 import { TaskHandlersService } from '../task-handlers.service';
-import { BoardFetchService } from '../../../../fetch/board-fetch.service';
+import { BoardFetchService } from '../../../../fetch/sources/board-fetch.service';
 import { ReportRenderService } from '../../render/report-render.service';
 import { MinioService } from '../../media/minio.service';
 import { DingtalkService } from '../../dingtalk/dingtalk.service';

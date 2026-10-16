@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { AeolusCookieService } from './aeolus-cookie.service';
+import { AeolusCookieService } from '../creds/aeolus-cookie.service';
 
 /**
  * 风控处罚 CSV 取数（移植自 get_data/violation.py，被 appeal 与 unsat 共用）。

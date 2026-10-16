@@ -1,5 +1,5 @@
 import { Body, Controller, Post } from '@nestjs/common';
-import { DeliveryTimeoutRefreshService } from './delivery-timeout-refresh.service';
+import { DeliveryTimeoutRefreshService } from '../sources/delivery-timeout-refresh.service';
 
 /**
  * 配送超时看板的独立刷新入口（`POST /api/delivery-timeout/refresh`）。

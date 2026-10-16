@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { QuarkCreds, QuarkCredsService } from './quark-creds.service';
+import { QuarkCreds, QuarkCredsService } from '../creds/quark-creds.service';
 
 /**
  * 骑手装备点亮明细取数（移植自 get_data/rider_equipment.py 的取数/解析部分）。
@@ -176,7 +176,7 @@ export class EquipmentFetchService {
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       let creds: QuarkCreds;
       try {
-        creds = await this.creds.fetch(attempt > 1);
+        creds = await this.creds.fetch(attempt > 1, '860325');
       } catch (e) {
         lastErr = e;
         log(`  ! 凭证获取失败（第 ${attempt}/${maxAttempts} 次）：${(e as Error).message}`);

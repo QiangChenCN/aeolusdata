@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as fs from 'fs';
 import * as path from 'path';
-import { QuarkCredsService } from './quark-creds.service';
+import { QuarkCredsService } from '../creds/quark-creds.service';
 
 /**
  * 登录态探针（原 Python `server.py::check_cookie_status` / `_check_aeolus_cookie` /

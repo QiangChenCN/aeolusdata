@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { TeamsFetchService, TeamRef, readKnownTeams } from '../../../fetch/teams-fetch.service';
+import { TeamsFetchService, TeamRef, readKnownTeams } from '../../../fetch/sources/teams-fetch.service';
 import { ConfigService } from '../config/config.service';
 
 /** 可见站点集合：`null` 表示不受限（x-scope=*），否则为 id 集合。 */

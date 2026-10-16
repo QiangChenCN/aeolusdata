@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import * as XLSX from 'xlsx';
-import { AeolusCookieService } from './aeolus-cookie.service';
+import { AeolusCookieService } from '../creds/aeolus-cookie.service';
 import { AuthError, TIME_FIELDS, TIME_FIELD } from './delivery-query.service';
 
 /**

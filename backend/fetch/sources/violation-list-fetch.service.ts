@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { AeolusCookieService } from './aeolus-cookie.service';
+import { AeolusCookieService } from '../creds/aeolus-cookie.service';
 import { STATIC_HEADERS, ViolationApiError } from './violation-fetch.service';
 
 /**

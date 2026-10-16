@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { AeolusCookieService } from './aeolus-cookie.service';
+import { AeolusCookieService } from '../creds/aeolus-cookie.service';
 
 /**
  * 站长任务看板取数（移植自 get_data/board.py，单一来源）。

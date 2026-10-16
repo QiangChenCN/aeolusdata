@@ -1,5 +1,5 @@
 import { Body, Controller, Logger, Post } from '@nestjs/common';
-import { RawCacheService, RAW_KINDS, RawKind } from './raw-cache.service';
+import { RawCacheService, RAW_KINDS, RawKind } from '../storage/raw-cache.service';
 
 /**
  * 缓存落盘端点（全局 `AccessGuard` 保护，机器令牌调用）。

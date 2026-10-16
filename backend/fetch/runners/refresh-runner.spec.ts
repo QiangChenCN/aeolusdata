@@ -3,13 +3,13 @@ import { ConfigService } from '@nestjs/config';
 import { Test } from '@nestjs/testing';
 import { Request } from 'express';
 import * as os from 'os';
-import { AuthService } from '../src/modules/auth/auth.service';
-import { DataPermService } from '../src/modules/auth/data-perm.service';
-import { ComputeService } from '../src/modules/compute/compute.service';
+import { AuthService } from '../../src/modules/auth/auth.service';
+import { DataPermService } from '../../src/modules/auth/data-perm.service';
+import { ComputeService } from '../../src/modules/compute/compute.service';
 import { FetchPaceService } from './fetch-pace.service';
 import { RefreshAllService } from './refresh-all.service';
 import { RefreshRunnerService } from './refresh-runner.service';
-import { TeamsFetchService } from './teams-fetch.service';
+import { TeamsFetchService } from '../sources/teams-fetch.service';
 
 /**
  * 全量刷新的「作用域收敛 / 频控 / 单飞 / 阶段 0 失败语义」回归。

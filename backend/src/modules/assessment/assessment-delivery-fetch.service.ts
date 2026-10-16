@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as fs from 'fs';
 import * as path from 'path';
-import { OrdersFetchService, OrderRow } from '../../../fetch/orders-fetch.service';
+import { OrdersFetchService, OrderRow } from '../../../fetch/sources/orders-fetch.service';
 
 /**
  * 考核看板 —— 运单明细「自有取数落盘」（2026-10-14 起：考核看板自行落盘运单，

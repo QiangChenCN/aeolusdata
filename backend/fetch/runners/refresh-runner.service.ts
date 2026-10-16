@@ -8,13 +8,13 @@ import { ConfigService } from '@nestjs/config';
 import { Request } from 'express';
 import * as fs from 'fs';
 import * as path from 'path';
-import { AuthService } from '../src/modules/auth/auth.service';
-import { DataPermService } from '../src/modules/auth/data-perm.service';
-import { ComputeService } from '../src/modules/compute/compute.service';
+import { AuthService } from '../../src/modules/auth/auth.service';
+import { DataPermService } from '../../src/modules/auth/data-perm.service';
+import { ComputeService } from '../../src/modules/compute/compute.service';
 import { FetchPaceService } from './fetch-pace.service';
 import { RefreshAllService } from './refresh-all.service';
-import { TeamsFetchService } from './teams-fetch.service';
-import { extractToken } from '../src/common/token.util';
+import { TeamsFetchService } from '../sources/teams-fetch.service';
+import { extractToken } from '../../src/common/token.util';
 
 /**
  * 全量刷新「编排器」（原 Python `dashboard/standard/refresh_all.py` 的 Nest 原生实现）。

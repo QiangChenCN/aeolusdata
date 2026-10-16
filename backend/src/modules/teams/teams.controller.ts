@@ -2,7 +2,7 @@ import { Controller, Get, Req } from '@nestjs/common';
 import { Request } from 'express';
 import { AuthService } from '../auth/auth.service';
 import { DataPermService } from '../auth/data-perm.service';
-import { TeamRef, TeamsFetchService } from '../../../fetch/teams-fetch.service';
+import { TeamRef, TeamsFetchService } from '../../../fetch/sources/teams-fetch.service';
 import { extractToken } from '../../common/token.util';
 
 /**

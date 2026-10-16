@@ -5,7 +5,7 @@ import * as path from 'path';
 import { Client as PgClient } from 'pg';
 import { FIELD_ORDER } from './delivery-columns';
 import { TABLE, genPgDdl, loadProfile } from './delivery-schema';
-import { DeliveryRawService } from './delivery-raw.service';
+import { DeliveryRawService } from '../sources/delivery-raw.service';
 
 /** 运单明细入库（移植 jobs/delivery/load_delivery_db.py）。 */
 export interface DbCfg {

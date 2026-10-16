@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { AeolusCookieService } from './aeolus-cookie.service';
+import { AeolusCookieService } from '../creds/aeolus-cookie.service';
 
 /**
  * dispatcher 急单取数（移植自 get_data/rush.py，单一来源）。

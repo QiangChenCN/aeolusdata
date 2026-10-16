@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as fs from 'fs';
 import * as path from 'path';
-import { FIELD_CN, FIELD_ORDER } from './delivery-columns';
+import { FIELD_CN, FIELD_ORDER } from '../storage/delivery-columns';
 
 /** 运单明细 CSV 导出（移植 jobs/delivery/download_delivery.py 的 write_csv）。 */
 @Injectable()

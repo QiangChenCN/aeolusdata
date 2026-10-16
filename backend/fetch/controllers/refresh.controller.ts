@@ -1,6 +1,6 @@
 import { Body, Controller, Get, Post, Req } from '@nestjs/common';
 import { Request } from 'express';
-import { RefreshRunnerService } from './refresh-runner.service';
+import { RefreshRunnerService } from '../runners/refresh-runner.service';
 
 /**
  * 全量刷新入口（`/api/standard/refresh-all` + `-status`）。
