@@ -361,7 +361,11 @@ const refreshNote = ref('');
 
 /* —— 聚合：全部站点时对各站计数求和，比率按口径重算（非直接平均比率）—— */
 function num(x) { const n = Number(x); return Number.isFinite(n) ? n : 0; }
-function pct(n, d) { return d > 0 ? Math.round((n / d) * 1000) / 10 : null; }
+/* 聚合比率：全精度计算，不做任何四舍五入。
+   展示精度统一由 fmtRate 决定（T8准时率最多 2 位小数，不满意率/物流妥投率最多 3 位），
+   后端落库与排序也始终用全精度 —— 这里若预 round 到 1 位，卡片就会少显示一位
+   （如 97.65% 被压成 97.6%），与「最多 N 位」的口径不符。 */
+function pct(n, d) { return d > 0 ? (n / d) * 100 : null; }
 
 const agg = computed(() => {
   const r = rows.value;
