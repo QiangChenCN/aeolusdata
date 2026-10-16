@@ -70,7 +70,6 @@ RIDER_NAME_KEYS = ("knightName", "骑手姓名", "riderName")
 
 # T8 加权准时率取数键（运单维度）
 FALSE_MARK_REASON_KEYS = ("虚假标记原因", "falseMarkReason")                 # 虚假标记项原因
-HIGH_VALUE_KEYS = ("是否高价值订单", "isHighValueOrder")                     # 高笔单
 MERCHANT_NAME_KEYS = ("平台商家名称", "merchantName", "platformMerchantName")  # 商户名（星巴克识别）
 STATE_KEYS = ("状态", "state", "status", "statusCode", "orderStatus")
 
@@ -187,11 +186,6 @@ def is_false_slow_cancel(o):
     return "商户不出货" in reason
 
 
-def is_high_value_order(o):
-    """高笔单（高价值订单）判定：是否高价值订单=是。"""
-    return str(OR.order_val(o, HIGH_VALUE_KEYS) or "") == "是"
-
-
 def is_starbucks(o):
     """星巴克订单判定：平台商家名称含『星巴克』子串。"""
     return "星巴克" in str(OR.order_val(o, MERCHANT_NAME_KEYS) or "")
@@ -222,7 +216,7 @@ def analyze(orders, date, now_ms, early_delivered=0):
         # 不再用 is_valid_order 过滤，避免逆向/改派等单进出不一致）。
         if is_false_slow_cancel(o):
             false_slow_cancel += 1
-        if is_high_value_order(o) and is_comp and OR.is_t8_timeout(o):
+        if OR.is_high_value_order(o) and is_comp and OR.is_t8_timeout(o):
             high_value_timeout += 1
         if is_starbucks(o) and is_comp and OR.is_t8_timeout(o):
             starbucks_timeout += 1
@@ -276,7 +270,7 @@ def analyze(orders, date, now_ms, early_delivered=0):
                     "over_min": over_min,                                  # 超平台期望时长（分钟）
                     "compound_overtime_sec": round(compound_sec, 1),       # 复合超时时长（秒，考核方案分段）
                     "severity": _severity_bucket(over_min),
-                    "is_high_value": is_high_value_order(o),               # 是否高比单（高笔单），用于「高比单T8超时」下钻过滤
+                    "is_high_value": OR.is_high_value_order(o),           # 是否高比单（高笔单），用于「高比单T8超时」下钻过滤
                 }
                 details.append(det)
                 r["timeout"] += 1
