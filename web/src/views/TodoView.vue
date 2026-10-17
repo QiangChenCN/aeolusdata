@@ -54,8 +54,9 @@
     <!-- 新建 / 编辑任务 -->
     <el-dialog v-model="dlg" :title="form.id ? '编辑自动任务' : '新建自动任务'" width="520px">
       <el-form label-width="92px">
-        <el-form-item label="任务名称" required>
-          <el-input v-model="form.title" placeholder="例如：每日 IM 电联日报" />
+        <el-form-item label="任务名称">
+          <el-input v-model="form.title" placeholder="留空则使用所绑定手动任务的名称" />
+          <div class="form-hint">不填时，保存将自动取「绑定手动任务」的名称作为任务名。</div>
         </el-form-item>
         <el-form-item label="绑定手动任务">
           <el-select v-model="form.taskId" clearable filterable placeholder="选择已创建的手动任务（可选）" style="width:100%">
@@ -65,7 +66,7 @@
         </el-form-item>
         <el-form-item label="执行时间">
           <el-date-picker v-model="form.remindAt" type="datetime"
-            format="YYYY-MM-DD HH:mm" value-format="YYYY-MM-DDTHH:mm"
+            format="YYYY-MM-DD HH:mm" :clearable="true"
             placeholder="定时执行的起始时间" style="width:100%" />
         </el-form-item>
         <el-form-item label="重复">
@@ -123,7 +124,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import { Plus, Edit, Delete, VideoPlay, Loading, StarFilled } from '@element-plus/icons-vue';
 import { useAppStore } from '../stores/app.js';
 import { useTasksStore } from '../stores/tasks.js';
@@ -138,6 +139,11 @@ const dlg = ref(false);
 const dlgEdit = ref(false);
 const form = ref(emptyForm());
 
+// 选择手动任务且未填任务名时，自动取手动任务名
+watch(() => form.value.taskId, (v) => {
+  if (v && !form.value.title) form.value.title = taskName(v);
+});
+
 const weekDays = [
   { v: 1, l: '一' }, { v: 2, l: '二' }, { v: 3, l: '三' }, { v: 4, l: '四' },
   { v: 5, l: '五' }, { v: 6, l: '六' }, { v: 7, l: '日' },
@@ -146,7 +152,7 @@ const weekDays = [
 function emptyForm() {
   return {
     id: null, title: '', note: '', taskId: null,
-    autoRun: true, remindAt: '', repeatType: 'daily',
+    autoRun: true, remindAt: null, repeatType: 'daily',
     repeatInterval: 1, repeatWeekdays: [1, 2, 3, 4, 5],
     repeatMonthDay: 1, repeatMonthLast: false, repeatEnd: '',
   };
@@ -176,6 +182,15 @@ function nodeType(it) {
   if (!it.taskId) return 'warning';
   if (it.autoRun) return 'primary';
   return 'success';
+}
+
+// 原生 Date -> 后端所需 "YYYY-MM-DDTHH:mm"（与后端 fmtLocal 对齐）
+function toBackendDt(d) {
+  if (!d) return '';
+  const dt = d instanceof Date ? d : new Date(d);
+  if (isNaN(dt.getTime())) return '';
+  const p = (n) => String(n).padStart(2, '0');
+  return `${dt.getFullYear()}-${p(dt.getMonth() + 1)}-${p(dt.getDate())}T${p(dt.getHours())}:${p(dt.getMinutes())}`;
 }
 
 function buildRepeat() {
@@ -209,7 +224,7 @@ function openCreate(it) {
   form.value = it
     ? {
       id: it.id, title: it.title, note: it.note || '', taskId: it.taskId || null,
-      autoRun: !!it.autoRun, remindAt: it.remindAt || '',
+      autoRun: !!it.autoRun, remindAt: it.remindAt ? new Date(it.remindAt) : null,
       repeatType: it.repeatType || 'none', repeatInterval: it.repeatInterval || 1,
       repeatWeekdays: (it.repeatBy ? String(it.repeatBy).split(',').map(Number) : [1, 2, 3, 4, 5]),
       repeatMonthDay: it.repeatBy ? Number(it.repeatBy) || 1 : 1,
@@ -221,7 +236,9 @@ function openCreate(it) {
 }
 
 async function save() {
-  if (!form.value.title) { ElMessage.warning('请填写任务名称'); return; }
+  // 任务名留空时，自动取所绑定手动任务的名称
+  if (!form.value.title && form.value.taskId) form.value.title = taskName(form.value.taskId);
+  if (!form.value.title) { ElMessage.warning('请填写任务名称，或先绑定一个手动任务'); return; }
   if (form.value.repeatType !== 'none' && !form.value.remindAt) {
     ElMessage.warning('请选择执行时间'); return;
   }
@@ -231,7 +248,7 @@ async function save() {
       title: form.value.title,
       note: form.value.note,
       list_id: '',
-      remind_at: form.value.remindAt || '',
+      remind_at: toBackendDt(form.value.remindAt),
       repeat: buildRepeat(),
       auto_run: form.value.autoRun ? 1 : 0,
     };
