@@ -790,6 +790,42 @@ def _get_assessment_station(self, qs):
                     "data_status": "error", "need_refresh": False})
 
 
+# ---------------- IM 电联看板（电联率 / IM 及时回复率，站点 + 骑手）----------------
+# 计算逻辑在独立包 analytics/im_contact/（与 assessment 解耦，零 HTTP 读盘）；
+# 此处仅做站点权限闸门 + 转发。落盘数据由 Nest ImContactFetchService 写入
+# backend/data/im-contact-实时.json（全站单文件，含日期区间）。
+def _get_im_contact(self, qs):
+    from analytics.im_contact import board as ICB
+    team = (qs.get("team") or [None])[0]
+    if not team:
+        self._json({"ok": False, "error": "缺少 team 参数"}, 400); return
+    mode, val = self._enforce_team_scope(team)
+    if mode == "deny":
+        return
+    try:
+        from analytics.im_contact import source as ICS
+        st = ICS.fetch_status() or {}
+        row = ICB.build_one(team, st.get("start"), st.get("end"))
+        miss = bool(row.get("need_refresh"))
+        self._json({
+            "ok": True,
+            "team": team,
+            "teamName": row.get("team_name"),
+            "start": st.get("start"),
+            "end": st.get("end"),
+            "basis": "range",
+            # 取数时间：落盘文件的 fetched_at（Nest 写入时刻）
+            "fetched_at": st.get("fetched_at"),
+            "rows": [] if miss else [row],
+            "data_status": "no_data" if miss else (row.get("data_status") or "ok"),
+            "data_note": row.get("data_note"),
+            "need_refresh": miss,
+        })
+    except Exception as e:
+        self._json({"ok": False, "error": "%s: %s" % (type(e).__name__, e),
+                    "team": team, "data_status": "error", "need_refresh": False})
+
+
 # ---------------- 配送超时看板（站点超时汇总 + 订单明细）----------------
 # 计算逻辑在独立包 analytics/delivery_timeout/timeout.py（与 assessment 解耦）；
 # 此处仅做站点权限闸门 + 转发。
@@ -904,6 +940,7 @@ GET_ROUTES = {
     "/api/overview/assessment": _get_ov_assessment,
     "/api/assessment/station":    _get_assessment_station,
     "/api/delivery-timeout/data": _get_delivery_timeout,
+    "/api/im-contact/data":       _get_im_contact,
 }
 
 POST_ROUTES = {

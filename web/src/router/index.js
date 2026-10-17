@@ -14,6 +14,7 @@ import AttendPeriodView from '../views/AttendPeriodView.vue';
 import OverviewView from '../views/OverviewView.vue';
 import AssessmentBoardView from '../views/AssessmentBoardView.vue';
 import DeliveryTimeoutView from '../views/DeliveryTimeoutView.vue';
+import ImContactView from '../views/ImContactView.vue';
 import UnsatisfiedView from '../views/UnsatisfiedView.vue';
 import GroupsView from '../views/GroupsView.vue';
 import UsersView from '../views/UsersView.vue';
@@ -55,6 +56,7 @@ const routes = [
       { path: 'overview', name: 'overview', component: OverviewView, meta: { title: '总览' } },
       { path: 'assessment', name: 'assessment', component: AssessmentBoardView, meta: { title: '考核看板', kind: 'assessment', id: '' } },
       { path: 'timeout', name: 'timeout', component: DeliveryTimeoutView, meta: { title: '配送超时', kind: 'timeout', id: '' } },
+      { path: 'im-contact', name: 'im-contact', component: ImContactView, meta: { title: 'IM 电联', kind: 'imContact', id: '' } },
       { path: 'unsatisfied', name: 'unsatisfied', component: UnsatisfiedView, meta: { title: '违规处罚', kind: 'unsatisfied', id: '' } },
       { path: 'groups', name: 'groups', component: GroupsView, meta: { title: '群组' } },
       { path: 'settings', name: 'system-settings', component: SystemSettingsView, meta: { title: '系统设置', kind: 'syscfg' } },

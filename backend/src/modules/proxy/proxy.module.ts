@@ -4,6 +4,7 @@ import { AuthModule } from '../auth/auth.module';
 import { FetchModule } from '../../../fetch/fetch.module';
 import { ConfigModule } from '../config/config.module';
 import { DeliveryTimeoutModule } from '../delivery-timeout/delivery-timeout.module';
+import { ImContactModule } from '../im-contact/im-contact.module';
 import { StandardModule } from '../standard/standard.module';
 import { ProxyController } from './proxy.controller';
 
@@ -15,7 +16,15 @@ import { ProxyController } from './proxy.controller';
  * `RefreshRunnerService`（见 ProxyController 注释）。
  */
 @Module({
-  imports: [ComputeModule, AuthModule, FetchModule, ConfigModule, DeliveryTimeoutModule, StandardModule],
+  imports: [
+    ComputeModule,
+    AuthModule,
+    FetchModule,
+    ConfigModule,
+    DeliveryTimeoutModule,
+    ImContactModule,
+    StandardModule,
+  ],
   controllers: [ProxyController],
 })
 export class ProxyModule {}

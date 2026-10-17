@@ -8,6 +8,7 @@ import { DataPermService } from '../auth/data-perm.service';
 import { RefreshRunnerService } from '../../../fetch/runners/refresh-runner.service';
 import { ConfigService } from '../config/config.service';
 import { DeliveryTimeoutConfigService } from '../delivery-timeout/delivery-timeout-config.service';
+import { ImContactConfigService } from '../im-contact/im-contact-config.service';
 import { extractToken } from '../../common/token.util';
 
 /**
@@ -39,6 +40,7 @@ export class ProxyController {
     private readonly refreshRunner: RefreshRunnerService,
     private readonly config: ConfigService,
     private readonly dtCfg: DeliveryTimeoutConfigService,
+    private readonly imCfg: ImContactConfigService,
   ) {}
 
   /** 计算当前调用者的数据可见范围，下发 x-scope（'*' 表示不限）。 */
@@ -191,6 +193,32 @@ export class ProxyController {
     return method === 'GET'
       ? this.dtCfg.getTeams(sess.allowed)
       : Promise.resolve(this.dtCfg.setTeams(body));
+  }
+
+  // IM 电联看板：与 delivery-timeout 解耦的独立命名空间。
+  //  · /data   → 转发 Python 计算（analytics.im_contact）。
+  //  · /teams  → 配置端点（isConfigPath 命中 /api/im-contact/teams），改派 ImContactConfigService。
+  // 取数端点不走这里：/api/im-contact-fetch/* 由 ImContactController 原生处理（前缀避开通配）。
+  @Get('im-contact/{*path}')
+  proxyImContactGet(@Req() req: Request) {
+    if (this.config.isConfigPath(req.path)) return this.handleImContactConfig('GET', req);
+    return this.unwrap(this.proxyReq(req, 'GET'));
+  }
+  @Post('im-contact/{*path}')
+  proxyImContactPost(@Req() req: Request, @Body() body: unknown) {
+    if (this.config.isConfigPath(req.path)) return this.handleImContactConfig('POST', req, body);
+    return this.unwrap(this.proxyReq(req, 'POST', body));
+  }
+  private handleImContactConfig(
+    method: 'GET' | 'POST',
+    req: Request,
+    body?: unknown,
+  ): Promise<unknown> {
+    const sess = this.configSession(req);
+    if (!sess) return Promise.resolve({ ok: false, error: '未登录' });
+    return method === 'GET'
+      ? this.imCfg.getTeams(sess.allowed)
+      : Promise.resolve(this.imCfg.setTeams(body));
   }
 
   // 服务质量考核设置（service-quality/targets）：纯配置端点，已迁 Nest 原生，不转发 Python。

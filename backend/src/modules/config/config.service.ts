@@ -626,6 +626,7 @@ export class ConfigService {
       '/api/attend-period/teams',
       '/api/delivery-timeout/teams',
       '/api/assessment/teams',
+      '/api/im-contact/teams',
     ].includes(urlPath);
   }
 

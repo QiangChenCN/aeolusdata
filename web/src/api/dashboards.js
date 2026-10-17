@@ -201,6 +201,30 @@ export function saveDeliveryTimeoutTeams(teams) {
   return request('/delivery-timeout/teams', j({ teams }));
 }
 
+/* ============ IM 电联看板（独立命名空间 /im-contact，数据源 Quark 报表 473269） ============ */
+/* 站点数据：GET /api/im-contact/data?team=<id>（通配转发 Python analytics.im_contact） */
+export function fetchImContact({ team } = {}) {
+  const p = [];
+  if (team) p.push('team=' + enc(team));
+  return request('/im-contact/data' + (p.length ? '?' + p.join('&') : ''));
+}
+/* 取数落盘：POST /api/im-contact-fetch/refresh {start, end}（Nest 原生，Quark 导出较慢放宽超时） */
+export function refreshImContact(body = {}) {
+  return request('/im-contact-fetch/refresh', { ...j(body), timeout: 180000 });
+}
+/* 当前落盘状态（区间 / 取数时间 / fetch_ok），供前端判断所选区间是否已落盘 */
+export function fetchImContactStatus() {
+  return request('/im-contact-fetch/status');
+}
+/* IM 电联看板「展示站点」配置（独立命名空间 /im-contact/teams）：GET 返回
+   {teams: 已配置展示站点id, all: 全部可选站点{id,name}}；POST 保存（config:write）。 */
+export function fetchImContactTeams() {
+  return request('/im-contact/teams');
+}
+export function saveImContactTeams(teams) {
+  return request('/im-contact/teams', j({ teams }));
+}
+
 /* ============ 系统设置（Admin） ============ */
 export function fetchUsers() { return request('/admin/users'); }
 export function createUser({ username, password, role }) {

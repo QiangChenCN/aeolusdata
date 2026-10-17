@@ -12,6 +12,7 @@ export function navTo(it) {
     case 'attendPeriod': return '/attend-period';
     case 'assessment': return '/assessment';
     case 'timeout': return '/timeout';
+    case 'imContact': return '/im-contact';
     case 'unsatisfied': return '/unsatisfied';
     case 'todo': return '/todo';
     case 'assessService': return '/assess/service';
