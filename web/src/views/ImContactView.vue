@@ -6,17 +6,18 @@
         <el-option label="全部站点" value="__all__" />
         <el-option v-for="t in teamOptions" :key="t.id" :label="t.name" :value="t.id" />
       </el-select>
-      <el-date-picker
-        v-model="range"
-        class="dv-range"
-        type="daterange"
-        range-separator="~"
-        start-placeholder="开始日期"
-        end-placeholder="结束日期"
-        value-format="YYYY-MM-DD"
-        :clearable="false"
-        @change="onRangeChange"
-      />
+      <span class="dv-range-wrap">
+        <el-date-picker
+          v-model="range"
+          type="daterange"
+          range-separator="~"
+          start-placeholder="开始日期"
+          end-placeholder="结束日期"
+          value-format="YYYY-MM-DD"
+          :clearable="false"
+          @change="onRangeChange"
+        />
+      </span>
       <el-button @click="openCfg"><el-icon><Setting /></el-icon> 站点设置</el-button>
       <span v-if="fetchedAt" class="dv-date-tag">取数时间：{{ fetchedAt }}</span>
       <span v-if="landedLabel" class="dv-range-tag">数据区间：{{ landedLabel }}</span>
@@ -71,17 +72,29 @@
         >
           <el-table-column prop="team_id" label="站点ID" min-width="130" fixed sortable show-overflow-tooltip />
           <el-table-column prop="team_name" label="站点" min-width="200" fixed sortable show-overflow-tooltip />
-          <el-table-column label="送达电联率" min-width="120" align="center" sortable :sort-method="numSort('call_rate')">
-            <template #default="{ row }"><span class="rt">{{ fmtRate(row.call_rate) }}</span></template>
+          <el-table-column label="昨日电联率" min-width="110" align="center" sortable :sort-method="numSortPath('period.y.call_rate')">
+            <template #default="{ row }"><span class="rt">{{ fmtRate(row.period && row.period.y && row.period.y.call_rate) }}</span></template>
           </el-table-column>
-          <el-table-column label="IM及时回复率" min-width="130" align="center" sortable :sort-method="numSort('im_reply_rate')">
-            <template #default="{ row }"><span class="rt">{{ fmtRate(row.im_reply_rate) }}</span></template>
+          <el-table-column label="昨日剔除后接单量" min-width="140" align="center" sortable :sort-method="numSortPath('period.y.after_exclude_orders')">
+            <template #default="{ row }">{{ row.period && row.period.y ? (row.period.y.after_exclude_orders || 0) : '' }}</template>
           </el-table-column>
-          <el-table-column prop="im_consult_cnt" label="IM咨询单量" min-width="120" align="center" sortable />
-          <el-table-column prop="im_reply_cnt" label="IM及时回复单量" min-width="140" align="center" sortable />
-          <el-table-column prop="call_excluded_cnt" label="电联剔除单量" min-width="130" align="center" sortable />
-          <el-table-column prop="after_exclude_orders" label="剔除后接单量" min-width="130" align="center" sortable />
-          <el-table-column prop="valid_call_orders" label="剔除后有效电联单量" min-width="170" align="center" sortable />
+          <el-table-column label="昨日剔除后有效电联单量" min-width="170" align="center" sortable :sort-method="numSortPath('period.y.valid_call_orders')">
+            <template #default="{ row }">{{ row.period && row.period.y ? (row.period.y.valid_call_orders || 0) : '' }}</template>
+          </el-table-column>
+          <el-table-column
+            v-for="(d, i) in periodDates"
+            :key="i"
+            :label="d.label"
+            min-width="92"
+            align="center"
+          >
+            <template #default="{ row }">
+              <span class="rt">{{ fmtRate(row.period && row.period.deltas && row.period.deltas[i] && row.period.deltas[i].call_rate) }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="本月电联率" min-width="110" align="center" sortable :sort-method="numSortPath('period.month_rate')">
+            <template #default="{ row }"><span class="rt">{{ fmtRate(row.period && row.period.month_rate) }}</span></template>
+          </el-table-column>
           <!-- 展开行：该站点的每日明细 + 较前日环比 -->
           <el-table-column type="expand">
             <template #default="{ row }">
@@ -134,17 +147,29 @@
           <el-table-column prop="rider_name" label="骑手姓名" min-width="120" fixed sortable show-overflow-tooltip />
           <el-table-column prop="team_id" label="站点ID" min-width="130" sortable show-overflow-tooltip />
           <el-table-column prop="team_name" label="站点" min-width="170" sortable show-overflow-tooltip />
-          <el-table-column label="送达电联率" min-width="120" align="center" sortable :sort-method="numSort('call_rate')">
-            <template #default="{ row }"><span class="rt">{{ fmtRate(row.call_rate) }}</span></template>
+          <el-table-column label="昨日电联率" min-width="110" align="center" sortable :sort-method="numSortPath('period.y.call_rate')">
+            <template #default="{ row }"><span class="rt">{{ fmtRate(row.period && row.period.y && row.period.y.call_rate) }}</span></template>
           </el-table-column>
-          <el-table-column label="IM及时回复率" min-width="130" align="center" sortable :sort-method="numSort('im_reply_rate')">
-            <template #default="{ row }"><span class="rt">{{ fmtRate(row.im_reply_rate) }}</span></template>
+          <el-table-column label="昨日剔除后接单量" min-width="140" align="center" sortable :sort-method="numSortPath('period.y.after_exclude_orders')">
+            <template #default="{ row }">{{ row.period && row.period.y ? (row.period.y.after_exclude_orders || 0) : '' }}</template>
           </el-table-column>
-          <el-table-column prop="im_consult_cnt" label="IM咨询单量" min-width="120" align="center" sortable />
-          <el-table-column prop="im_reply_cnt" label="IM及时回复单量" min-width="140" align="center" sortable />
-          <el-table-column prop="call_excluded_cnt" label="电联剔除单量" min-width="130" align="center" sortable />
-          <el-table-column prop="after_exclude_orders" label="剔除后接单量" min-width="130" align="center" sortable />
-          <el-table-column prop="valid_call_orders" label="剔除后有效电联单量" min-width="170" align="center" sortable />
+          <el-table-column label="昨日剔除后有效电联单量" min-width="170" align="center" sortable :sort-method="numSortPath('period.y.valid_call_orders')">
+            <template #default="{ row }">{{ row.period && row.period.y ? (row.period.y.valid_call_orders || 0) : '' }}</template>
+          </el-table-column>
+          <el-table-column
+            v-for="(d, i) in periodDates"
+            :key="i"
+            :label="d.label"
+            min-width="92"
+            align="center"
+          >
+            <template #default="{ row }">
+              <span class="rt">{{ fmtRate(row.period && row.period.deltas && row.period.deltas[i] && row.period.deltas[i].call_rate) }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="本月电联率" min-width="110" align="center" sortable :sort-method="numSortPath('period.month_rate')">
+            <template #default="{ row }"><span class="rt">{{ fmtRate(row.period && row.period.month_rate) }}</span></template>
+          </el-table-column>
           <!-- 展开行：该骑手的每日明细 + 较前日环比 -->
           <el-table-column type="expand">
             <template #default="{ row }">
@@ -250,7 +275,7 @@ async function saveCfg() {
 }
 
 /* ── 日期区间 ─────────────────────────────────────────────────────────────
-   默认近 7 天（T-7 ~ T-1）：报表 T-1 才出数，故结束日取昨天、起始取 7 天前。
+   默认单日 T-1（昨日）。周期列（昨日/T-2~T-8/本月电联率）以**选择器末日**为基准从全量落盘算，改选择器即变。
    取数（「刷新数据」）默认拉取 T-1 所在月**整月**数据，累计落库到 SQLite
    （backend/data/db/im_contact.db，按 送达日期+骑手id 去重，跨月累计），并每月导出
    可读备份 IM电联明细.YYYY-MM.json。落库数据持久化（重启/部署都不清）。
@@ -261,14 +286,37 @@ function shiftDay(offset) {
   const p = (n) => String(n).padStart(2, '0');
   return `${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())}`;
 }
-function last7Range() {
-  return [shiftDay(-7), shiftDay(-1)];
+function defaultRange() {
+  // 默认单日 T-1（昨日）；周期列以选择器末日为基准从全量落盘数据计算。
+  return [shiftDay(-1), shiftDay(-1)];
 }
-const range = ref(last7Range());
+const range = ref(defaultRange());
+/* 任意 YYYY-MM-DD 偏移 offset 天（正后移 / 负前移），纯日期运算（UTC 避开时区误差）。 */
+function shiftDate(base, offset) {
+  const [y, m, d] = base.split('-').map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  dt.setUTCDate(dt.getUTCDate() + offset);
+  const p = (n) => String(n).padStart(2, '0');
+  return `${dt.getUTCFullYear()}-${p(dt.getUTCMonth() + 1)}-${p(dt.getUTCDate())}`;
+}
+/* 周期列表头：以选择器末日(end)为「昨日」基准，生成 T-2~T-8 共 7 天真实日期标签(M-D)，
+   顺序 = end-1 … end-7，与后端 period.deltas 顺序一致。 */
+const periodDates = computed(() => {
+  const end = range.value && range.value[1];
+  if (!end) return [];
+  const out = [];
+  for (let k = 1; k <= 7; k++) {
+    const dd = shiftDate(end, -k);
+    out.push({ label: dd.slice(5), date: dd });
+  }
+  return out;
+});
 const landed = ref({ start: '', end: '' });   // 已落盘的数据区间（整月）
 const landedLabel = computed(() =>
   landed.value.start ? `${landed.value.start} ~ ${landed.value.end}` : '');
 const fetchedAt = ref('');
+/* 默认展示「站点数据」面板（之前未声明 activeTab 导致其初始为 undefined，两个面板被 v-show 隐藏） */
+const activeTab = ref('station');
 
 /* ── 数据 ─────────────────────────────────────────────────────────────── */
 const rows = ref([]);
@@ -339,7 +387,7 @@ async function load(silent = false) {
 }
 
 /* 刷新：拉取 T-1 所在月整月 → 累计落库 → 重算（Quark 报表较慢，按钮 loading 期间禁用）。
-   展示区间（近 7 天）由选择器决定，只影响计算，不影响取数范围。 */
+   展示区间（默认 T-1）由选择器决定，只影响计算，不影响取数范围。 */
 const refreshing = ref(false);
 const cooldown = ref(0);
 let cooldownTimer = null;
@@ -476,6 +524,18 @@ function numSort(key) {
     return va - vb;
   };
 }
+/* 嵌套路径排序（如 'period.y.call_rate' / 'period.month_rate'），null 永远沉底。 */
+function numSortPath(path) {
+  const ks = path.split('.');
+  return (a, b) => {
+    let va = a, vb = b;
+    for (const k of ks) { va = va == null ? null : va[k]; vb = vb == null ? null : vb[k]; }
+    if (va == null && vb == null) return 0;
+    if (va == null) return 1;
+    if (vb == null) return -1;
+    return va - vb;
+  };
+}
 
 /* ── 内容区可用高度：测量 .dv-body，使骑手表格撑满内容页 ────────────────── */
 const bodyRef = ref(null);
@@ -496,7 +556,7 @@ onMounted(async () => {
   } catch (e) { /* ignore：取不到配置则回落全部站点 */ }
   try {
     const st = await fetchImContactStatus();
-    // 仅用于展示「已落盘区间 / 取数时间」；**不**把选择器恢复成上次选择 —— 默认固定近 7 天。
+    // 仅用于展示「已落盘区间 / 取数时间」；**不**把选择器恢复成上次选择 —— 默认固定 T-1。
     if (st && st.landed) {
       landed.value = { start: st.start, end: st.end };
       fetchedAt.value = st.fetched_at || '';
@@ -524,7 +584,11 @@ onUnmounted(() => {
 .dv-sel { width: 160px; }
 /* EP 的 daterange 默认宽度 350px 过长，压到 220px（仍容得下两个日期 + 分隔符），
    flex:none 防止在窄屏被拉伸撑长整条工具栏。 */
-.dv-range { width: 220px; flex: none; }
+/* daterange 真实宽度由 EP 变量 --el-date-editor-daterange-width(默认350px) 控制，且 class
+   不透传到 date-picker 根元素；用外层包裹 + :deep 命中 .el-date-editor 改该变量。 */
+.dv-range-wrap :deep(.el-date-editor) {
+  --el-date-editor-daterange-width: 220px !important;
+}
 .dv-date-tag { font-size: var(--el-font-size-small); color: var(--el-text-color-secondary); }
 .dv-range-tag { font-size: var(--el-font-size-small); color: var(--el-text-color-secondary); }
 .dv-bar .sp { flex: 1; }

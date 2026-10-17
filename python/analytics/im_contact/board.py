@@ -61,6 +61,39 @@ def _prev_day(d):
     return (_dt.date(y, m, dd) - _dt.timedelta(days=1)).isoformat()
 
 
+def _shift_date(d, delta):
+    """相对某 ISO 日期偏移 delta 天（负为前移）。"""
+    y, m, dd = (int(x) for x in d.split("-"))
+    return (_dt.date(y, m, dd) + _dt.timedelta(days=delta)).isoformat()
+
+
+def _period_metrics(rows, ref_date):
+    """周期指标：以 ref_date 为「昨日」基准，从全量落盘行（不限展示区间）统计。
+
+      · y:          ref_date 当天 {call_rate, after_exclude_orders, valid_call_orders}
+      · deltas:     ref_date-1 … ref_date-7 共 7 天，每天 {date, call_rate}（列名用真实日期）
+      · month_rate: ref_date 所在自然月的电联率（分子/分母按月求和重算，不跨天平均）
+    ref_date 当天无数据 → y 全 0 / call_rate=None；某日无数据 → 该日 call_rate=None。
+    列顺序固定为 ref-1(=T-2) … ref-7(=T-8)，与前端表头一致。"""
+    if not ref_date:
+        return {"y": dict(EMPTY_METRICS), "deltas": [], "month_rate": None}
+    by_date = {}
+    for r in rows or []:
+        d = _date_of(r)
+        if d:
+            by_date.setdefault(d, []).append(r)
+    y = _agg(by_date.get(ref_date, []))
+    deltas = []
+    for k in range(1, 8):
+        dd = _shift_date(ref_date, -k)
+        dr = by_date.get(dd, [])
+        deltas.append({"date": dd, "call_rate": (_agg(dr)["call_rate"] if dr else None)})
+    ym = ref_date[:7]
+    m_rows = [r for r in rows if _date_of(r)[:7] == ym]
+    month_rate = _agg(m_rows)["call_rate"]
+    return {"y": y, "deltas": deltas, "month_rate": month_rate}
+
+
 def _dod(prev, cur):
     """环比：比率为百分点差(pp)，计数为绝对差 + 涨幅%（分母为 0 时 pct 记 None）。"""
     def rate_delta(a, b):
@@ -113,8 +146,9 @@ def _in_range(d, d0, d1):
     return True
 
 
-def _riders(all_rows, d0, d1):
-    """骑手级：按 (骑手id, 骑手姓名) 分组，每组含区间汇总 + 每日明细（均按展示区间过滤）。"""
+def _riders(all_rows, d0, d1, ref=""):
+    """骑手级：按 (骑手id, 骑手姓名) 分组，每组含区间汇总 + 每日明细（按展示区间过滤）
+    + 周期指标（period：以 ref 为昨日的 T-2~T-8 / 本月，与站点表同源口径）。"""
     groups = {}
     order = []
     for r in all_rows or []:
@@ -134,6 +168,7 @@ def _riders(all_rows, d0, d1):
             "rider_name": rname or rid,
             **_agg(disp),
             "daily": daily,
+            "period": _period_metrics(rrows, ref),
         })
     out.sort(key=lambda x: (-x["im_consult_cnt"], x["rider_id"]))
     return out
@@ -190,6 +225,9 @@ def build_one(team_id, start=None, end=None):
     all_rows = S.rows_of_team(rows, team_id)
     disp = [r for r in all_rows if _in_range(_date_of(r), d0, d1)]
     daily = [x for x in _daily(all_rows) if _in_range(x["date"], d0, d1)]
+    # 周期列基准日 = 展示区间末日（前端日期选择器末日，默认 T-1）；为空回落已落盘末日。
+    ref = d1 or st.get("end") or ""
+    team_period = _period_metrics(all_rows, ref)
     result = {
         "team_id": team_id,
         "team_name": _team_name(disp, team_id),
@@ -199,7 +237,8 @@ def build_one(team_id, start=None, end=None):
         "display_range": {"start": d0, "end": d1},
         **_agg(disp),
         "daily": daily,
-        "riders": _riders(all_rows, d0, d1),
+        "period": team_period,
+        "riders": _riders(all_rows, d0, d1, ref),
     }
     CACHE.put_result(MODULE, team_id, key_date, "", "cache", result)
     return result
