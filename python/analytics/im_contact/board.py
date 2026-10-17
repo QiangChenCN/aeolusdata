@@ -151,14 +151,15 @@ def _team_name(rows, team_id):
 def build_one(team_id, start=None, end=None):
     """单站实时概览：区间汇总 + 每日明细(含环比) + 骑手明细(含各自的每日明细)。
 
-    展示区间取落盘文件的 start/end（用户所选区间）；落盘数据可能多含一天
-    （baseline_date，环比基准），该日不进汇总/每日表，只用于算首个展示日的 dod。
-    落盘不可用 → need_refresh=True（前端据此提示去刷新，而非展示 0）。
+    展示区间以**前端传入**的 start/end 为准（用户所选区间）；落盘仅作兜底
+    （未传区间时回落已落盘区间）。落盘数据可能多含一天（环比基准），该日不进
+    汇总/每日表，只用于算首个展示日的 dod。落盘不可用 → need_refresh=True。
     """
     team_id = str(team_id)
     st = S.fetch_status() or {}
-    d0 = st.get("start") or start or ""
-    d1 = st.get("end") or end or ""
+    # 前端传入区间优先；未传则回落已落盘区间
+    d0 = start or st.get("start") or ""
+    d1 = end or st.get("end") or ""
     key_date = "%s~%s" % (d0, d1)
     cached = CACHE.get_result(MODULE, team_id, key_date, "", "cache")
     if cached is not None:

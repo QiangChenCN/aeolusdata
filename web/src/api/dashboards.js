@@ -202,10 +202,13 @@ export function saveDeliveryTimeoutTeams(teams) {
 }
 
 /* ============ IM 电联看板（独立命名空间 /im-contact，数据源 Quark 报表 473269） ============ */
-/* 站点数据：GET /api/im-contact/data?team=<id>（通配转发 Python analytics.im_contact） */
-export function fetchImContact({ team } = {}) {
+/* 站点数据：GET /api/im-contact/data?team=<id>&start=<>&end=<>
+   （通配转发 Python analytics.im_contact；start/end 为前端展示区间，计算按此进行） */
+export function fetchImContact({ team, start, end } = {}) {
   const p = [];
   if (team) p.push('team=' + enc(team));
+  if (start) p.push('start=' + enc(start));
+  if (end) p.push('end=' + enc(end));
   return request('/im-contact/data' + (p.length ? '?' + p.join('&') : ''));
 }
 /* 取数落盘：POST /api/im-contact-fetch/refresh {start, end}（Nest 原生，Quark 导出较慢放宽超时） */

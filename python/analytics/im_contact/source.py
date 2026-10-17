@@ -13,18 +13,24 @@ if PY_HOME and PY_HOME not in _sys.path:
     _sys.path.insert(0, PY_HOME)
 # <<< python-home bootstrap <<<
 
-"""IM 电联看板数据读取层：读 Nest 落盘的 `backend/data/im-contact-实时.json`。
+"""IM 电联看板数据读取层：读 Nest 累计落库的 SQLite `backend/data/db/im_contact.db`。
 
-落盘 payload 形态（由 Nest ImContactFetchService 写入，与考核看板违规明细同构）：
-    { start, end, fetched_at, fetch_ok, fetch_error, total, rows }
-其中 rows 为扁平 dict 列表，键为 Quark 报表字段中文名（见下方 F_* 常量），
-计数字段已是数字（Nest 落盘前做过 coercion），比率为报表原始值（字符串/数字均可）。
+落库由 Nest ImContactStoreService 写入（node:sqlite 同源），按 送达日期+骑手id 去重累计；
+同时 Nest 每月导出可读备份 `backend/data/IM电联明细.YYYY-MM.json`（对账用，本模块不直接读）。
+本模块只做读取（计算的输入端口）：
+    · load_rows(start, end) 按区间（或全量）取扁平 dict 列表；
+    · fetch_status() 取数状态（是否失败 / 取数时间 / 已落盘区间 / 累计条数）。
+rows 键为 Quark 报表字段中文名（见下方 F_* 常量），计数字段已是数字，比率为百分数。
 """
 
 import json
 import os
+import sqlite3
 
-DATA_FILE = "im-contact-实时.json"
+# 持久层：SQLite（由 Nest ImContactStoreService 写入，node:sqlite 同源）。
+# 累计历史落库 backend/data/db/im_contact.db，按 送达日期+骑手id 去重；
+# 计算侧（本模块）按前端传入区间读取，支持跨月查询。
+DB_PATH = os.path.join(ROOT, "backend", "data", "db", "im_contact.db")
 
 # ---- 字段中文键（与 Nest 落盘行、Quark 报表 473269 字段配置一一对应）----
 F_DATE = "送达日期"
@@ -57,51 +63,92 @@ COUNT_FIELDS = (
 )
 
 
-def _file_path():
-    return os.path.join(ROOT, "backend", "data", DATA_FILE)
+def _db_exists():
+    return os.path.exists(DB_PATH)
 
 
-def load_payload():
-    """读落盘 payload；文件缺失 / 损坏返回 None。"""
-    p = _file_path()
-    if not os.path.exists(p):
-        return None
-    try:
-        with open(p, "r", encoding="utf-8") as f:
-            d = json.load(f)
-    except Exception:
-        return None
-    return d if isinstance(d, dict) else None
-
-
-def load_rows():
-    """读落盘 rows；不可用返回 None。
-
-    不可用包含：从未落盘 / 本次取数失败（fetch_ok=false，Nest 覆盖写时置位）/
-    rows 结构异常。与考核看板违规明细读侧同一口径——失败不把盘上旧数据当有效数据。
-    """
-    d = load_payload()
-    if d is None:
-        return None
-    if d.get("fetch_ok") is False:
-        return None
-    rows = d.get("rows")
-    return rows if isinstance(rows, list) else None
+def _connect():
+    return sqlite3.connect(DB_PATH, timeout=5)
 
 
 def fetch_status():
-    """取数状态（供看板区分「从未拉取」与「本次拉取失败」并给出可操作提示）。"""
-    d = load_payload()
-    if d is None:
+    """取数状态（供看板区分「从未拉取」与「本次拉取失败」并给出可操作提示）。
+
+    数据源 = SQLite im_contact.db（与 Nest 落盘 / 计算读侧同源）：
+      · last_fetch_ok      '1' / '0' / 缺省（从未落盘）
+      · last_fetch_error / last_fetched_at  见 im_contact_meta 表
+      · start/end = 库内已落盘数据的最小/最大 送达日期（即"已落盘区间"）
+    库不存在 / 无记录 → None（视为从未拉取）。
+    """
+    if not _db_exists():
         return None
+    try:
+        con = _connect()
+        try:
+            cur = con.cursor()
+            ok_raw = cur.execute(
+                "SELECT v FROM im_contact_meta WHERE k='last_fetch_ok'"
+            ).fetchone()
+            err_raw = cur.execute(
+                "SELECT v FROM im_contact_meta WHERE k='last_fetch_error'"
+            ).fetchone()
+            fa_raw = cur.execute(
+                "SELECT v FROM im_contact_meta WHERE k='last_fetched_at'"
+            ).fetchone()
+            rng = cur.execute(
+                "SELECT MIN(stat_date), MAX(stat_date) FROM im_contact_records"
+            ).fetchone()
+            cnt = cur.execute("SELECT COUNT(*) FROM im_contact_records").fetchone()
+        finally:
+            con.close()
+    except Exception:
+        return None
+    ok_v = ok_raw[0] if ok_raw else None
+    fetch_ok = True if ok_v == "1" else (False if ok_v == "0" else None)
     return {
-        "fetch_ok": d.get("fetch_ok"),
-        "fetch_error": d.get("fetch_error"),
-        "start": d.get("start"),
-        "end": d.get("end"),
-        "fetched_at": d.get("fetched_at"),
-        "total": d.get("total"),
+        "fetch_ok": fetch_ok,
+        "fetch_error": (err_raw[0] if err_raw else "") or None,
+        "start": (rng[0] if rng else None) or None,
+        "end": (rng[1] if rng else None) or None,
+        "fetched_at": (fa_raw[0] if fa_raw else "") or None,
+        "total": (cnt[0] if cnt else 0) or 0,
     }
+
+
+def load_rows(start=None, end=None):
+    """读 IM 电联明细原始行（Nest 已累计落库到 SQLite）。
+
+    返回 list[dict]；不可用返回 None，不可用包含：
+      · 库不存在 / 无记录（从未落盘）；
+      · 本次取数失败（last_fetch_ok='0'，Nest 置位，历史数据保留但不当有效数据）。
+    指定 [start, end]（YYYY-MM-DD）只取该区间；否则取全量（由 board 按展示区间过滤 + 算环比）。
+    """
+    if not _db_exists():
+        return None
+    try:
+        con = _connect()
+        try:
+            cur = con.cursor()
+            ok_raw = cur.execute(
+                "SELECT v FROM im_contact_meta WHERE k='last_fetch_ok'"
+            ).fetchone()
+            if ok_raw and ok_raw[0] == "0":
+                return None
+            if start and end:
+                rows = cur.execute(
+                    "SELECT raw_json FROM im_contact_records "
+                    "WHERE stat_date >= ? AND stat_date <= ? ORDER BY stat_date, rider_id",
+                    (start, end),
+                ).fetchall()
+            else:
+                rows = cur.execute(
+                    "SELECT raw_json FROM im_contact_records ORDER BY stat_date, rider_id"
+                ).fetchall()
+        finally:
+            con.close()
+    except Exception:
+        return None
+    return [json.loads(r[0]) for r in rows]
 
 
 def to_num(v):

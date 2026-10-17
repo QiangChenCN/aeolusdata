@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import * as fs from 'fs';
 import * as path from 'path';
 import { ContactImFetchService } from '../../../fetch/sources/contact-im-fetch.service';
+import { ImContactStoreService } from '../../../fetch/storage/im-contact-store.service';
 
 /**
  * IM 电联看板 —— 自有取数落盘（2026-10-17 新建，独立看板）。
@@ -13,10 +14,10 @@ import { ContactImFetchService } from '../../../fetch/sources/contact-im-fetch.s
  *
  * 本服务独立实现的部分：
  *   · 透视表 → 扁平行（按字段中文名建键，指标 coercion 成数字）；
- *   · 落盘到自有命名空间 `backend/data/im-contact-实时.json`（全站单文件、覆盖写），
- *     payload 形态与考核看板违规明细同构：{ start, end, fetched_at, fetch_ok,
- *     fetch_error, total, rows } —— 读侧（Python analytics/im_contact）按 fetch_ok
- *     判定可用性，失败不把盘上旧数据当有效数据。
+ *   · 累计历史落库到 SQLite `backend/data/db/im_contact.db`
+ *     （按 送达日期+骑手id 去重 upsert，跨月自然累计，计算侧按前端区间读取）；
+ *   · 同时每月导出可读备份 `backend/data/IM电联明细.YYYY-MM.json`
+ *     （命名见用户要求；与库同源，便于对账 / 人工核对）。
  *
  * 与考核看板 / 配送超时看板**不共用任何取数或计算代码**。
  */
@@ -66,6 +67,15 @@ function shiftDay(dateStr: string, offset: number): string {
   d.setUTCDate(d.getUTCDate() + offset);
   const p = (n: number) => String(n).padStart(2, '0');
   return `${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())}`;
+}
+
+/** 取某日期所在月的起止（YYYY-MM-DD）。 */
+function monthBounds(dateStr: string): { start: string; end: string } {
+  const [y, m] = dateStr.slice(0, 7).split('-').map(Number);
+  const start = `${y}-${String(m).padStart(2, '0')}-01`;
+  const last = new Date(Date.UTC(y, m, 0)).getUTCDate(); // 该月天数
+  const end = `${y}-${String(m).padStart(2, '0')}-${String(last).padStart(2, '0')}`;
+  return { start, end };
 }
 
 /** 宽松数值化：'1,234' / '85.3%' / '12' → number；空 / 非法 → null。 */
@@ -129,6 +139,7 @@ export class ImContactFetchService {
   constructor(
     config: ConfigService,
     private readonly contactIm: ContactImFetchService,
+    private readonly store: ImContactStoreService,
   ) {
     const root = path.resolve(
       config.get<string>('PROJECT_ROOT') || path.resolve(process.cwd(), '..'),
@@ -136,18 +147,19 @@ export class ImContactFetchService {
     this.dataDir = path.join(root, 'backend', 'data');
   }
 
-  /** 单文件落盘路径。 */
-  filePath(): string {
-    return path.join(this.dataDir, 'im-contact-实时.json');
+  /** 每月可读备份文件：backend/data/IM电联明细.YYYY-MM.json。 */
+  monthlyFilePath(month: string): string {
+    return path.join(this.dataDir, `IM电联明细.${month}.json`);
   }
 
   /**
-   * 拉取 [startDate, endDate] 全站 IM 电联明细 → 扁平化 → 覆盖写落盘。
+   * 拉取 [startDate, endDate] 全站 IM 电联明细 → 扁平化 → 累计落库（SQLite）+
+   * 导出当月可读备份（IM电联明细.YYYY-MM.json）。
    *
-   * 会**多取一天**（startDate 前一天）作为「较前日环比」的基准：落盘文件的
-   * start/end 仍是用户选的展示区间，基准日数据只用于算环比，不计入汇总与每日表
+   * 会**多取一天**（startDate 前一天）作为「较前日环比」的基准：落库的 start/end
+   * 仍是用户选的展示区间，基准日数据只用于算环比，不计入汇总与每日表
    * （读侧按 start/end 过滤，见 analytics/im_contact/board.py）。
-   * 失败写 fetch_ok=false（保留旧 rows 便于回查），返回 {ok:false}。
+   * 失败置位 store meta（last_fetch_ok=false，保留历史数据），返回 {ok:false}。
    */
   async fetchAndLand(
     startDate: string,
@@ -165,7 +177,7 @@ export class ImContactFetchService {
     } catch (e) {
       const err = `IM 电联取数失败：${(e as Error).message}`;
       this.logger.warn(err);
-      this.writeFailed(startDate, endDate, baseline, err);
+      this.store.markFailed(err);
       return { ok: false, msg: err };
     }
     if (view.shape === 'unknown' || !view.rows.length) {
@@ -179,7 +191,7 @@ export class ImContactFetchService {
         : `IM 电联报表解析出 0 行（shape=${view.shape}，headers=${view.headers.length}）` +
           `——可能是该区间无数据，也可能是请求形态与报表当前配置不符。响应结构：${describeRaw(view.raw)}`;
       this.logger.warn(err);
-      this.writeFailed(startDate, endDate, baseline, err);
+      this.store.markFailed(err);
       return { ok: false, msg: err };
     }
     let rows: Record<string, unknown>[];
@@ -188,13 +200,33 @@ export class ImContactFetchService {
     } catch (e) {
       const err = `IM 电联扁平化失败：${(e as Error).message}`;
       this.logger.error(err);
-      this.writeFailed(startDate, endDate, baseline, err);
+      this.store.markFailed(err);
       return { ok: false, msg: err };
     }
-    this.writeOk(startDate, endDate, baseline, rows);
-    const msg = `IM 电联 ${rows.length} 行（${startDate}~${endDate}，含环比基准日 ${baseline}）`;
+    // 累计落库（按 送达日期+骑手id 去重 upsert，跨月自然累计）
+    this.store.upsertRows(rows, nowStamp());
+    // 导出当月可读备份（IM电联明细.YYYY-MM.json）
+    const { start: mStart, end: mEnd } = monthBounds(endDate);
+    this.exportMonth(mStart, mEnd);
+    const msg = `IM 电联 ${rows.length} 行（${startDate}~${endDate}，含环比基准日 ${baseline}）已落库累计`;
     this.logger.log(`IM 电联看板取数：${msg}`);
     return { ok: true, msg };
+  }
+
+  /** 导出「某月」全量（从库读该月）到 IM电联明细.YYYY-MM.json 备份/对账文件。 */
+  private exportMonth(monthStart: string, monthEnd: string): void {
+    const rows = this.store.getRange(monthStart, monthEnd);
+    const month = monthStart.slice(0, 7);
+    const payload = {
+      month,
+      start: monthStart,
+      end: monthEnd,
+      fetched_at: this.store.meta('last_fetched_at') || nowStamp(),
+      fetch_ok: this.store.meta('last_fetch_ok') !== '0',
+      total: rows.length,
+      rows,
+    };
+    fs.writeFileSync(this.monthlyFilePath(month), JSON.stringify(payload), 'utf-8');
   }
 
   /**
@@ -241,44 +273,34 @@ export class ImContactFetchService {
     return out;
   }
 
-  private writeOk(
-    start: string,
-    end: string,
-    baseline: string,
-    rows: Record<string, unknown>[],
-  ): void {
-    const payload = {
-      start,
-      end,
-      baseline_date: baseline,
-      fetched_at: nowStamp(),
-      fetch_ok: true,
-      fetch_error: null,
-      total: rows.length,
-      rows,
+  /**
+   * 当前落盘状态（已落盘区间 / 取数时间 / fetch_ok / 累计条数），供前端判断是否需要刷新。
+   * 数据源 = SQLite im_contact.db（与计算侧同源）。
+   */
+  status(): {
+    ok: boolean;
+    landed: boolean;
+    start: string | null;
+    end: string | null;
+    fetched_at: string | null;
+    fetch_ok: boolean | null;
+    fetch_error: string | null;
+    total: number;
+  } {
+    const landed = this.store.hasData();
+    const range = this.store.statRange();
+    const okRaw = this.store.meta('last_fetch_ok');
+    const fetchOk: boolean | null = okRaw === '1' ? true : okRaw === '0' ? false : null;
+    const errRaw = this.store.meta('last_fetch_error');
+    return {
+      ok: true,
+      landed,
+      start: range.start || null,
+      end: range.end || null,
+      fetched_at: this.store.meta('last_fetched_at') || null,
+      fetch_ok: fetchOk,
+      fetch_error: errRaw || null,
+      total: this.store.countAll(),
     };
-    fs.writeFileSync(this.filePath(), JSON.stringify(payload), 'utf-8');
-  }
-
-  /** 取数失败：整份写 fetch_ok=false，保留旧 rows（便于回查），使读侧视为不可用。 */
-  private writeFailed(start: string, end: string, baseline: string, error: string): void {
-    let oldRows: Record<string, unknown>[] = [];
-    try {
-      const prev = JSON.parse(fs.readFileSync(this.filePath(), 'utf-8'));
-      if (prev && Array.isArray(prev.rows)) oldRows = prev.rows;
-    } catch {
-      /* 无旧文件则 rows 为空 */
-    }
-    const payload = {
-      start,
-      end,
-      baseline_date: baseline,
-      fetched_at: nowStamp(),
-      fetch_ok: false,
-      fetch_error: String(error).slice(0, 300) || null,
-      total: oldRows.length,
-      rows: oldRows,
-    };
-    fs.writeFileSync(this.filePath(), JSON.stringify(payload), 'utf-8');
   }
 }

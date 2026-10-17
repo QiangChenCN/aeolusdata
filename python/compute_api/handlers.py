@@ -792,8 +792,9 @@ def _get_assessment_station(self, qs):
 
 # ---------------- IM 电联看板（电联率 / IM 及时回复率，站点 + 骑手）----------------
 # 计算逻辑在独立包 analytics/im_contact/（与 assessment 解耦，零 HTTP 读盘）；
-# 此处仅做站点权限闸门 + 转发。落盘数据由 Nest ImContactFetchService 写入
-# backend/data/im-contact-实时.json（全站单文件，含日期区间）。
+# 此处仅做站点权限闸门 + 转发。累计历史落库在 Nest ImContactStoreService
+# （SQLite backend/data/db/im_contact.db，按 送达日期+骑手id 去重），计算侧按前端
+# 传入区间读取。
 def _get_im_contact(self, qs):
     from analytics.im_contact import board as ICB
     team = (qs.get("team") or [None])[0]
@@ -804,17 +805,23 @@ def _get_im_contact(self, qs):
         return
     try:
         from analytics.im_contact import source as ICS
+        # 前端展示区间（近 7 天等）；缺省回落已落盘区间。计算按传入区间进行。
+        start = (qs.get("start") or [None])[0] or ""
+        end = (qs.get("end") or [None])[0] or ""
         st = ICS.fetch_status() or {}
-        row = ICB.build_one(team, st.get("start"), st.get("end"))
+        start = start or st.get("start") or ""
+        end = end or st.get("end") or ""
+        row = ICB.build_one(team, start, end)
         miss = bool(row.get("need_refresh"))
         self._json({
             "ok": True,
             "team": team,
             "teamName": row.get("team_name"),
+            # 响应顶层的 start/end = 已落盘区间（"数据区间"标签用），非展示区间
             "start": st.get("start"),
             "end": st.get("end"),
             "basis": "range",
-            # 取数时间：落盘文件的 fetched_at（Nest 写入时刻）
+            # 取数时间：落库的 last_fetched_at（Nest 写入时刻）
             "fetched_at": st.get("fetched_at"),
             "rows": [] if miss else [row],
             "data_status": "no_data" if miss else (row.get("data_status") or "ok"),

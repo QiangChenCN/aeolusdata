@@ -25,7 +25,7 @@
         type="primary"
         :loading="refreshing"
         :disabled="refreshing || cooldown > 0"
-        :title="cooldown > 0 ? `刷新过于频繁，请等待 ${cooldown} 秒` : '拉取所选区间的 IM 电联数据后重新计算'"
+        :title="cooldown > 0 ? `刷新过于频繁，请等待 ${cooldown} 秒` : '拉取 T-1 所在月 IM 电联数据（累计入库）后重新计算'"
         @click="refresh"
       >
         <el-icon><Refresh /></el-icon>
@@ -37,6 +37,9 @@
 
     <el-alert v-if="needRefresh" type="info" :closable="false" show-icon class="dv-hint">
       {{ needRefreshNote }}
+    </el-alert>
+    <el-alert v-else-if="staleHint" type="info" :closable="false" show-icon class="dv-hint">
+      {{ staleHint }}
     </el-alert>
     <el-alert v-else-if="dataNote" type="warning" :closable="false" show-icon class="dv-hint">{{ dataNote }}</el-alert>
     <el-alert v-if="refreshNote" type="error" :closable="false" show-icon class="dv-hint">{{ refreshNote }}</el-alert>
@@ -247,16 +250,22 @@ async function saveCfg() {
 }
 
 /* ── 日期区间 ─────────────────────────────────────────────────────────────
-   默认 T-1（昨天）：与装备报表（EquipmentFetchService.defaultDates）同口径 ——
-   Quark FBI 报表通常有数据滞后，「今天」的送达电联数据往往还没落全，默认取昨天
-   保证首次打开即有数据；需要看今天仍可手动选择。 */
+   默认近 7 天（T-7 ~ T-1）：报表 T-1 才出数，故结束日取昨天、起始取 7 天前。
+   取数（「刷新数据」）默认拉取 T-1 所在月**整月**数据，累计落库到 SQLite
+   （backend/data/db/im_contact.db，按 送达日期+骑手id 去重，跨月累计），并每月导出
+   可读备份 IM电联明细.YYYY-MM.json。落库数据持久化（重启/部署都不清）。
+   切换区间或刷新页面都只是从已落库数据「按所选区间重算」，不反复取数；要看最新
+   T-1 时点「刷新数据」即可（该按钮才真正拉取整月并累计入库）。 */
 function shiftDay(offset) {
   const d = new Date(Date.now() + offset * 86400000 + 8 * 3600 * 1000);
   const p = (n) => String(n).padStart(2, '0');
   return `${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())}`;
 }
-const range = ref([shiftDay(-1), shiftDay(-1)]);
-const landed = ref({ start: '', end: '' });   // 已落盘的数据区间
+function last7Range() {
+  return [shiftDay(-7), shiftDay(-1)];
+}
+const range = ref(last7Range());
+const landed = ref({ start: '', end: '' });   // 已落盘的数据区间（整月）
 const landedLabel = computed(() =>
   landed.value.start ? `${landed.value.start} ~ ${landed.value.end}` : '');
 const fetchedAt = ref('');
@@ -271,6 +280,15 @@ const needRefresh = computed(() => loaded.value && attempted.value > 0 && rows.v
 const needRefreshNote = computed(() => {
   const n = rows.value.find((x) => x.data_status === 'no_data');
   return (n && n.data_note) || '当前站点该区间 IM 电联数据尚未落盘，请点「刷新数据」拉取';
+});
+/* 数据已落盘但滞后（结束日早于所选区间结束日 T-1）：提示用户点刷新获取近 7 天，
+   不自动取数（报表 T-1 才出数，按用户要求「不用每次都取数」）。 */
+const staleHint = computed(() => {
+  if (!loaded.value || !landed.value.end || !range.value || !range.value[1]) return '';
+  if (range.value[1] && landed.value.end < range.value[1]) {
+    return `当前落盘数据截至 ${landed.value.end}（非最新），点「刷新数据」拉取近 7 天`;
+  }
+  return '';
 });
 const dataNote = computed(() => {
   const p = rows.value.find((x) => x.data_status === 'partial');
@@ -288,7 +306,9 @@ async function load(silent = false) {
       : [teamSel.value];
     attempted.value = ids.length;
     const results = await Promise.all(
-      ids.map((id) => fetchImContact({ team: id }).catch((e) => ({ __err: e }))),
+      ids.map((id) =>
+        fetchImContact({ team: id, start: range.value[0], end: range.value[1] }).catch((e) => ({ __err: e })),
+      ),
     );
     const good = [];
     const errs = [];
@@ -318,7 +338,8 @@ async function load(silent = false) {
   }
 }
 
-/* 刷新：拉取所选区间 → 落盘 → 重算（Quark 报表较慢，按钮 loading 期间禁用）。 */
+/* 刷新：拉取 T-1 所在月整月 → 累计落库 → 重算（Quark 报表较慢，按钮 loading 期间禁用）。
+   展示区间（近 7 天）由选择器决定，只影响计算，不影响取数范围。 */
 const refreshing = ref(false);
 const cooldown = ref(0);
 let cooldownTimer = null;
@@ -333,11 +354,10 @@ function startCooldown(sec) {
   }, 1000);
 }
 async function refresh() {
-  const [s, e] = range.value || [];
-  if (!s || !e) { ElMessage.warning('请先选择日期区间'); return; }
   refreshing.value = true;
   try {
-    const res = await refreshImContact({ start: s, end: e });
+    // 取数默认 T-1 所在月总数据，累计落库；展示区间（近 7 天）只用于计算。
+    const res = await refreshImContact({});
     if (res && res.ok) {
       ElMessage.success(res.msg || '拉取成功');
       startCooldown(REFRESH_COOLDOWN_SEC);
@@ -354,10 +374,11 @@ async function refresh() {
   }
 }
 function onTeamChange() { load(); }
-/* 切换日期区间：该区间多半还没落盘，直接触发取数（用户选区间就是要看该区间）。 */
+/* 切换日期区间：仅从已落盘数据「重算」（不重新取数）。报表 T-1 才出数，所选区间
+   已落盘则直接展示；若尚未落盘，看板留空并提示「点刷新数据」拉取。 */
 function onRangeChange() {
   const [s, e] = range.value || [];
-  if (s && e) refresh();
+  if (s && e) load();
 }
 
 /* ── 聚合：全部站点时对各站计数求和，比率按口径重算（不跨站平均） ────────── */
@@ -475,12 +496,10 @@ onMounted(async () => {
   } catch (e) { /* ignore：取不到配置则回落全部站点 */ }
   try {
     const st = await fetchImContactStatus();
-    // 只在「上次取数成功」时沿用已落盘区间；失败（fetch_ok=false）时保持默认 T-1 ——
-    // 否则会把一个拉取失败的「今天」区间带进选择器，用户一点刷新又失败，形成死循环。
-    if (st && st.landed && st.fetch_ok !== false && st.start && st.end) {
+    // 仅用于展示「已落盘区间 / 取数时间」；**不**把选择器恢复成上次选择 —— 默认固定近 7 天。
+    if (st && st.landed) {
       landed.value = { start: st.start, end: st.end };
       fetchedAt.value = st.fetched_at || '';
-      range.value = [st.start, st.end];
     }
   } catch (e) { /* ignore */ }
   await load();
@@ -503,8 +522,9 @@ onUnmounted(() => {
 .dv-bar { display: flex; align-items: center; gap: var(--sp-12); margin-bottom: var(--sp-16); flex-wrap: wrap; }
 .v-title { margin: 0; font-size: var(--el-font-size-extra-large); }
 .dv-sel { width: 160px; }
-/* EP 的 daterange 默认宽度 350px 过长，压到 240px（仍容得下两个日期 + 分隔符） */
-.dv-range { width: 240px; }
+/* EP 的 daterange 默认宽度 350px 过长，压到 220px（仍容得下两个日期 + 分隔符），
+   flex:none 防止在窄屏被拉伸撑长整条工具栏。 */
+.dv-range { width: 220px; flex: none; }
 .dv-date-tag { font-size: var(--el-font-size-small); color: var(--el-text-color-secondary); }
 .dv-range-tag { font-size: var(--el-font-size-small); color: var(--el-text-color-secondary); }
 .dv-bar .sp { flex: 1; }
