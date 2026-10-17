@@ -805,6 +805,9 @@ onMounted(async () => {
     if (ac && typeof ac.enabled === 'boolean') autoRefresh.value = ac.enabled;
     if (ac && ac.intervalSec) intervalSec.value = ac.intervalSec;
   } catch (e) { /* ignore：取不到则用本地默认 */ }
+  // 页面加载即读盘展示：避免打开看板空白、要等最长 600s 自动取数推 updated 才出数。
+  // fetch=false → 只读盘重算（不触发取数）；若返回 no_data（尚未落盘）上方信息栏会引导刷新，自动取数也会兜底。
+  await load(false, false, false);
   initSse();
   applyPoll();
 });
