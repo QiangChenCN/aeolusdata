@@ -195,16 +195,33 @@ export class CronStoreService implements OnModuleInit {
     const db = this.ensureDb();
     const cur = db.prepare('PRAGMA user_version').get() as Row;
     const old = Number(cur['user_version'] || 0);
+    // 先把遗留 todo_* 表改名到 cron_*（旧库是 todo 模块建的，表名不同且 user_version 沿用旧值）。
+    // 必须在版本迁移循环之前完成：否则 version<=old 会跳过建表步骤，后续 ALTER cron_item 会因缺表崩溃。
+    this.migrateLegacyTables();
     let next = old;
     for (const { version, sqls } of MIGRATIONS) {
       if (version <= old) continue;
-      for (const s of sqls) db.exec(s);
+      for (const s of sqls) {
+        const add = s.match(/ALTER TABLE\s+\S+\s+ADD COLUMN\s+(\w+)\s+(.*)/i);
+        if (add) this.ensureColumn('cron_item', add[1], add[2].trim());
+        else db.exec(s);
+      }
       db.exec(`PRAGMA user_version = ${version}`);
       next = version;
     }
-    this.migrateLegacyTables();
     if (old === 0 && next >= 1) this.seedDefaultLists();
     return [old, next];
+  }
+
+  /** 幂等加列：列已存在则跳过，避免遗留版本号错配导致重复 ALTER 报错。 */
+  private ensureColumn(table: string, column: string, def: string): void {
+    const db = this.conn;
+    const cols = (db.prepare(`PRAGMA table_info(${table})`).all() as Row[]).map(
+      (c) => String(c['name']),
+    );
+    if (!cols.includes(column)) {
+      db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${def}`);
+    }
   }
 
   /** 把旧版本遗留的 todo_* 表改名到 cron_*（一次性迁移；已是 cron_* 的新库不受影响）。 */
