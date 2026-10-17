@@ -41,6 +41,12 @@ const COUNT_FIELDS = new Set([
   '剔除后有效电联单量',
 ]);
 
+/**
+ * 比率类指标：Quark 返回的是 0~1 小数（实测 2026-10-17：0.8163… = 81.63%），
+ * 落盘统一换算成百分数与计数字段同库；原始串带 '%' 时按原值（不再乘）。
+ */
+const RATE_FIELDS = new Set(['送达电联率', 'IM及时回复率']);
+
 /** 扁平行必须出现的维度键（缺失说明透视表解析形态与预期不符，直接失败而非落脏数据）。 */
 const REQUIRED_DIMS = ['站点id', '骑手id'] as const;
 
@@ -62,6 +68,49 @@ function toNum(v: unknown): number | null {
   if (!s) return null;
   const n = Number(s);
   return Number.isFinite(n) ? n : null;
+}
+
+/**  JSON 里某个值的紧凑形态描述（类型 + 长度/键数），用于失败诊断。 */
+function shapeOf(v: unknown): string {
+  if (v === null) return 'null';
+  if (Array.isArray(v)) return `array(${v.length})`;
+  if (typeof v === 'object') return `object{${Object.keys(v as object).slice(0, 8).join(',')}}`;
+  return typeof v;
+}
+
+/**
+ * 解析出 0 行时的**结构指纹**：把 Quark 响应的真实形态压缩成一行，随错误信息返回前端 /
+ * 记入后端日志，用于判断「该区间真没数据」还是「请求形态与报表当前配置不符」。
+ * （电联报表的解析是从抓包推断的，首次真实响应必须核对——本指纹就是为这次核对准备的。）
+ */
+function describeRaw(raw: string): string {
+  let j: any;
+  try {
+    j = JSON.parse(raw);
+  } catch {
+    return `非 JSON 响应（长度 ${raw.length}，开头：${raw.slice(0, 80).replace(/\s+/g, ' ')}）`;
+  }
+  const parts: string[] = [`len=${raw.length}`, `top=${shapeOf(j)}`];
+  const data = j && typeof j === 'object' ? (j as any).data : undefined;
+  if (data !== undefined) parts.push(`data=${shapeOf(data)}`);
+  const value = data && typeof data === 'object' ? (data as any).value : undefined;
+  if (value !== undefined) {
+    parts.push(`value=${shapeOf(value)}`);
+    if (value && typeof value === 'object') {
+      for (const k of Object.keys(value)) {
+        const v = (value as any)[k];
+        if (Array.isArray(v)) {
+          const first = v[0];
+          parts.push(`${k}[${v.length}]{${first && typeof first === 'object' ? Object.keys(first).slice(0, 6).join('|') : typeof first}}`);
+        } else if (v && typeof v === 'object') {
+          parts.push(`${k}{${Object.keys(v).slice(0, 8).join('|')}}`);
+        } else {
+          parts.push(`${k}=${JSON.stringify(v)}`);
+        }
+      }
+    }
+  }
+  return parts.join(' | ').slice(0, 700);
 }
 
 @Injectable()
@@ -103,7 +152,15 @@ export class ImContactFetchService {
       return { ok: false, msg: err };
     }
     if (view.shape === 'unknown' || !view.rows.length) {
-      const err = `IM 电联报表解析失败（shape=${view.shape}，rows=${view.rows.length}）`;
+      // 区分两种 0 行：表头在但没有数据行 = 该区间无数据（Quark 报表通常滞后一天）；
+      // 连表头都没有 / 形态未知 = 请求或解析问题，此时才带结构指纹便于排查。
+      const noData =
+        view.headers.length > 0 &&
+        (view.shape === 'columnPivot' || view.shape === 'table');
+      const err = noData
+        ? `该区间（${startDate}~${endDate}）暂无 IM 电联数据——Quark 报表数据通常滞后一天，可改选昨天或更早的区间`
+        : `IM 电联报表解析出 0 行（shape=${view.shape}，headers=${view.headers.length}）` +
+          `——可能是该区间无数据，也可能是请求形态与报表当前配置不符。响应结构：${describeRaw(view.raw)}`;
       this.logger.warn(err);
       this.writeFailed(startDate, endDate, err);
       return { ok: false, msg: err };
@@ -140,11 +197,21 @@ export class ImContactFetchService {
       view.headers.forEach((h, i) => {
         obj[nameOf(h)] = r[i] ?? null;
       });
-      // 指标数值化（维度值保持原样）
+      // 指标数值化（维度值保持原样）：计数取整；比率由 0~1 小数换算成百分数
       for (const f of INDICATOR_FIELDS) {
         if (!(f in obj)) continue;
-        const n = toNum(obj[f]);
-        obj[f] = n === null ? null : COUNT_FIELDS.has(f) ? Math.round(n) : n;
+        const rawV = obj[f];
+        const hadPct = typeof rawV === 'string' && rawV.trim().endsWith('%');
+        const n = toNum(rawV);
+        if (n === null) {
+          obj[f] = null;
+        } else if (RATE_FIELDS.has(f) && !hadPct) {
+          obj[f] = Math.round(n * 10000) / 100;
+        } else if (COUNT_FIELDS.has(f)) {
+          obj[f] = Math.round(n);
+        } else {
+          obj[f] = n;
+        }
       }
       for (const d of REQUIRED_DIMS) {
         if (obj[d] === undefined || obj[d] === null || obj[d] === '') {

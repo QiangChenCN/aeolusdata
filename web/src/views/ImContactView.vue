@@ -180,11 +180,16 @@ async function saveCfg() {
   }
 }
 
-/* ── 日期区间（默认今天；切换后自动取数落盘该区间） ────────────────────── */
-function todayStr() {
-  return new Date(Date.now() + 8 * 3600 * 1000).toISOString().slice(0, 10);
+/* ── 日期区间 ─────────────────────────────────────────────────────────────
+   默认 T-1（昨天）：与装备报表（EquipmentFetchService.defaultDates）同口径 ——
+   Quark FBI 报表通常有数据滞后，「今天」的送达电联数据往往还没落全，默认取昨天
+   保证首次打开即有数据；需要看今天仍可手动选择。 */
+function shiftDay(offset) {
+  const d = new Date(Date.now() + offset * 86400000 + 8 * 3600 * 1000);
+  const p = (n) => String(n).padStart(2, '0');
+  return `${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())}`;
 }
-const range = ref([todayStr(), todayStr()]);
+const range = ref([shiftDay(-1), shiftDay(-1)]);
 const landed = ref({ start: '', end: '' });   // 已落盘的数据区间
 const landedLabel = computed(() =>
   landed.value.start ? `${landed.value.start} ~ ${landed.value.end}` : '');
@@ -412,7 +417,6 @@ onUnmounted(() => {
 .dv-bar { display: flex; align-items: center; gap: var(--sp-12); margin-bottom: var(--sp-16); flex-wrap: wrap; }
 .v-title { margin: 0; font-size: var(--el-font-size-extra-large); }
 .dv-sel { width: 160px; }
-.dv-range { width: 260px; }
 .dv-date-tag { font-size: var(--el-font-size-small); color: var(--el-text-color-secondary); }
 .dv-range-tag { font-size: var(--el-font-size-small); color: var(--el-text-color-secondary); }
 .dv-bar .sp { flex: 1; }

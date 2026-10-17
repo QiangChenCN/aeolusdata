@@ -104,12 +104,16 @@ export interface ContactImReportView {
   headers: string[];
   rows: any[][];
   labels: Record<string, string>;
-  /** 解析到的响应形态：透视表 / 二维表 / 未知（未知时 raw 一定有内容，便于排查）。 */
-  shape: 'crossTable' | 'table' | 'unknown';
+  /** 解析到的响应形态：列透视 / 交叉表 / 二维表 / 未知（未知时 raw 一定有内容，便于排查）。 */
+  shape: 'columnPivot' | 'crossTable' | 'table' | 'unknown';
   raw: string;
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/** 行头 / 指标的 GUID 序列（按报表字段配置顺序，用作响应缺 guid 时的位置兜底）。 */
+const ROW_HEADER_GUIDS = FIELD_GUIDS.filter((g) => FIELD_TYPE_MAP[g] === 'rowHeader');
+const INDICATOR_GUIDS = FIELD_GUIDS.filter((g) => FIELD_TYPE_MAP[g] === 'indicator');
 
 @Injectable()
 export class ContactImFetchService {
@@ -184,7 +188,16 @@ export class ContactImFetchService {
     }
   }
 
-  /** 解析 WidgetAction 响应：透视表（crossTable）/ 二维表（columns/values）/ 未知。 */
+  /** 宽松 JSON 解析（供 pollKey 探测用，失败返回 null 而不抛）。 */
+  private tryJson(raw: string): any | null {
+    try {
+      return JSON.parse(raw);
+    } catch {
+      return null;
+    }
+  }
+
+  /** 解析 WidgetAction 响应：列透视（473269 实测形态）/ 交叉表 / 二维表 / 未知。 */
   parse(raw: string): ContactImReportView {
     let j: any;
     try {
@@ -193,6 +206,11 @@ export class ContactImFetchService {
       return { headers: [], rows: [], labels: {}, shape: 'unknown', raw };
     }
     const value = (j.data || {}).value || {};
+    // 473269 实测形态（2026-10-17 用真实响应核对）：columns=7 个指标、rows=维度单元格、
+    // values=每行指标值 {v}。必须优先于下面的 table 分支——两者都有 columns。
+    if (Array.isArray(value.rows) && Array.isArray(value.values)) {
+      return this.parseColumnPivot(value, raw);
+    }
     if (value.crossTable || value.pivotTable) {
       return this.parsePivot(value.crossTable || value.pivotTable, raw);
     }
@@ -200,6 +218,41 @@ export class ContactImFetchService {
       return this.parseTable(value, raw);
     }
     return { headers: [], rows: [], labels: {}, shape: 'unknown', raw };
+  }
+
+  /**
+   * 列透视形态（473269 实测，2026-10-17 核对）：
+   *   value.columns[i].cells[0].props.{guid,label}   → 第 i 个**指标**（共 7 个）
+   *   value.rows[i].cells[j].{value, props.guid}     → 第 i 行的**维度值**（共 12 个）
+   *   value.values[i][j].v                           → 第 i 行第 j 个指标值
+   * 展开成 headers(12 维度 guid + 7 指标 guid) + rows(19 宽扁平行)，labels 取 FIELD_LABELS
+   * 的权威中文名——响应里的维度 label 不全可靠（如送达日期返回 "ds"），不能直接用。
+   */
+  private parseColumnPivot(value: any, raw: string): ContactImReportView {
+    const cols: any[] = value.columns || [];
+    const rowObjs: any[] = value.rows || [];
+    // 维度 guid：优先用行单元格自带的 props.guid（实测与字段表逐字一致），缺失按位置兜底
+    const rowGuids: string[] = ((rowObjs[0] || {}).cells || []).map(
+      (c: any, i: number) => (c && c.props && c.props.guid) || ROW_HEADER_GUIDS[i] || `rowDim${i}`,
+    );
+    const colGuids: string[] = cols.map((c: any, i: number) => {
+      const cell = (c.cells || [{}])[0];
+      return (cell && cell.props && cell.props.guid) || INDICATOR_GUIDS[i] || `colDim${i}`;
+    });
+    const headers: string[] = [...rowGuids, ...colGuids];
+    const labels: Record<string, string> = {};
+    for (const g of headers) labels[g] = FIELD_LABELS[g] || g;
+    const rows: any[][] = [];
+    for (let i = 0; i < rowObjs.length; i++) {
+      const cells: any[] = (rowObjs[i] || {}).cells || [];
+      const dimVals = cells.map((c: any) =>
+        c && typeof c === 'object' ? (c.value ?? c.v ?? c) : c);
+      const valRow = value.values[i];
+      const metrics = (Array.isArray(valRow) ? valRow : Object.values(valRow || {})).map(
+        (c: any) => (c && typeof c === 'object' ? (c.v ?? c.value ?? c) : c));
+      rows.push([...dimVals, ...metrics]);
+    }
+    return { headers, rows, labels, shape: 'columnPivot', raw };
   }
 
   private parseTable(value: any, raw: string): ContactImReportView {
@@ -295,6 +348,29 @@ export class ContactImFetchService {
         continue;
       }
       try {
+        // 异步计算：服务端算不完时返回 {data:{value:null, pollKey}} —— 同一请求重发即可
+        // （算完后直接带数据返回）。不等会误判成「该区间无数据」。
+        const j = this.tryJson(raw);
+        if (j && j.data && j.data.value == null && j.data.pollKey) {
+          for (let p = 1; p <= 5; p++) {
+            log(`  ! 报表异步计算中（pollKey），${p * 2}s 后重发同一请求（${p}/5）`);
+            await sleep(p * 2000);
+            const raw2 = await this.post(
+              creds.daCookie,
+              creds.reportIdToken,
+              creds.secureParams,
+              creds.metaTime,
+              opts.startDate,
+              opts.endDate,
+              region,
+            );
+            const j2 = this.tryJson(raw2);
+            if (j2 && j2.data && j2.data.value != null) {
+              return this.parse(raw2);
+            }
+            if (raw2.trimStart().startsWith('<')) break; // 等计算期间会话掉了，交给外层重兑
+          }
+        }
         return this.parse(raw);
       } catch (e) {
         lastErr = e;
