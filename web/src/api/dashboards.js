@@ -148,12 +148,23 @@ export function fetchOverviewAssessment({ date } = {}) {
 }
 
 /* ============ 考核看板 ============ */
-export function fetchAssessmentStation({ team, start, end } = {}) {
+/** 读取服务端自动取数配置（enabled / intervalSec，多端共享）：前端「自动/手动」与间隔选择以此为准。 */
+export function fetchAssessmentAutoConfig() {
+  return request('/assessment-fetch/auto');
+}
+/** 写入服务端自动取数配置：enabled=自动开关，intervalSec=取数间隔（秒）。 */
+export function saveAssessmentAutoConfig({ enabled, intervalSec } = {}) {
+  return request('/assessment-fetch/auto', j({ enabled, intervalSec }));
+}
+export function fetchAssessmentStation({ team, teams, start, end } = {}) {
   const p = [];
   if (team) p.push('team=' + enc(team));
+  // 批量：teams 为站点 id 数组，拼成逗号分隔一次性取回（替代前端逐站 N 次请求）。
+  if (teams && teams.length) p.push('teams=' + enc(teams.join(',')));
   if (start) p.push('start=' + enc(start));
   if (end) p.push('end=' + enc(end));
-  return request('/assessment/station' + (p.length ? '?' + p.join('&') : ''));
+  // 首刷后全站 cache miss 会触发整批重算（9 站一次），耗时明显，故设 30s 超时避免被误判「请求超时」。
+  return request('/assessment/station' + (p.length ? '?' + p.join('&') : ''), { timeout: 30000 });
 }
 /* 考核看板「展示站点」配置（/assessment/teams）：GET 返回
    {teams: 已配置展示站点id, all: 全部可选站点{id,name}}；POST 保存展示站点。

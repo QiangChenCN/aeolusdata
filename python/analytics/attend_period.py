@@ -4,7 +4,9 @@
 
 数据源（复用 sources 公共取数模块）：
   · fetch_schedule    当天排班目标（站×日期×时段，每时段含 predict_num/actual_num）
-  · fetch_attendance  实时考勤（单站点单时段快照，含骑手级 workStatus / timeCode / timeValidOnlineTime）
+  · fetch_attendance  实时考勤（单站点一次请求，返回全站骑手列表；每位骑手 timeCode 为排班时段列表、
+                     timeAttendanceVos 含全时段明细：各时段 timeFinishOrder / timeValidOnlineTime。
+                     顶层 timeFinishOrder / timeValidOnlineTime 仅对应 queryTimeCode，各时段真实值须读 timeAttendanceVos）
 
 本模块只做「取数编排 + 关联聚合」，不实现 HTTP 细节（那些在 sources/ 与各 auth 包里）。
 
@@ -20,9 +22,10 @@
 时段筛选：跳过 time_code=9999（全天汇总行）与 time_code=2（休息行），
           仅保留真实排班时段（午高峰 / 晚高峰 / …）。
 
-实时考勤逐时段拉取：对每个真实时段调用一次 fetch_attendance(time_code)，
-                    单时段内按「tc ∈ rider.timeCode」归并，统计在线/小休/下线。
-                    （礼貌性节流 0.25s/时段，避免触发接口限流。）
+实时考勤单次取数：每个站点只调用一次 fetch_attendance（任意 timeCode 即可），
+                    返回的 timeAttendanceVos 已含全时段明细；单时段内按
+                    「tc ∈ rider.timeCode」归并，从 timeAttendanceVos[时段] 取有效在线时长，统计在线/小休/下线。
+                    （2026-10-17 实测：timeAttendanceVos 与逐时段专查顶层值逐位一致，无需逐时段并发/节流。）
 """
 import os
 
@@ -42,9 +45,7 @@ if PY_HOME and PY_HOME not in _sys.path:
 # <<< python-home bootstrap <<<
 
 import sys
-import time
 import datetime
-import concurrent.futures as _cf
 from sources import (
     fetch_schedule, fetch_attendance, flatten_schedule, TEAM_NAMES,
 )
@@ -56,10 +57,6 @@ REST_STATES = {2}        # 小休（暂离）
 OFFLINE_STATES = {3}     # 下线（未在线装备）
 DAY_TIME_CODE = "9999"   # 全天汇总行
 REST_TIME_CODE = "2"     # 休息行
-
-# 逐时段考勤拉取间的礼貌性节流（秒）
-_PERIOD_SLEEP = 0.25
-
 
 def _log(msg):
     ts = datetime.datetime.now(BJ).strftime("%H:%M:%S")
@@ -76,15 +73,46 @@ def _fmt_dur(sec):
     return f"{h}h{m}m" if h > 0 else f"{m}m"
 
 
-def _row_from_period(p, riders, err):
-    """由「单时段排班记录 + 该时段骑手列表(可能 None) + 错误(可能 None)」构造一行时段有效结果。
+def build_attendance_index(riders):
+    """骑手考勤列表 → {rider_id: {tcs:[int…], vos:{int tc: vo}, workStatus}}。
+
+    vos 取自每位骑手的 timeAttendanceVos（含**全时段**明细），按 timeCode 建索引；
+    各时段单量 / 有效在线时长必须从 vos[时段] 取，不能读骑手顶层（顶层只对应 queryTimeCode）。
+    供 compute_valid（单站）与 attend_period_all.valid_all（并发全站）共用。
+    """
+    index = {}
+    if not riders:
+        return index
+    for _r in riders:
+        _rid = str(_r.get("knightId") or _r.get("riderId") or "")
+        if not _rid:
+            continue
+        _vos = {}
+        for _v in (_r.get("timeAttendanceVos") or []):
+            try:
+                _vos[int(_v.get("timeCode"))] = _v
+            except (TypeError, ValueError):
+                pass
+        _tcs = []
+        for _x in (_r.get("timeCode") or []):
+            try:
+                _tcs.append(int(_x))
+            except (TypeError, ValueError):
+                _tcs.append(_x)
+        index[_rid] = {"tcs": _tcs, "vos": _vos, "workStatus": _r.get("workStatus")}
+    return index
+
+
+def _row_from_period(p, att_index, err):
+    """由「单时段排班记录 + 该站点考勤索引(可能 None) + 错误(可能 None)」构造一行时段有效结果。
 
     供 compute_valid（单站）与 attend_period_all.valid_all（并发全站）共用，避免逻辑分叉。
+    att_index：build_attendance_index 产物；若该时段无排班骑手则按「0 / 无数据」处理。
     """
     tc = p.get("time_code")
     target = p.get("predict_num")
     scheduled = p.get("actual_num")
-    if err or riders is None:
+    if err or att_index is None:
         return {
             "time_code": tc, "time_name": p.get("time_name"),
             "start_time": p.get("start_time"), "end_time": p.get("end_time"),
@@ -94,13 +122,19 @@ def _row_from_period(p, riders, err):
             "valid_dur_sec": None, "valid_dur": "—",
             "error": err or "无数据",
         }
-    in_slot = [r for r in riders if tc in (r.get("timeCode") or [])]
-    online = [r for r in in_slot
-              if r.get("workStatus") not in REST_STATES
-              and r.get("workStatus") not in OFFLINE_STATES]
-    offline = sum(1 for r in in_slot if r.get("workStatus") in OFFLINE_STATES)
-    rest = sum(1 for r in in_slot if r.get("workStatus") in REST_STATES)
-    valid_dur = sum(int(r.get("timeValidOnlineTime") or 0) for r in online)
+    try:
+        _tc_int = int(tc)
+    except (TypeError, ValueError):
+        _tc_int = tc
+    in_slot = [info for info in att_index.values() if _tc_int in info["tcs"]]
+    online = [info for info in in_slot
+              if info["workStatus"] not in REST_STATES
+              and info["workStatus"] not in OFFLINE_STATES]
+    offline = sum(1 for info in in_slot if info["workStatus"] in OFFLINE_STATES)
+    rest = sum(1 for info in in_slot if info["workStatus"] in REST_STATES)
+    # 有效在线时长：从 timeAttendanceVos[时段] 取该时段值（顶层只对应 queryTimeCode）
+    valid_dur = sum(int((info["vos"].get(_tc_int) or {}).get("timeValidOnlineTime") or 0)
+                    for info in online)
     on_n = len(online)
     rate = _rate(on_n, target)
     absent = (target - on_n) if (target not in (None, 0)) else None
@@ -137,23 +171,21 @@ def compute_valid(team_id, date):
     periods = [r for r in sched_rows
                if str(r.get("time_code")) not in (DAY_TIME_CODE, REST_TIME_CODE)]
 
-    def _fetch(p):
-        tc = p.get("time_code")
-        try:
-            data = fetch_attendance(team_id, tc)
-            riders = (data.get("result") or {}).get("data") or []
-            return p, riders, None
-        except Exception as e:
-            _log("站点 %s 时段 %s 考勤拉取失败: %s" % (team_id, tc, e))
-            return p, None, "%s: %s" % (type(e).__name__, e)
+    # 单次请求拿全站骑手 × 全时段考勤（timeAttendanceVos 已含各时段明细，无需逐时段并发/节流）。
+    # 实测（2026-10-17）：listAttendance 对任意 timeCode 返回全站骑手，timeAttendanceVos 与
+    # 逐时段专查的顶层值逐位一致（null 与 0 等价），故每站点仅取数一次。
+    _query_tc = periods[0]["time_code"] if periods else "120"
+    _att_err = None
+    _att_riders = []
+    try:
+        _data = fetch_attendance(team_id, _query_tc)
+        _att_riders = (_data.get("result") or {}).get("data") or []
+    except Exception as e:
+        _log("站点 %s 实时考勤拉取失败: %s" % (team_id, e))
+        _att_err = "%s: %s" % (type(e).__name__, e)
+    _att_index = build_attendance_index(_att_riders) if _att_err is None else None
 
-    # 各时段考勤并发拉取（不再串行 0.25s 节流）：单站刷新从「时段数×~1.3s」降到「最慢一段 ~1.3s」。
-    # nest_client 会话令牌为进程级，并发线程均可读到，无需逐线程传递。
-    rows = []
-    if periods:
-        with _cf.ThreadPoolExecutor(max_workers=min(8, len(periods) + 1)) as ex:
-            for p, riders, err in ex.map(_fetch, periods):
-                rows.append(_row_from_period(p, riders, err))
+    rows = [_row_from_period(p, _att_index, _att_err) for p in periods]
 
     # 汇总（仅统计有有效结果的时段）
     tot_t = sum((r["target"] or 0) for r in rows if r["target"] is not None)

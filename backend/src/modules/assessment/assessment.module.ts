@@ -3,6 +3,8 @@ import { FetchModule } from '../../../fetch/fetch.module';
 import { AssessmentViolationFetchService } from './assessment-violation-fetch.service';
 import { AssessmentDeliveryFetchService } from './assessment-delivery-fetch.service';
 import { AssessmentCooldownService } from './assessment-cooldown.service';
+import { AssessmentEventsService } from './assessment-events.service';
+import { AssessmentAutoRefreshService } from './assessment-auto-refresh.service';
 import { AssessmentController } from './assessment.controller';
 
 /**
@@ -18,7 +20,19 @@ import { AssessmentController } from './assessment.controller';
 @Module({
   imports: [FetchModule],
   controllers: [AssessmentController],
-  providers: [AssessmentViolationFetchService, AssessmentDeliveryFetchService, AssessmentCooldownService],
-  exports: [AssessmentViolationFetchService, AssessmentDeliveryFetchService, AssessmentCooldownService],
+  providers: [
+    AssessmentViolationFetchService,
+    AssessmentDeliveryFetchService,
+    AssessmentCooldownService,
+    AssessmentEventsService,
+    AssessmentAutoRefreshService,
+  ],
+  exports: [
+    AssessmentViolationFetchService,
+    AssessmentDeliveryFetchService,
+    AssessmentCooldownService,
+    AssessmentEventsService,
+    AssessmentAutoRefreshService,
+  ],
 })
 export class AssessmentModule {}

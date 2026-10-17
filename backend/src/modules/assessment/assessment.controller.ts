@@ -1,10 +1,14 @@
-import { Body, Controller, Get, Post } from '@nestjs/common';
+import { Body, Controller, Get, Post, Sse } from '@nestjs/common';
+import { MessageEvent } from '@nestjs/common';
+import { Observable } from 'rxjs';
 import { ConfigService } from '@nestjs/config';
 import * as fs from 'fs';
 import * as path from 'path';
 import { AssessmentViolationFetchService } from './assessment-violation-fetch.service';
 import { AssessmentDeliveryFetchService } from './assessment-delivery-fetch.service';
 import { AssessmentCooldownService } from './assessment-cooldown.service';
+import { AssessmentEventsService } from './assessment-events.service';
+import { AssessmentAutoRefreshService } from './assessment-auto-refresh.service';
 
 /**
  * 考核看板自有取数端点。
@@ -23,6 +27,8 @@ export class AssessmentController {
     private readonly deliverySvc: AssessmentDeliveryFetchService,
     private readonly cooldownSvc: AssessmentCooldownService,
     private readonly config: ConfigService,
+    private readonly events: AssessmentEventsService,
+    private readonly auto: AssessmentAutoRefreshService,
   ) {}
 
   /** 手动刷新冷却状态查询（页面加载恢复读秒用）。 */
@@ -89,6 +95,8 @@ export class AssessmentController {
         // 取数成功后必须失效当天全部站点的考核看板结果缓存，与运单取数保持一致；
         // 否则仅失效传入子集时，未被失效的站点仍命中 Python 进程内旧缓存，表现即「刷新了但数字没变」。
         await this.notifyInvalidate(this.allTeamIds(), date);
+        // 取数落盘 + 缓存失效完成 → 通知所有前端「已更新」，由其回读（SSE 推送）。
+        this.events.emitUpdated(date);
         if (manual) this.cooldownSvc.mark();
       }
       return {
@@ -117,11 +125,39 @@ export class AssessmentController {
       const r = await this.deliverySvc.fetchAndLand(date);
       if (r.ok) {
         await this.notifyInvalidate(this.allTeamIds(), date);
+        // 取数落盘 + 缓存失效完成 → 通知所有前端「已更新」，由其回读（SSE 推送）。
+        this.events.emitUpdated(date);
       }
       return { ok: r.ok, msg: r.msg };
     } catch (e) {
       return { ok: false, error: (e as Error).message };
     }
+  }
+
+  /**
+   * SSE 端点：考核看板取数完成后推送 `{type:'updated', date, at}`。
+   * 前端 `EventSource('/api/assessment-fetch/stream')` 订阅，收到后回读，
+   * 替代固定间隔盲轮询，且任一端取数 → 所有在线前端实时刷新。
+   */
+  @Sse('stream')
+  stream(): Observable<MessageEvent> {
+    return this.events.toMessage();
+  }
+
+  /** 读取服务端自动取数配置（enabled / intervalSec，多端共享）。 */
+  @Get('auto')
+  getAuto() {
+    return this.auto.getConfig();
+  }
+
+  /**
+   * 写入服务端自动取数配置：前端「自动/手动」开关与间隔选择落在这里（多端共享，末次写入生效）。
+   * 自动 = 服务端按 intervalSec 定时取数并推送；手动 = 关闭服务端定时，仅手动刷新按钮取数。
+   */
+  @Post('auto')
+  setAuto(@Body() b: { enabled?: boolean; intervalSec?: number }) {
+    this.auto.setConfig(b.enabled === true, b.intervalSec);
+    return this.auto.getConfig();
   }
 
   /** 读取本地 teams.json 的全部站点 id（运单全站单文件失效缓存时用到）。 */

@@ -31,6 +31,7 @@ if PY_HOME and PY_HOME not in _sys.path:
 import sys
 
 import pytest
+from unittest.mock import patch
 from compute_api import handlers
 
 
@@ -157,3 +158,84 @@ def test_teams_fetch_forwards_to_nest():
     assert handlers._nest_base().startswith("http")
     assert isinstance(handlers._TEAMS_CACHE, dict)
     assert handlers._TEAMS_CACHE_TTL == 300
+
+
+# —— 考核看板 station 端点批量读取（P1）回归 ——
+# 计算 handler 仅依赖 self._json 与 self._scope，用轻量替身即可驱动，无需起 HTTP。
+class _StubHandler:
+    def __init__(self, scope="*"):
+        self._scope = scope
+        self._result = None  # (status_code, obj)
+
+    def _json(self, obj, code=200):
+        self._result = (code, obj)
+
+
+def _call_station(qs, scope="*"):
+    h = _StubHandler(scope)
+    handlers._get_assessment_station(h, qs)
+    return h._result
+
+
+def test_assessment_station_batch_and_single():
+    """station 端点：批量 teams 与单站 team 并存，且 x-scope 受限时按可见集过滤。
+
+    覆盖 P1 批量端点改造的关键不变量：
+      · teams=逗号分隔 → rows 数组行数 == 过滤后站点数；
+      · team=单站 （向后兼容） → rows 行数 == 1；
+      · team/teams 都缺 → 400；
+      · x-scope 受限：不可见站点静默丢弃，全不可见 → 403 DATA_SCOPE_DENIED。
+    用 patch 隔离 RS.save_result 的落盘副作用（避免测试污染 backend/data）。
+    """
+    with patch("analytics.assessment.result_store.save_result", lambda *a, **k: None):
+        # 1) 批量
+        code, obj = _call_station({"teams": ["101,102"]})
+        assert code == 200 and obj["ok"] is True
+        assert obj["teams"] == ["101", "102"]
+        assert isinstance(obj["rows"], list) and len(obj["rows"]) == len(obj["teams"])
+        assert obj["data_status"] in ("ok", "partial", "no_data")
+
+        # 2) 单站 team（向后兼容）
+        code, obj = _call_station({"team": ["101"]})
+        assert code == 200 and obj["ok"] is True
+        assert obj["teams"] == ["101"]
+        assert len(obj["rows"]) == len(obj["teams"])
+
+        # 3) team/teams 都缺 → 400
+        code, obj = _call_station({})
+        assert code == 400 and obj["ok"] is False
+
+        # 4) x-scope 受限：可见 101，请求 101,999 → 仅 101 出现在结果
+        code, obj = _call_station({"teams": ["101,999"]}, scope=["101"])
+        assert code == 200 and obj["ok"] is True
+        assert obj["teams"] == ["101"]
+        assert len(obj["rows"]) == len(obj["teams"])
+
+        # 5) x-scope 受限且全不可见 → 403
+        code, obj = _call_station({"teams": ["999"]}, scope=["101"])
+        assert code == 403 and obj.get("code") == "DATA_SCOPE_DENIED"
+
+
+def test_assessment_station_top_status_no_data():
+    """顶层 data_status 在「全站未落盘」时必须为 no_data（前端据此弹「未落盘」横幅）。
+
+    build_one 仅在「整个运单明细文件缺失」时回 no_data；若文件存在但某站 0 单则是 ok(0)。
+    这里用 patch 模拟「运单文件缺失」以稳定触发 no_data 分支，验证 handler 的聚合接缝：
+      · 顶层 data_status/data_note 与 no_data 一致；
+      · rows 仍回出（每行含 team_id 与 data_status），供前端逐行判定；
+      · 这是 P0-2 把「0 单」与「没落盘」区分开的关键不变量。
+    """
+    with patch("analytics.assessment.result_store.save_result", lambda *a, **k: None), \
+         patch("analytics.assessment.delivery_source.load_delivery_orders",
+               lambda *a, **k: None):
+        # 清掉进程内结果缓存，避免命中测试 #1 已缓存的 101/102 旧结果而绕过 load 桩。
+        from analytics import cache as _CACHE
+        _CACHE.clear_results()
+        code, obj = _call_station({"teams": ["101,102"]})
+        assert code == 200 and obj["ok"] is True
+        assert obj["data_status"] == "no_data"
+        assert obj["need_refresh"] is True
+        assert len(obj["rows"]) == 2
+        # 每行自身也带 no_data 标记，供前端逐行判定
+        assert all(r.get("data_status") == "no_data" for r in obj["rows"])
+        assert obj["data_note"]  # 必须给出「未落盘」说明文案

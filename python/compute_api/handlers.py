@@ -757,37 +757,62 @@ def _post_ap_teams(self, data):
 # 计算逻辑已迁至 analytics/assessment/board.py；此处仅做站点权限闸门 + 转发。
 def _get_assessment_station(self, qs):
     from analytics.assessment import board as RTB
+    from analytics.assessment import result_store as RS
     from analytics import cache as CACHE
-    team = (qs.get("team") or [None])[0]
-    if not team:
-        self._json({"ok": False, "error": "缺少 team 参数"}, 400); return
-    mode, val = self._enforce_team_scope(team)
-    if mode == "deny":
-        return
+    date = CACHE.today_ymd()
+    # 支持批量：teams=id1,id2,id3（逗号分隔）一次性取回多站；单站 team=id 保持向后兼容。
+    team_param = (qs.get("team") or [None])[0]
+    teams_param = (qs.get("teams") or [None])[0]
+    if teams_param:
+        team_ids = [t.strip() for t in teams_param.split(",") if t.strip()]
+    elif team_param:
+        team_ids = [team_param]
+    else:
+        self._json({"ok": False, "error": "缺少 team 或 teams 参数"}, 400); return
+    # 按 x-scope 过滤可见站点（逐个 _enforce_team_scope 会在 deny 时重复写 403 响应，故这里直接算可见集）。
+    scope = getattr(self, "_scope", "*")
+    allowed = None if scope in ("*", None) else set(str(i) for i in scope)
+    team_ids = [t for t in team_ids if allowed is None or str(t) in allowed]
+    if not team_ids:
+        self._json({"ok": False, "error": "无权访问该站点数据", "code": "DATA_SCOPE_DENIED"}, 403); return
     try:
-        date = CACHE.today_ymd()
-        row = RTB.build_one(team, date)
-        from analytics.assessment import result_store as RS
-        RS.save_result("station", team, date, row)
-        miss = bool(row.get("need_refresh"))
+        rows = []
+        for team in team_ids:
+            try:
+                row = RTB.build_one(team, date)
+            except Exception:
+                continue  # 单站计算异常不拖垮整批，该站不出现于结果
+            RS.save_result("station", team, date, row)
+            rows.append(row)
+        # 顶层状态：任一站 no_data（含本次拉取失败）→ no_data（前端弹「未落盘」横幅）；
+        # 否则任一站 partial → partial；否则 ok。data_note 取首个 no_data 站的说明。
+        any_no_data = any((r.get("need_refresh") or r.get("data_status") == "no_data") for r in rows)
+        any_partial = any(r.get("data_status") == "partial" for r in rows)
+        if any_no_data:
+            data_note = next((r.get("data_note") for r in rows
+                             if (r.get("need_refresh") or r.get("data_status") == "no_data")
+                             and r.get("data_note")), None)
+            data_status, need_refresh = "no_data", True
+        elif any_partial:
+            data_status, need_refresh, data_note = "partial", False, None
+        else:
+            data_status, need_refresh, data_note = "ok", False, None
         self._json({
             "ok": True,
-            "team": team,
-            "teamName": row.get("team_name"),
+            "teams": team_ids,
             "start": date, "end": date, "basis": "day",
-            "rows": [] if miss else [row],
+            "rows": rows,
             # 不能写死 ok：行里可能是 partial（违规明细不可用，运单指标仍有效）。
-            "data_status": "no_data" if miss else (row.get("data_status") or "ok"),
-            "data_note": row.get("data_note"),
-            "need_refresh": miss,
+            "data_status": data_status,
+            "data_note": data_note,
+            "need_refresh": need_refresh,
             # 更新时间：考核数据（违规明细 + 运单明细两份全站单文件）最近一次取数/落盘时间；
             # 前端据此展示「更新时间」，刷新页面（仅读盘重算）不跳动，真正重新取数后才更新。
             "fetched_at": RTB.latest_assessment_data_time(date),
         })
     except Exception as e:
         self._json({"ok": False, "error": "%s: %s" % (type(e).__name__, e),
-                    "team": team, "start": CACHE.today_ymd(), "end": CACHE.today_ymd(),
-                    "data_status": "error", "need_refresh": False})
+                    "start": date, "end": date, "data_status": "error", "need_refresh": False})
 
 
 # ---------------- IM 电联看板（电联率 / IM 及时回复率，站点 + 骑手）----------------

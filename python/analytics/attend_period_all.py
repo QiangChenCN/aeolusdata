@@ -82,8 +82,8 @@ def valid_all(teams, date):
     """teams: 站点 id 列表。返回与 attend_period.compute_valid 同结构的合并结果（team="__all__"）。"""
     per, missing = [], []
 
-    # 风神 teamId 仅支持单站（已实跑验证不支持批量），故只能并发拉取提速：
-    # ① 各站排班并发；② 全部（站点×时段）考勤在单一线程池并发拉取，限制全局并发避免风神限流。
+    # 风神 teamId 仅支持单站（已实跑验证不支持批量），故按站点并发拉取提速：
+    # ① 各站排班并发；② 各站考勤单次取数（timeAttendanceVos 含全时段明细，无需逐时段并发）并发拉取。
     def _sched(tid):
         try:
             srows = AP.flatten_schedule(AP.fetch_schedule(tid, date, date))
@@ -101,26 +101,25 @@ def valid_all(teams, date):
             else:
                 sched_map[tid] = ps
 
-    tasks = [(tid, p) for tid, ps in sched_map.items() for p in ps]
-
-    def _att(task):
-        tid, p = task
-        tc = p.get("time_code")
+    # 实时考勤：每个站点只需请求一次（timeAttendanceVos 已含全时段明细），并发按站点提速。
+    def _att(tid):
+        ps = sched_map.get(tid) or []
+        qtc = ps[0]["time_code"] if ps else "120"
         try:
-            data = AP.fetch_attendance(tid, tc)
+            data = AP.fetch_attendance(tid, qtc)
             riders = (data.get("result") or {}).get("data") or []
-            return (tid, tc), riders, None
+            return tid, riders, None
         except Exception as e:
-            return (tid, tc), None, "%s: %s" % (type(e).__name__, e)
+            return tid, None, "%s: %s" % (type(e).__name__, e)
 
     att_map, att_err = {}, {}
-    if tasks:
-        with _cf.ThreadPoolExecutor(max_workers=6) as ex:
-            for key, riders, err in ex.map(_att, tasks):
+    if sched_map:
+        with _cf.ThreadPoolExecutor(max_workers=max(1, min(6, len(sched_map)))) as ex:
+            for tid, riders, err in ex.map(_att, list(sched_map.keys())):
                 if err:
-                    att_err[key] = err
+                    att_err[tid] = err
                 else:
-                    att_map[key] = riders
+                    att_map[tid] = riders
 
     for tid in teams:
         if tid in sched_err:
@@ -129,8 +128,10 @@ def valid_all(teams, date):
                             "error": sched_err[tid]})
             continue
         ps = sched_map.get(tid) or []
-        rows = [AP._row_from_period(p, att_map.get((tid, p.get("time_code"))), att_err.get((tid, p.get("time_code"))))
-                for p in ps]
+        _riders = att_map.get(tid)
+        _index = AP.build_attendance_index(_riders) if _riders is not None else None
+        _e = att_err.get(tid)
+        rows = [AP._row_from_period(p, _index, _e) for p in ps]
         if not rows:
             missing.append({"team": str(tid),
                             "name": AP.TEAM_NAMES.get(str(tid), str(tid)),

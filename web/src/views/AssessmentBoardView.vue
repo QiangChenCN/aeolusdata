@@ -30,8 +30,11 @@
       </el-button>
     </div>
 
-    <el-alert v-if="needRefresh" type="info" :closable="false" show-icon class="dv-hint">
-      当前站点今日运单明细尚未落盘。运单数据请在「标准达成」中点「刷新数据」拉取；违规数据由本看板「刷新」按钮独立拉取。
+    <el-alert v-if="hasError" type="error" :closable="false" show-icon class="dv-hint">
+      {{ errorMsg || '考核数据读取失败，请稍后重试' }}
+    </el-alert>
+    <el-alert v-else-if="needRefresh" type="info" :closable="false" show-icon class="dv-hint">
+      {{ noDataNote || '当前站点今日运单明细尚未落盘，请点本看板「刷新」拉取运单明细' }}
     </el-alert>
     <el-alert v-else-if="dataNote" type="warning" :closable="false" show-icon class="dv-hint">{{ dataNote }}</el-alert>
     <el-alert v-if="refreshNote" type="error" :closable="false" show-icon class="dv-hint">{{ refreshNote }}</el-alert>
@@ -219,7 +222,7 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue';
 import { ElMessage } from 'element-plus';
 
-import { fetchTeams, fetchAssessmentStation, refreshAssessment, refreshAssessmentDelivery, fetchRefreshCooldown, markRefreshCooldown, fetchAssessmentTeams, saveAssessmentTeams, fetchServiceQualityTargets } from '../api/dashboards.js';
+import { fetchTeams, fetchAssessmentStation, refreshAssessment, refreshAssessmentDelivery, fetchRefreshCooldown, markRefreshCooldown, fetchAssessmentTeams, saveAssessmentTeams, fetchServiceQualityTargets, fetchAssessmentAutoConfig, saveAssessmentAutoConfig } from '../api/dashboards.js';
 import { useRouter } from 'vue-router';
 
 const router = useRouter();
@@ -299,12 +302,37 @@ const loaded = ref(false);
 const attempted = ref(0);      // 本次实际请求的站点数
 const lastUpdated = ref('');   // 最近一次成功取数时间（YYYY-MM-DD HH:MM:SS，北京时间）
 
-/* —— 自动刷新（照搬 BotGlobalView 约定：setInterval + onUnmounted 清理）—— */
+/* —— 自动刷新：SSE 推送优先，断开时回退前端定时取数 —— */
 const autoRefresh = ref(localStorage.getItem('assessment.autoRefresh') !== 'false');
 const intervalSec = ref(300);
-const countdown = ref(0);     // 距下次自动刷新的剩余秒数（仅自动刷新时有效）
-let pollTimer = null;
-let tickTimer = null;
+const countdown = ref(0);     // 距下次取数的 ETA（SSE 在线=服务端间隔；离线=前端间隔）
+let pollTimer = null;          // 前端回退取数定时器（仅 SSE 断开时使用）
+let tickTimer = null;          // 倒计时显示
+
+const sseConnected = ref(false);
+let es = null;                 // EventSource 实例
+let rbTimer = null;            // SSE「updated」防抖回读
+
+/** SSE「updated」到达：重置 ETA 并防抖触发一次只读回读（不重复取数）。 */
+function scheduleReadback() {
+  if (rbTimer) clearTimeout(rbTimer);
+  rbTimer = setTimeout(() => { rbTimer = null; void load(false, false, false); }, 600);
+}
+/** 订阅考核看板 SSE（/api/assessment-fetch/stream）：取数完成 → 服务端推 updated → 前端回读。 */
+function initSse() {
+  if (es) return;
+  es = new EventSource('/api/assessment-fetch/stream');
+  es.onopen = () => { sseConnected.value = true; applyPoll(); };
+  es.onerror = () => { sseConnected.value = false; applyPoll(); };
+  es.onmessage = (ev) => {
+    let p = {};
+    try { p = JSON.parse(ev.data); } catch { /* ignore */ }
+    if (p && p.type === 'updated') {
+      countdown.value = intervalSec.value; // 服务端刚取数，ETA 重新计满
+      scheduleReadback();
+    }
+  };
+}
 
 /* —— 手动刷新冷却（后端持久化冷却时间戳，页面刷新不失效）—— */
 const cooldownRemaining = ref(0); // 距可再次手动刷新的剩余秒数（≥0）
@@ -320,16 +348,16 @@ function stopCooldownTick() {
   if (cooldownTimer) { clearInterval(cooldownTimer); cooldownTimer = null; }
 }
 
-function startPoll() {
-  stopPoll();
-  pollTimer = setInterval(() => void load(true, true, false), intervalSec.value * 1000);
-  startTick();
-  countdown.value = intervalSec.value;
-}
 function stopPoll() {
   if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
   stopTick();
   countdown.value = 0;
+}
+/** 前端回退取数定时器（仅 SSE 断开时启用，保持旧行为）。 */
+function startLegacyPoll() {
+  pollTimer = setInterval(() => void load(true, true, false), intervalSec.value * 1000);
+  startTick();
+  countdown.value = intervalSec.value;
 }
 function startTick() {
   stopTick();
@@ -338,16 +366,36 @@ function startTick() {
 function stopTick() {
   if (tickTimer) { clearInterval(tickTimer); tickTimer = null; }
 }
-function restartPoll() {
-  if (autoRefresh.value) startPoll();
+
+// 已 POST 到服务端的配置，避免 SSE 反复重连时重复下发
+let postedEnabled = null;
+let postedInterval = null;
+/**
+ * 统一调度自动刷新：
+ *   · SSE 在线 → 服务端按服务端配置定时取数并推送「updated」，前端只跑 ETA 倒计时（不自己打风神）；
+ *   · SSE 断开 → 回退前端定时取数（旧行为），保证仍有数据。
+ */
+function applyPoll() {
+  stopPoll();
+  const enabled = autoRefresh.value;
+  const sec = intervalSec.value;
+  if (sseConnected.value) {
+    if (postedEnabled !== enabled || postedInterval !== sec) {
+      void saveAssessmentAutoConfig({ enabled, intervalSec: sec }).catch(() => {});
+      postedEnabled = enabled; postedInterval = sec;
+    }
+    startTick();
+    countdown.value = sec;
+  } else {
+    postedEnabled = null; postedInterval = null; // 重连后再下发
+    startLegacyPoll();
+  }
 }
+function restartPoll() { applyPoll(); }
 async function onAutoToggle(on) {
   // 持久化自动/手动切换状态，刷新页面后不丢失
   localStorage.setItem('assessment.autoRefresh', on ? 'true' : 'false');
-  if (on) {
-    startPoll();
-  } else {
-    stopPoll();
+  if (!on) {
     // 从自动切回手动：默认进入 1 分钟冷却，避免刚切回就手动重算；后端落盘保证刷新页面也不失效
     try {
       const s = await markRefreshCooldown();
@@ -357,9 +405,17 @@ async function onAutoToggle(on) {
     }
     startCooldownTick();
   }
+  applyPoll();
 }
 
-const needRefresh = computed(() => loaded.value && attempted.value > 0 && rows.value.length === 0);
+// 是否「全站无落盘数据」：由 station 响应顶层 data_status==='no_data' 判定，
+// 而非 rows 是否为空——否则会把「所选站点当天真实 0 单」误判成「没落盘」而错弹提示。
+const noData = ref(false);
+const noDataNote = ref('');
+// 读取/计算出错态：与「未落盘(no_data)」区分，避免把「计算报错」误显示成「没数据」。
+const hasError = ref(false);
+const errorMsg = ref('');
+const needRefresh = computed(() => loaded.value && attempted.value > 0 && noData.value);
 const dataNote = computed(() => {
   const p = rows.value.find((x) => x.data_status === 'partial');
   return p ? p.data_note || '' : '';
@@ -623,6 +679,10 @@ function todayYmd() {
 
 async function load(silent = false, fetch = false, manual = false) {
   loading.value = true;
+  // 每次加载先清掉上一次的「未落盘 / 出错」态，避免旧提示残留。
+  hasError.value = false;
+  errorMsg.value = '';
+  noData.value = false;
   try {
     const ids = teamSel.value === '__all__'
       ? teamOptions.value.map((t) => t.id)
@@ -669,22 +729,40 @@ async function load(silent = false, fetch = false, manual = false) {
         startCooldownTick();
       }
     }
-    const results = await Promise.all(
-      ids.map((id) => fetchAssessmentStation({ team: id }).catch(() => null)),
-    );
+    // 一次批量取回全部站点（替代逐站 N 次请求）；后端按 teams 聚合返回 rows 数组。
+    // 注意：首刷后全站 cache miss 会触发整批重算，耗时明显，dashboards.js 已给该接口设了 30s 超时。
+    const resp = await fetchAssessmentStation({ teams: ids }).catch((e) => {
+      // 请求层异常（网络/超时/5xx）：显式进入错误态，不再静默吞成「空表」或误判「未落盘」。
+      hasError.value = true;
+      errorMsg.value = (e && e.message) || '读取考核数据失败（网络或超时），请稍后重试';
+      return null;
+    });
+    let isNoData = false;
+    let noDataNoteText = '';
     const good = [];
-    for (const res of results) {
-      if (!res || !res.ok || !res.rows || !res.rows.length) continue;
-      const row = res.rows[0];
-      // 推配送单量为 0 的站点前端不展示（后端仍照常计算）；其余站点正常展示
-      if (num(row.pushed_order_volume) === 0) continue;
-      good.push(row);
+    if (resp && resp.ok && Array.isArray(resp.rows)) {
+      // 顶层 data_status==='no_data' 判定「全站未落盘」，避免把「当天真实 0 单」误判为「没数据」。
+      if (resp.data_status === 'no_data') {
+        isNoData = true;
+        if (resp.data_note) noDataNoteText = resp.data_note;
+      }
+      for (const row of resp.rows) {
+        if (!row) continue;
+        // 推配送单量为 0 的站点前端不展示（后端仍照常计算）；其余站点正常展示
+        if (num(row.pushed_order_volume) === 0) continue;
+        good.push(row);
+      }
+    } else if (resp && resp.ok === false) {
+      // 计算层返回 200 但 ok:false（计算报错）：显式错误态，区别于「未落盘」。
+      hasError.value = true;
+      errorMsg.value = (resp.error && (resp.error.message || resp.error)) || '考核数据计算出错，请稍后重试';
     }
     rows.value = good;
-    // 「更新时间」= 数据实际取数/落盘时间（后端 fetched_at，北京时间），取自各站点响应取较大者
-    // （考核数据为全站单文件落盘，各站点一致）。刷新页面（仅读盘重算）不再跳动，只有真正重新取数、
-    // 底层数据文件被覆盖写后才更新 —— 即「取数重算后的时间」。
-    const times = results.map((r) => r && r.fetched_at).filter(Boolean);
+    noData.value = isNoData;
+    noDataNote.value = noDataNoteText;
+    // 「更新时间」= 数据实际取数/落盘时间（后端 fetched_at，北京时间）。
+    // 刷新页面（仅读盘重算）不再跳动，只有真正重新取数、底层数据文件被覆盖写后才更新。
+    const times = resp && resp.fetched_at ? [resp.fetched_at] : [];
     if (times.length) lastUpdated.value = times.reduce((a, b) => (a > b ? a : b));
   } catch (e) {
     if (!silent) ElMessage.error(e.message || '加载失败');
@@ -720,11 +798,23 @@ onMounted(async () => {
       startCooldownTick();
     }
   } catch (e) { /* ignore */ }
-  await load();
-  if (autoRefresh.value) startPoll();
+  // 考核看板自动刷新：与服务端配置同步（enabled / intervalSec），再建立 SSE 订阅。
+  // SSE 在线时由服务端定时取数并推送「updated」驱动回读；断开时回退前端定时取数。
+  try {
+    const ac = await fetchAssessmentAutoConfig();
+    if (ac && typeof ac.enabled === 'boolean') autoRefresh.value = ac.enabled;
+    if (ac && ac.intervalSec) intervalSec.value = ac.intervalSec;
+  } catch (e) { /* ignore：取不到则用本地默认 */ }
+  initSse();
+  applyPoll();
 });
 
-onUnmounted(() => { stopPoll(); stopCooldownTick(); });
+onUnmounted(() => {
+  if (es) { es.close(); es = null; }
+  if (rbTimer) { clearTimeout(rbTimer); rbTimer = null; }
+  stopPoll();
+  stopCooldownTick();
+});
 </script>
 
 <style scoped>

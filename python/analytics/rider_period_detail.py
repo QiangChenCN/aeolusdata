@@ -6,17 +6,22 @@
   · fetch_schedule    「排班目标」—— 当天 站×日期×时段 明细（timeList），
                        用于：① 确定当天真实存在的排班时段（time_code / 名称 / 区间）；
                              ② 通过 actual_num > 0 判断该时段确有排班。
-  · fetch_attendance  「实时考勤」—— 单站点单时段快照，返回该时段内骑手列表，
-                       每条骑手带：knightId / knightName / teamId / workStatus /
-                       timeCode(排班时段列表) / timeFinishOrder(该时段单量) /
-                       timeValidOnlineTime(该时段有效在线时长，秒)。
+  · fetch_attendance  「实时考勤」—— 单站点一次请求，返回全站骑手列表；
+                       每位骑手带：knightId / knightName / teamId / workStatus /
+                       timeCode(排班时段列表) 与 timeAttendanceVos(全时段明细)，
+                       其中 timeAttendanceVos 内含各时段的 timeFinishOrder(单量) /
+                       timeValidOnlineTime(有效在线时长，秒)。顶层 timeFinishOrder /
+                       timeValidOnlineTime 仅对应 queryTimeCode（本次查询时段），
+                       各时段真实值须读 timeAttendanceVos 对应时段条目。
 
 计算逻辑（严格按需求）：
   1. 从排班目标数据中筛出「当天真实存在的排班时段」（time_code 非全天/休息）。
-     逐时段并发拉实时考勤；实时考勤接口对任意 tc 都返回全站骑手，
-     故以「骑手自身 timeCode 列表是否含该时段码」判定其「该时段有排班」，
-     仅纳入真正排班者（未排班骑手 timeFinishOrder=0 且 timeCode 不含本时段码，须过滤）。
+     实时考勤接口对任意 tc 都返回全站骑手，故以「骑手自身 timeCode 列表是否含该时段码」
+     判定其「该时段有排班」，仅纳入真正排班者（未排班骑手 timeCode 不含本时段码，须过滤）。
      跨时段并集即为「当天有排班的所有骑手」。
+     取数优化（2026-10-17）：listAttendance 的 timeAttendanceVos 已含全部时段明细，
+     与逐时段专查的顶层值逐位一致（null 与 0 等价），故每个站点只请求一次考勤，
+     从 timeAttendanceVos 按 timeCode 取各时段值，无需逐时段并发拉取。
   2. 对每位骑手，到实时考勤中匹配其各时段的「单量(timeFinishOrder)」与
      「有效在线时长(timeValidOnlineTime)」，依据 period_config 的预设达标规则
      （单量要求 orders + 有效在线时长要求 effective_online_req_h）逐时段判定是否达标。
@@ -160,34 +165,46 @@ def compute(team_id, date):
         return (1, 0, _hm_to_min(r.get("start_time")))
     periods.sort(key=_period_order_key)
 
-    # 3) 逐时段并发拉取实时考勤。
-    #    关键结论（2026-09-13 实测）：listAttendance 对任意 tc 都返回**全站全部骑手**，
-    #    但其 timeFinishOrder/timeValidOnlineTime 是「该请求时段」的值；骑手自身 timeCode 字段
-    #    才是其当天真实排班列表（非回显）。因此：① 必须逐时段拉取才能拿到各时段真实单量；
-    #    ② 必须用「骑手 timeCode 含本时段码」过滤，才能得到该时段真正排班的骑手（否则全员全时段排班）。
-    #    为保性能，用线程池并发拉取各时段（各请求独立、互不依赖）。
+    # 3) 单次请求拿全站骑手 × 全时段考勤。
+    #    实测（2026-10-17）：listAttendance 对任意 timeCode 都返回全站骑手，且每位骑手的
+    #    timeAttendanceVos 已包含**所有时段**的明细（timeFinishOrder / timeValidOnlineTime /
+    #    timeOnlineTime …），与该时段「单独查询」的顶层值逐位一致（null 与 0 等价）。
+    #    ⇒ 每个站点只需请求一次，从 timeAttendanceVos 按 timeCode 取各时段值即可，无需逐时段并发。
+    #    注意：顶层 timeFinishOrder / timeValidOnlineTime 只对应 queryTimeCode（本次查询时段），
+    #    各时段单量/时长必须读 timeAttendanceVos 对应时段条目，不能读顶层（否则取到的是查询时段的值）。
     riders = {}            # rider_id -> {rider_id, rider_name, team_id}
     rider_period = {}      # rider_id -> { tc: {orders, online_sec, work_status} }
     period_defs = []
 
-    # 3.1) 并发拉取：tc -> 该时段骑手列表
-    import concurrent.futures as _cf
-    def _fetch_one(_tc):
-        try:
-            # 登录态由 Nest 自行补齐（本进程不再持有/传递 cookie、也不再触发重登）。
-            _d = fetch_attendance(team_id, _tc)
-            return _tc, (_d.get("result") or {}).get("data") or []
-        except Exception as _e:
-            return _tc, _e
-    _tcs = [p.get("time_code") for p in periods]
-    att_by_tc = {}
-    with _cf.ThreadPoolExecutor(max_workers=min(len(_tcs), 8)) as _ex:
-        for _tc, _res in _ex.map(_fetch_one, _tcs):
-            if isinstance(_res, Exception):
-                _log("时段 %s 实时考勤拉取失败: %s" % (_tc, _res))
-                att_by_tc[_tc] = []
-            else:
-                att_by_tc[_tc] = _res
+    # 单次考勤取数（任意 tc 即可触发返回，timeAttendanceVos 含全时段）；登录态由 Nest 自行补齐。
+    _query_tc = periods[0]["time_code"] if periods else "120"
+    try:
+        _att_raw = fetch_attendance(team_id, _query_tc)
+        att_riders = (_att_raw.get("result") or {}).get("data") or []
+    except Exception as _e:
+        _log("站点 %s 实时考勤拉取失败: %s" % (team_id, _e))
+        att_riders = []
+
+    # 预建索引：rider_id -> {tcs:[int…], vos:{int tc: vo}, rider: 原始记录}
+    # vos[tc] = timeAttendanceVos 中该时段的明细（含 timeFinishOrder / timeValidOnlineTime）。
+    _att_index = {}
+    for _r in att_riders:
+        _rid = str(_r.get("knightId") or _r.get("riderId") or "")
+        if not _rid:
+            continue
+        _vos = {}
+        for _v in (_r.get("timeAttendanceVos") or []):
+            try:
+                _vos[int(_v.get("timeCode"))] = _v
+            except (TypeError, ValueError):
+                pass
+        _tcs = []
+        for _x in (_r.get("timeCode") or []):
+            try:
+                _tcs.append(int(_x))
+            except (TypeError, ValueError):
+                _tcs.append(_x)
+        _att_index[_rid] = {"tcs": _tcs, "vos": _vos, "rider": _r}
 
     for p in periods:
         tc = p.get("time_code")
@@ -213,39 +230,31 @@ def compute(team_id, date):
             "predict_num": _norm_int(p.get("predict_num")),
             "error": None,
         })
-        riders_in = att_by_tc.get(tc, [])
-        if not riders_in:
-            period_defs[-1]["error"] = "该时段实时考勤无数据"
-            continue
-        # 关键：实时考勤接口对任意 tc 都返回全站骑手，未排班骑手 timeFinishOrder=0
-        # 且 timeCode 不含本时段码。必须按「骑手 timeCode 列表是否含本时段码」过滤，
-        # 才得到「该时段真正排班」的骑手；否则会误判全员全时段已排班。
+        # 实时考勤接口对任意 tc 都返回全站骑手；未排班骑手 timeCode 不含本时段码。
+        # 按「骑手 timeCode 列表是否含本时段码」过滤，才得到「该时段真正排班」的骑手。
         try:
             _tc_int = int(tc)
         except (TypeError, ValueError):
             _tc_int = tc
-        for r in riders_in:
-            rid = str(r.get("knightId") or r.get("riderId") or "")
-            if not rid:
-                continue
-            _r_tcs_int = []
-            for _x in (r.get("timeCode") or []):
-                try:
-                    _r_tcs_int.append(int(_x))
-                except (TypeError, ValueError):
-                    _r_tcs_int.append(_x)
-            if _tc_int not in _r_tcs_int:
-                continue
+        _in_slot = [rid for rid, _info in _att_index.items() if _tc_int in _info["tcs"]]
+        if not _in_slot:
+            period_defs[-1]["error"] = "该时段实时考勤无数据"
+            continue
+        for rid in _in_slot:
+            _info = _att_index[rid]
+            _vo = _info["vos"].get(_tc_int) or {}
             if rid not in riders:
+                _r = _info["rider"]
                 riders[rid] = {
                     "rider_id": rid,
-                    "rider_name": r.get("knightName") or r.get("riderName") or "",
-                    "team_id": str(r.get("teamId") or team_id),
+                    "rider_name": _r.get("knightName") or _r.get("riderName") or "",
+                    "team_id": str(_r.get("teamId") or team_id),
                 }
             rider_period.setdefault(rid, {})[tc] = {
-                "orders": _norm_int(r.get("timeFinishOrder")),
-                "online_sec": _to_sec(r.get("timeValidOnlineTime")),
-                "work_status": r.get("workStatus"),
+                # 各时段单量/时长读 timeAttendanceVos[时段]，不读顶层（顶层只对应 queryTimeCode）
+                "orders": _norm_int(_vo.get("timeFinishOrder")),
+                "online_sec": _to_sec(_vo.get("timeValidOnlineTime")),
+                "work_status": _info["rider"].get("workStatus"),
             }
 
     # 4) 组装每位骑手的逐时段达标矩阵
