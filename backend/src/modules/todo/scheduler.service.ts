@@ -121,7 +121,7 @@ export class TodoSchedulerService implements OnModuleInit {
     let args: Record<string, unknown> = {};
     try { args = JSON.parse(String(item['task_args'] || '{}')); } catch { args = {}; }
     const taskId = String(item['task_id'] || '');
-    const runIds = this.runner.enqueue([{ task_id: taskId, args }]);
+    const runIds = this.runner.enqueue([{ task_id: taskId, args, timeout: Number(item['timeout'] || 0) }]);
     if (!runIds.length) {
       this.store.markSkipped(String(item['id']), due, '任务入队失败（任务可能已被移除）');
       return null;

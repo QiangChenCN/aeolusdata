@@ -31,6 +31,7 @@
             <el-tag v-else size="small" type="success" effect="plain">
               手动任务：{{ taskName(it.taskId) }}
             </el-tag>
+            <el-tag v-if="it.timeout" size="small" type="warning" effect="plain">超时{{ Math.round(it.timeout / 60) }}分</el-tag>
             <el-tag v-if="it.lastRunStatus" size="small"
               :type="it.lastRunStatus === 'success' ? 'success' : 'danger'">
               {{ it.lastRunStatus }}
@@ -54,20 +55,31 @@
     <!-- 新建 / 编辑任务 -->
     <el-dialog v-model="dlg" :title="form.id ? '编辑自动任务' : '新建自动任务'" width="520px">
       <el-form label-width="92px">
-        <el-form-item label="任务名称">
-          <el-input v-model="form.title" placeholder="留空则使用所绑定手动任务的名称" />
-          <div class="form-hint">不填时，保存将自动取「绑定手动任务」的名称作为任务名。</div>
-        </el-form-item>
-        <el-form-item label="绑定手动任务">
-          <el-select v-model="form.taskId" clearable filterable placeholder="选择已创建的手动任务（可选）" style="width:100%">
+        <el-form-item label="绑定手动任务" required>
+          <el-select v-model="form.taskId" clearable filterable placeholder="选择已创建的手动任务（必选，任务名即取自它）" style="width:100%">
             <el-option v-for="t in tasks.tasks" :key="t.id" :label="t.name" :value="t.id" />
           </el-select>
-          <div class="form-hint">绑定后可在时间线直接「运行」该手动任务，并支持自动执行。</div>
+          <div class="form-hint">任务名称自动取所选手动任务的名称；绑定后可在时间线直接「运行」并支持自动执行。</div>
+        </el-form-item>
+        <el-form-item label="开始日期">
+          <el-date-picker v-model="form.startDate" type="date" value-format="YYYY-MM-DD"
+            placeholder="首次执行的日期（一次性任务必填）" style="width:100%" />
         </el-form-item>
         <el-form-item label="执行时间">
-          <el-date-picker v-model="form.remindAt" type="datetime"
-            format="YYYY-MM-DD HH:mm" :clearable="true"
-            placeholder="定时执行的起始时间" style="width:100%" />
+          <div class="times">
+            <div v-for="(t, i) in form.times" :key="i" class="time-row">
+              <el-time-picker v-model="form.times[i]" format="HH:mm" value-format="HH:mm"
+                :clearable="false" placeholder="时间" style="width:140px" />
+              <el-button size="small" text type="danger" :disabled="form.times.length <= 1"
+                @click="form.times.splice(i, 1)"><el-icon><Delete /></el-icon></el-button>
+            </div>
+            <el-button size="small" @click="form.times.push('09:00')"><el-icon><Plus /></el-icon> 添加时间</el-button>
+          </div>
+          <div class="form-hint">
+            {{ form.repeatType === 'custom'
+              ? '「每 N 小时」模式以首个时间为起点，多时间设置不生效。'
+              : '可设置多个执行时间（如 09:00、13:00、20:00）；每日 / 每周 / 每月在每个时间点各执行一次。' }}
+          </div>
         </el-form-item>
         <el-form-item label="重复">
           <div class="repeat">
@@ -111,6 +123,11 @@
           <el-switch v-model="form.autoRun" />
           <span class="form-hint">开启后调度器到点自动执行（需已绑定手动任务）。</span>
         </el-form-item>
+        <el-form-item label="超时时长">
+          <el-input-number v-model="form.timeout" :min="0" :max="600" :step="5" />
+          <span class="repeat-unit">分钟</span>
+          <div class="form-hint">超过该时长自动停止任务；0 = 使用任务默认超时（10 分钟）。</div>
+        </el-form-item>
         <el-form-item label="备注">
           <el-input v-model="form.note" type="textarea" :rows="2" placeholder="可选" />
         </el-form-item>
@@ -124,7 +141,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import { Plus, Edit, Delete, VideoPlay, Loading, StarFilled } from '@element-plus/icons-vue';
 import { useAppStore } from '../stores/app.js';
 import { useTasksStore } from '../stores/tasks.js';
@@ -139,11 +156,6 @@ const dlg = ref(false);
 const dlgEdit = ref(false);
 const form = ref(emptyForm());
 
-// 选择手动任务且未填任务名时，自动取手动任务名
-watch(() => form.value.taskId, (v) => {
-  if (v && !form.value.title) form.value.title = taskName(v);
-});
-
 const weekDays = [
   { v: 1, l: '一' }, { v: 2, l: '二' }, { v: 3, l: '三' }, { v: 4, l: '四' },
   { v: 5, l: '五' }, { v: 6, l: '六' }, { v: 7, l: '日' },
@@ -151,8 +163,8 @@ const weekDays = [
 
 function emptyForm() {
   return {
-    id: null, title: '', note: '', taskId: null,
-    autoRun: true, remindAt: null, repeatType: 'daily',
+    id: null, taskId: null, note: '',
+    autoRun: true, startDate: '', times: ['09:00'], timeout: 0, repeatType: 'daily',
     repeatInterval: 1, repeatWeekdays: [1, 2, 3, 4, 5],
     repeatMonthDay: 1, repeatMonthLast: false, repeatEnd: '',
   };
@@ -172,9 +184,12 @@ function taskName(id) {
   return t ? t.name : '未知任务';
 }
 function scheduleText(it) {
+  const times = (it.remindTimes && it.remindTimes.length) ? it.remindTimes.join(', ') : '';
   if (it.repeatType && it.repeatType !== 'none') {
-    return `${it.autoRun ? '自动' : '定时'} · ${it.repeatLabel}`;
+    const prefix = it.autoRun ? '自动' : '定时';
+    return `${prefix} · ${it.repeatLabel}` + (times ? ` · ${times}` : '');
   }
+  if (times) return `一次性 · ${times}`;
   return it.remindAt ? `一次性 · ${it.remindAt}` : '未排程';
 }
 function nodeType(it) {
@@ -182,15 +197,6 @@ function nodeType(it) {
   if (!it.taskId) return 'warning';
   if (it.autoRun) return 'primary';
   return 'success';
-}
-
-// 原生 Date -> 后端所需 "YYYY-MM-DDTHH:mm"（与后端 fmtLocal 对齐）
-function toBackendDt(d) {
-  if (!d) return '';
-  const dt = d instanceof Date ? d : new Date(d);
-  if (isNaN(dt.getTime())) return '';
-  const p = (n) => String(n).padStart(2, '0');
-  return `${dt.getFullYear()}-${p(dt.getMonth() + 1)}-${p(dt.getDate())}T${p(dt.getHours())}:${p(dt.getMinutes())}`;
 }
 
 function buildRepeat() {
@@ -223,8 +229,12 @@ async function load() {
 function openCreate(it) {
   form.value = it
     ? {
-      id: it.id, title: it.title, note: it.note || '', taskId: it.taskId || null,
-      autoRun: !!it.autoRun, remindAt: it.remindAt ? new Date(it.remindAt) : null,
+      id: it.id, taskId: it.taskId || null, note: it.note || '',
+      autoRun: !!it.autoRun, timeout: Math.round((Number(it.timeout) || 0) / 60),
+      startDate: it.remindAt ? it.remindAt.slice(0, 10) : '',
+      times: (it.remindTimes && it.remindTimes.length)
+        ? it.remindTimes.slice()
+        : (it.remindAt ? [it.remindAt.slice(11, 16)] : ['09:00']),
       repeatType: it.repeatType || 'none', repeatInterval: it.repeatInterval || 1,
       repeatWeekdays: (it.repeatBy ? String(it.repeatBy).split(',').map(Number) : [1, 2, 3, 4, 5]),
       repeatMonthDay: it.repeatBy ? Number(it.repeatBy) || 1 : 1,
@@ -236,23 +246,28 @@ function openCreate(it) {
 }
 
 async function save() {
-  // 任务名留空时，自动取所绑定手动任务的名称
-  if (!form.value.title && form.value.taskId) form.value.title = taskName(form.value.taskId);
-  if (!form.value.title) { ElMessage.warning('请填写任务名称，或先绑定一个手动任务'); return; }
-  if (form.value.repeatType !== 'none' && !form.value.remindAt) {
-    ElMessage.warning('请选择执行时间'); return;
+  if (!form.value.taskId) { ElMessage.warning('请先绑定一个手动任务（任务名即取自它）'); return; }
+  if (!form.value.times.length) { ElMessage.warning('请至少添加一个执行时间'); return; }
+  if (!form.value.startDate && form.value.repeatType === 'none') {
+    ElMessage.warning('请选择开始日期（一次性任务需要）'); return;
   }
   try {
     const op = form.value.id ? 'update' : 'create';
+    const times = [...new Set(form.value.times)].filter(Boolean).sort();
+    const firstTime = times[0];
+    const baseDate = form.value.startDate || new Date().toISOString().slice(0, 10);
+    const remindAt = `${baseDate}T${firstTime}`;
     const payload = {
-      title: form.value.title,
+      title: taskName(form.value.taskId),
       note: form.value.note,
       list_id: '',
-      remind_at: toBackendDt(form.value.remindAt),
+      remind_at: remindAt,
+      remind_times: times,
       repeat: buildRepeat(),
       auto_run: form.value.autoRun ? 1 : 0,
+      timeout: form.value.timeout * 60,
+      task_id: form.value.taskId,
     };
-    if (form.value.taskId) payload.task_id = form.value.taskId;
     if (form.value.id) payload.id = form.value.id;
     await postTodoItem(op, payload);
     dlg.value = false;
@@ -298,4 +313,6 @@ onMounted(load);
 .form-hint { color: var(--el-text-color-secondary); font-size: var(--el-font-size-extra-small); margin-top: 4px; }
 .auto-state { padding: var(--sp-40); text-align: center; color: var(--el-text-color-secondary); display: flex; gap: var(--sp-8); justify-content: center; align-items: center; }
 .auto-empty { border: 1px dashed var(--el-border-color); border-radius: var(--el-border-radius-base); }
+.times { display: flex; flex-direction: column; gap: var(--sp-6); }
+.time-row { display: flex; align-items: center; gap: var(--sp-6); }
 </style>

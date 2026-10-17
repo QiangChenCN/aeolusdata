@@ -94,6 +94,8 @@ export class TodoController {
           (data['task_id'] as string) || '',
           data['auto_run'] as number,
           data['task_args'],
+          (data['remind_times'] as string[]) || [],
+          Number(data['timeout']) || 0,
         );
         this.broadcast();
         return { ok: true, item: this.itemOut(r) };
@@ -102,7 +104,7 @@ export class TodoController {
         if (!data['id']) return { ok: false, error: '缺少 id' };
         const kw: Record<string, unknown> = {};
         for (const k of ['title', 'note', 'remind_at', 'list_id', 'task_id',
-          'auto_run', 'flag', 'status']) {
+          'auto_run', 'flag', 'status', 'remind_times', 'timeout']) {
           if (k in data) kw[k] = data[k];
         }
         if ('repeat' in data) kw['repeat'] = data['repeat'];

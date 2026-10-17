@@ -28,6 +28,12 @@ export interface RunRecord {
   errorKind?: string;
   errorAdvice?: string;
   timeout?: boolean;
+  /** 本运行的有效超时秒数（自动任务可按条目覆盖任务默认）。 */
+  timeoutSec?: number;
+  /** 本运行专属的停止请求标志（手动停止 / 超时均置位）。
+   *  必须为「每运行独立」而非执行器共享变量：否则下一个任务开始时会把标志清零，
+   *  导致被超时判定的处理器永远读不到停止信号而停不下来。处理器经 ctx.isStopped 读取。 */
+  stopRequested?: boolean;
 }
 
 export interface HistoryEntry {
@@ -85,7 +91,6 @@ export class TaskRunnerService implements OnModuleInit {
   private queue: RunRecord[] = [];
   private current: RunRecord | null = null;
   private proc: ChildProcess | null = null;
-  private stopFlag = false;
   private running = false;
   private history: HistoryEntry[] = [];
   private runsDir = '';
@@ -114,7 +119,7 @@ export class TaskRunnerService implements OnModuleInit {
   }
 
   // ---- 入队 ----
-  enqueue(items: { task_id: string; args?: Record<string, unknown> }[]): string[] {
+  enqueue(items: { task_id: string; args?: Record<string, unknown>; timeout?: number }[]): string[] {
     const ids: string[] = [];
     for (const it of items) {
       const task = this.registry.get(it.task_id);
@@ -131,6 +136,7 @@ export class TaskRunnerService implements OnModuleInit {
         end: null,
         exitCode: null,
         lines: [],
+        timeoutSec: it.timeout && Number(it.timeout) > 0 ? Number(it.timeout) : undefined,
       };
       this.runs.set(runId, run);
       this.queue.push(run);
@@ -153,7 +159,7 @@ export class TaskRunnerService implements OnModuleInit {
     if (!run) return;
     this.running = true;
     this.current = run;
-    this.stopFlag = false;
+    run.stopRequested = false;
     this.emitQueue();
     void this.execute(run).finally(() => {
       this.current = null;
@@ -184,7 +190,7 @@ export class TaskRunnerService implements OnModuleInit {
   /**
    * 原生处理器执行路径（迁移期新增）：不 spawn 子进程，直接在 Nest 内跑任务流水线。
    * 日志与事件形态和 spawn 路径完全一致（append → SSE），前端零改动。
-   * 终止为协作式：置 stopFlag，由处理器经 ctx.isStopped() 自行退出。
+   * 终止为协作式：置 stopRequested，由处理器经 ctx.isStopped() 自行退出。
    */
   private async executeNative(
     handler: TaskHandler,
@@ -204,10 +210,10 @@ export class TaskRunnerService implements OnModuleInit {
       group: run.group,
       args: run.args,
       log: (line: string) => this.append(run, line),
-      isStopped: () => this.stopFlag,
+      isStopped: () => !!run.stopRequested,
     };
 
-    const timeout = Number(task.timeout ?? 600);
+    const timeout = Number(run.timeoutSec && run.timeoutSec > 0 ? run.timeoutSec : (task.timeout ?? 600));
     let timer: NodeJS.Timeout | undefined;
     try {
       // --begin/--end 非法区间直接失败（与 Python nodeflow.pick 同语义：宁可非零退出）。
@@ -220,7 +226,7 @@ export class TaskRunnerService implements OnModuleInit {
         new Promise<never>((_, reject) => {
           timer = setTimeout(() => {
             run.timeout = true;
-            this.stopFlag = true;
+            run.stopRequested = true;
             reject(new Error(`超过 ${timeout} 秒未完成`));
           }, timeout * 1000);
         }),
@@ -271,8 +277,8 @@ export class TaskRunnerService implements OnModuleInit {
   private finalize(run: RunRecord): void {
     const full = run.lines.join('\n');
     if (run.status === 'running') {
-      // 超时优先于「已终止」：超时会同时置 stopFlag（协作式中断），但诊断应显示「执行超时」。
-      if (this.stopFlag && !run.timeout) run.status = 'stopped';
+      // 超时优先于「已终止」：超时会同时置 stopRequested（协作式中断），但诊断应显示「执行超时」。
+      if (run.stopRequested && !run.timeout) run.status = 'stopped';
       else if (run.exitCode === 0) run.status = 'success';
       else run.status = 'failed';
     }
@@ -284,7 +290,10 @@ export class TaskRunnerService implements OnModuleInit {
         advice = '任务被用户终止，没有跑完。';
       } else if (run.timeout) {
         kind = '执行超时';
-        advice = `任务超过 ${Number(this.registry.get(run.taskId)?.timeout ?? 600)} 秒未完成，已被强制终止。先缩小范围确认能跑通。`;
+        const eff = run.timeoutSec && run.timeoutSec > 0
+          ? run.timeoutSec
+          : Number(this.registry.get(run.taskId)?.timeout ?? 600);
+        advice = `任务超过 ${eff} 秒未完成，已被强制终止。先缩小范围确认能跑通。`;
       } else {
         const d = diagnose(full, run.exitCode ?? -1);
         kind = d.kind;
@@ -331,7 +340,7 @@ export class TaskRunnerService implements OnModuleInit {
   // ---- 控制 ----
   stopCurrent(): boolean {
     const run = this.current;
-    this.stopFlag = true;
+    if (run) run.stopRequested = true;
     const dropped = [...this.queue];
     this.queue = [];
     if (run) {

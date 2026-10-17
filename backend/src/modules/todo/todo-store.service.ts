@@ -85,6 +85,18 @@ const MIGRATIONS: { version: number; sqls: string[] }[] = [
         WHERE status IN ('running','retrying')`,
     ],
   },
+  {
+    version: 2,
+    sqls: [
+      `ALTER TABLE todo_item ADD COLUMN remind_times TEXT NOT NULL DEFAULT '[]'`,
+    ],
+  },
+  {
+    version: 3,
+    sqls: [
+      `ALTER TABLE todo_item ADD COLUMN timeout INTEGER NOT NULL DEFAULT 0`,
+    ],
+  },
 ];
 
 /** 工作内容 SQLite 持久层（移植自 workbench/todo_store.py）。 */
@@ -191,6 +203,14 @@ export class TodoStoreService implements OnModuleInit {
     }
   }
 
+  /** 在指定日期 day 上叠加时间 t（"HH:mm"）返回 Date。 */
+  private mkDayTime(day: Date, t: string): Date {
+    const [h, m] = t.split(':').map((x) => parseInt(x, 10));
+    const d = new Date(day);
+    d.setHours(h, m || 0, 0, 0);
+    return d;
+  }
+
   fireKey(itemId: string, dueAt: string | null | undefined): string {
     return `${itemId}#${dueAt || ''}`;
   }
@@ -248,6 +268,20 @@ export class TodoStoreService implements OnModuleInit {
     }
     if (t === 'none') return { type: 'none', interval: 1, by: '', end: '' };
     return { type: t, interval: n, by, end };
+  }
+
+  /** 解析时间列表（"HH:mm" 数组），过滤非法值并按时间排序。支持直接传数组或 JSON 字符串。 */
+  parseTimes(raw: unknown): string[] {
+    let arr: unknown[];
+    if (Array.isArray(raw)) arr = raw;
+    else if (typeof raw === 'string' && raw.trim()) {
+      try { arr = JSON.parse(raw); } catch { return []; }
+    } else return [];
+    if (!Array.isArray(arr)) return [];
+    return arr
+      .map((x) => String(x || '').trim())
+      .filter((x) => /^([01]\d|2[0-3]):[0-5]\d$/.test(x))
+      .sort();
   }
 
   describeRule(rule: { type: string; interval: number; by: string; end?: string }): string {
@@ -428,6 +462,8 @@ export class TodoStoreService implements OnModuleInit {
       doneCount: parseInt(String(row['done_count'] || '0'), 10),
       flag: !!row['flag'],
       remindAt: row['remind_at'] || '',
+      remindTimes: this.parseTimes(row['remind_times']),
+      timeout: parseInt(String(row['timeout'] || '0'), 10),
       repeatType: row['repeat_type'] || 'none',
       repeatInterval: parseInt(String(row['repeat_interval'] || '1'), 10),
       repeatBy: row['repeat_by'] || '',
@@ -447,6 +483,7 @@ export class TodoStoreService implements OnModuleInit {
   createItem(
     title: string, listId: string, note = '', remindAt = '', flag = 0,
     repeat: unknown = {}, taskId = '', autoRun = 0, taskArgs: unknown = {},
+    remindTimes: string[] = [], timeout = 0,
   ): Row | null {
     const now = this.nowStr();
     const { type, interval, by, end } = this.normalizeRule(repeat);
@@ -454,11 +491,11 @@ export class TodoStoreService implements OnModuleInit {
     this.run(
       'INSERT INTO todo_item(id,list_id,title,note,status,flag,remind_at,' +
         ' repeat_type,repeat_interval,repeat_by,repeat_end,' +
-        ' task_id,task_args,auto_run,created_at,updated_at)' +
-        ' VALUES(?,?,?,?,\'open\',?,?,?,?,?,?,?,?,?,?,?)',
+        ' task_id,task_args,auto_run,remind_times,timeout,created_at,updated_at)' +
+        ' VALUES(?,?,?,?,\'open\',?,?,?,?,?,?,?,?,?,?,?,?,?)',
       iid, listId, title || '未命名', note || '', flag ? 1 : 0, remindAt || '',
       type, interval, by, end, taskId || '',
-      JSON.stringify(taskArgs || {}), autoRun ? 1 : 0, now, now,
+      JSON.stringify(taskArgs || {}), autoRun ? 1 : 0, JSON.stringify(remindTimes || []), Number(timeout) || 0, now, now,
     );
     return this.getItem(iid);
   }
@@ -468,7 +505,7 @@ export class TodoStoreService implements OnModuleInit {
     if (!row) return null;
     const fields: Record<string, unknown> = {};
     for (const k of ['title', 'note', 'remind_at', 'list_id', 'done_at', 'last_run_at',
-      'last_run_status', 'task_id', 'task_args']) {
+      'last_run_status', 'task_id', 'task_args', 'remind_times', 'timeout']) {
       if (k in kw && kw[k] != null) fields[k] = kw[k];
     }
     if ('flag' in kw && kw['flag'] != null) fields['flag'] = kw['flag'] ? 1 : 0;
@@ -523,6 +560,11 @@ export class TodoStoreService implements OnModuleInit {
       fields['updated_at'] = this.nowStr();
       if (row['done_count']) {
         fields['done_count'] = Math.max(0, parseInt(String(row['done_count'] || '0'), 10) - 1);
+      }
+      // 重开已完成的一次性多时间事项：重置 remind_at 到今天首个时间，使其可再次触发
+      const times = this.parseTimes(row['remind_times']);
+      if (!row['remind_at'] && times.length) {
+        fields['remind_at'] = this.fmtLocal(this.mkDayTime(new Date(), times[0]));
       }
     }
     const cols = Object.keys(fields);
@@ -669,6 +711,34 @@ export class TodoStoreService implements OnModuleInit {
     const row = this.getItem(iid);
     if (!row) return null;
     const rule = this.ruleOf(row);
+    const times = this.parseTimes(row['remind_times']);
+    // 多时间（custom 除外）：同一天按时间列表推进，跨天/跨周期跳到下一日的首个时间
+    if (rule.type !== 'custom' && times.length) {
+      const fromDue = this.parseDt(String(row['remind_at'] || ''));
+      const now = new Date();
+      if (fromDue) {
+        const sorted = times.slice().sort();
+        let next: Date | null = null;
+        for (const t of sorted) {
+          const cand = this.mkDayTime(fromDue, t);
+          if (cand > now) { next = cand; break; }
+        }
+        if (!next) {
+          const baseDay = new Date(fromDue);
+          baseDay.setDate(baseDay.getDate() + 1);
+          baseDay.setHours(0, 0, 0, 0);
+          next = this.computeNextDue(rule, this.fmtLocal(this.mkDayTime(baseDay, sorted[0])) || this.nowStr(), now);
+        }
+        if (!next) {
+          if (rule.type === 'none') {
+            return this.updateItem(iid, { status: STATUS_DONE, done_at: this.nowStr(), remind_at: null });
+          }
+          return row; // 周期已结束，保持现状
+        }
+        return this.updateItem(iid, { remind_at: this.fmtLocal(next) });
+      }
+    }
+    // 原逻辑（无多时间 / custom）：按 remind_at 单一时刻推进
     if (rule.type !== 'none') {
       const nxt = this.computeNextDue(rule, String(row['remind_at'] || this.nowStr()), new Date());
       return this.updateItem(iid, { remind_at: nxt ? this.fmtLocal(nxt) : row['remind_at'] });
