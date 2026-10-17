@@ -1,107 +1,122 @@
 <template>
-  <div class="todo">
-    <div class="todo-bar">
-      <h2 class="v-title">工作内容</h2>
-      <span class="v-sub">按清单组织待办，可绑定任务自动执行</span>
+  <div class="auto">
+    <div class="auto-bar">
+      <h2 class="v-title">自动任务</h2>
+      <span class="v-sub">按时间线管理自动任务，绑定手动任务后可定时 / 自动执行</span>
       <span class="sp" />
-      <el-button size="small" @click="openListDialog()"><el-icon><Plus /></el-icon> 新建清单</el-button>
+      <el-button type="primary" @click="openCreate()">
+        <el-icon><Plus /></el-icon> 新建任务
+      </el-button>
     </div>
 
-    <div class="todo-body">
-      <aside class="todo-lists">
-        <div
-          v-for="l in lists" :key="l.id"
-          class="todo-list" :class="{ on: l.id === activeListId }"
-          @click="activeListId = l.id"
-        >
-          <span class="todo-list-ic">{{ l.icon || '📋' }}</span>
-          <span class="todo-list-name">{{ l.name }}</span>
-          <span class="todo-list-count">{{ countOf(l.id) }}</span>
-          <el-dropdown trigger="click" @command="(c) => onListCmd(c, l)">
-            <el-icon class="todo-list-more"><MoreFilled /></el-icon>
-            <template #dropdown>
-              <el-dropdown-menu>
-                <el-dropdown-item command="edit">重命名</el-dropdown-item>
-                <el-dropdown-item command="delete" divided>删除</el-dropdown-item>
-              </el-dropdown-menu>
+    <div v-if="loading" class="auto-state">
+      <el-icon class="is-loading"><Loading /></el-icon> 加载中…
+    </div>
+
+    <el-timeline v-else-if="sortedItems.length" class="auto-tl">
+      <el-timeline-item
+        v-for="it in sortedItems" :key="it.id"
+        :timestamp="scheduleText(it)" placement="top"
+        :type="nodeType(it)" :hollow="it.status === 'done'"
+      >
+        <div class="node" :class="{ done: it.status === 'done' }">
+          <div class="node-head">
+            <span class="node-title">
+              <el-icon v-if="it.flag" class="node-star" title="重点"><StarFilled /></el-icon>
+              {{ it.title }}
+            </span>
+            <el-tag v-if="!it.taskId" size="small" type="info" effect="plain">未绑定任务</el-tag>
+            <el-tag v-else-if="it.linkState === 'missing'" size="small" type="danger" effect="plain">任务缺失</el-tag>
+            <el-tag v-else-if="it.linkState === 'disabled'" size="small" type="warning" effect="plain">任务已禁用</el-tag>
+            <el-tag v-else size="small" type="success" effect="plain">
+              手动任务：{{ taskName(it.taskId) }}
+            </el-tag>
+            <el-tag v-if="it.lastRunStatus" size="small"
+              :type="it.lastRunStatus === 'success' ? 'success' : 'danger'">
+              {{ it.lastRunStatus }}
+            </el-tag>
+            <span v-if="it.lastRunAt" class="node-runat">上次：{{ it.lastRunAt }}</span>
+          </div>
+          <div v-if="it.note" class="node-note">{{ it.note }}</div>
+          <div class="node-acts">
+            <el-button v-if="it.taskId" size="small" type="primary" plain :loading="it._running" @click="trigger(it)">
+              <el-icon><VideoPlay /></el-icon> 运行
+            </el-button>
+            <el-button size="small" text @click="openCreate(it)"><el-icon><Edit /></el-icon> 编辑</el-button>
+            <el-button size="small" text type="danger" @click="removeItem(it)"><el-icon><Delete /></el-icon> 删除</el-button>
+          </div>
+        </div>
+      </el-timeline-item>
+    </el-timeline>
+
+    <div v-else class="auto-state auto-empty">还没有自动任务，点击右上角「新建任务」开始。</div>
+
+    <!-- 新建 / 编辑任务 -->
+    <el-dialog v-model="dlg" :title="form.id ? '编辑自动任务' : '新建自动任务'" width="520px">
+      <el-form label-width="92px">
+        <el-form-item label="任务名称" required>
+          <el-input v-model="form.title" placeholder="例如：每日 IM 电联日报" />
+        </el-form-item>
+        <el-form-item label="绑定手动任务">
+          <el-select v-model="form.taskId" clearable filterable placeholder="选择已创建的手动任务（可选）" style="width:100%">
+            <el-option v-for="t in tasks.tasks" :key="t.id" :label="t.name" :value="t.id" />
+          </el-select>
+          <div class="form-hint">绑定后可在时间线直接「运行」该手动任务，并支持自动执行。</div>
+        </el-form-item>
+        <el-form-item label="执行时间">
+          <el-date-picker v-model="form.remindAt" type="datetime"
+            format="YYYY-MM-DD HH:mm" value-format="YYYY-MM-DDTHH:mm"
+            placeholder="定时执行的起始时间" style="width:100%" />
+        </el-form-item>
+        <el-form-item label="重复">
+          <div class="repeat">
+            <el-select v-model="form.repeatType" style="width:140px">
+              <el-option label="不重复" value="none" />
+              <el-option label="每天" value="daily" />
+              <el-option label="每周" value="weekly" />
+              <el-option label="每月" value="monthly" />
+              <el-option label="自定义（小时）" value="custom" />
+            </el-select>
+            <template v-if="form.repeatType !== 'none'">
+              <span class="repeat-pre">每</span>
+              <el-input-number v-model="form.repeatInterval" :min="1" :max="999" :controls="false" style="width:80px" />
+              <span class="repeat-unit">
+                {{ form.repeatType === 'daily' ? '天' : form.repeatType === 'weekly' ? '周'
+                  : form.repeatType === 'monthly' ? '个月' : '小时' }}
+              </span>
             </template>
-          </el-dropdown>
-        </div>
-      </aside>
-
-      <section class="todo-items">
-        <div class="todo-items-bar">
-          <b>{{ activeList ? activeList.name : '' }}</b>
-          <span class="sp" />
-          <el-button size="small" type="primary" @click="openItemDialog()">
-            <el-icon><Plus /></el-icon> 添加条目
-          </el-button>
-        </div>
-
-        <div v-if="loading" class="todo-state"><el-icon class="is-loading"><Loading /></el-icon> 加载中…</div>
-        <ul v-else-if="filtered.length" class="todo-item-list">
-          <li v-for="it in filtered" :key="it.id" class="todo-item" :class="{ done: it.status === 'done' }">
-            <el-checkbox :model-value="it.status === 'done'" @change="() => toggle(it)" />
-            <div class="todo-item-main">
-              <div class="todo-item-top">
-                <span class="todo-item-title">{{ it.title }}</span>
-                <el-tag v-if="it.flag" size="small" type="warning" effect="plain">⚑ 重点</el-tag>
-                <el-tag v-if="it.linkState && it.linkState !== 'ok'" size="small" type="info">
-                  {{ it.linkState === 'missing' ? '任务缺失' : '已禁用' }}
-                </el-tag>
-                <el-tag v-if="it.lastRunStatus" size="small" :type="it.lastRunStatus === 'success' ? 'success' : 'danger'">
-                  {{ it.lastRunStatus }}
-                </el-tag>
-              </div>
-              <div v-if="it.note" class="todo-item-note">{{ it.note }}</div>
-            </div>
-            <div class="todo-item-acts">
-              <el-button v-if="it.taskId" size="small" type="primary" plain :loading="it._running" @click="trigger(it)">
-                运行
-              </el-button>
-              <el-button size="small" text @click="openItemDialog(it)">编辑</el-button>
-              <el-button size="small" text type="danger" @click="removeItem(it)">删除</el-button>
-            </div>
-          </li>
-        </ul>
-        <div v-else class="todo-state todo-empty">该清单暂无条目</div>
-      </section>
-    </div>
-
-    <!-- 清单对话框 -->
-    <el-dialog v-model="listDlg" :title="listForm.id ? '重命名清单' : '新建清单'" width="420px">
-      <el-form label-width="64px">
-        <el-form-item label="名称"><el-input v-model="listForm.name" placeholder="清单名称" /></el-form-item>
-        <el-form-item label="图标"><el-input v-model="listForm.icon" placeholder="emoji，如 📋" maxlength="4" /></el-form-item>
-        <el-form-item label="颜色"><el-color-picker v-model="listForm.color" /></el-form-item>
+          </div>
+        </el-form-item>
+        <el-form-item v-if="form.repeatType === 'weekly'" label="星期">
+          <el-checkbox-group v-model="form.repeatWeekdays">
+            <el-checkbox-button v-for="d in weekDays" :key="d.v" :value="d.v">{{ d.l }}</el-checkbox-button>
+          </el-checkbox-group>
+        </el-form-item>
+        <el-form-item v-if="form.repeatType === 'monthly'" label="每月">
+          <el-radio-group v-model="form.repeatMonthLast">
+            <el-radio :value="true">最后一天</el-radio>
+            <el-radio :value="false">
+              第
+              <el-input-number v-model="form.repeatMonthDay" :min="1" :max="31" :controls="false" style="width:70px" />
+              日
+            </el-radio>
+          </el-radio-group>
+        </el-form-item>
+        <el-form-item label="结束日期">
+          <el-date-picker v-model="form.repeatEnd" type="date" value-format="YYYY-MM-DD"
+            placeholder="可选，留空表示长期" style="width:100%" />
+        </el-form-item>
+        <el-form-item label="自动运行">
+          <el-switch v-model="form.autoRun" />
+          <span class="form-hint">开启后调度器到点自动执行（需已绑定手动任务）。</span>
+        </el-form-item>
+        <el-form-item label="备注">
+          <el-input v-model="form.note" type="textarea" :rows="2" placeholder="可选" />
+        </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="listDlg = false">取消</el-button>
-        <el-button type="primary" @click="saveList">保存</el-button>
-      </template>
-    </el-dialog>
-
-    <!-- 条目对话框 -->
-    <el-dialog v-model="itemDlg" :title="itemForm.id ? '编辑条目' : '添加条目'" width="480px">
-      <el-form label-width="72px">
-        <el-form-item label="标题"><el-input v-model="itemForm.title" placeholder="要做的事" /></el-form-item>
-        <el-form-item label="备注"><el-input v-model="itemForm.note" type="textarea" :rows="2" /></el-form-item>
-        <el-form-item label="清单">
-          <el-select v-model="itemForm.listId" placeholder="选择清单">
-            <el-option v-for="l in lists" :key="l.id" :label="l.name" :value="l.id" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="关联任务">
-          <el-select v-model="itemForm.taskId" clearable filterable placeholder="可选，绑定后可直接运行">
-            <el-option v-for="t in tasksList" :key="t.id" :label="t.name" :value="t.id" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="重点"><el-switch v-model="itemForm.flag" /></el-form-item>
-        <el-form-item label="自动运行"><el-switch v-model="itemForm.autoRun" /></el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="itemDlg = false">取消</el-button>
-        <el-button type="primary" @click="saveItem">保存</el-button>
+        <el-button @click="dlg = false">取消</el-button>
+        <el-button type="primary" @click="save">保存</el-button>
       </template>
     </el-dialog>
   </div>
@@ -109,39 +124,80 @@
 
 <script setup>
 import { computed, onMounted, ref } from 'vue';
-import { Plus, MoreFilled } from '@element-plus/icons-vue';
+import { Plus, Edit, Delete, VideoPlay, Loading, StarFilled } from '@element-plus/icons-vue';
 import { useAppStore } from '../stores/app.js';
 import { useTasksStore } from '../stores/tasks.js';
-import {
-  fetchTodo, postTodoList, postTodoItem, triggerTodoItem,
-} from '../api/dashboards.js';
+import { fetchTodo, postTodoItem, triggerTodoItem } from '../api/dashboards.js';
 
 const app = useAppStore();
 const tasks = useTasksStore();
 
-const lists = ref([]);
 const items = ref([]);
-const activeListId = ref(null);
 const loading = ref(false);
+const dlg = ref(false);
+const dlgEdit = ref(false);
+const form = ref(emptyForm());
 
-const tasksList = computed(() => tasks.tasks || []);
-const activeList = computed(() => lists.value.find((l) => l.id === activeListId.value) || null);
-const filtered = computed(() => items.value.filter((i) => i.listId === activeListId.value));
-function countOf(id) { return items.value.filter((i) => i.listId === id).length; }
+const weekDays = [
+  { v: 1, l: '一' }, { v: 2, l: '二' }, { v: 3, l: '三' }, { v: 4, l: '四' },
+  { v: 5, l: '五' }, { v: 6, l: '六' }, { v: 7, l: '日' },
+];
 
-const listDlg = ref(false);
-const listForm = ref({ id: null, name: '', icon: '📋', color: '#FF5000' });
-const itemDlg = ref(false);
-const itemForm = ref({ id: null, title: '', note: '', listId: null, taskId: null, flag: false, autoRun: false });
+function emptyForm() {
+  return {
+    id: null, title: '', note: '', taskId: null,
+    autoRun: true, remindAt: '', repeatType: 'daily',
+    repeatInterval: 1, repeatWeekdays: [1, 2, 3, 4, 5],
+    repeatMonthDay: 1, repeatMonthLast: false, repeatEnd: '',
+  };
+}
+
+const sortedItems = computed(() =>
+  [...items.value].sort((a, b) => {
+    const ta = a.remindAt ? Date.parse(a.remindAt) : Infinity;
+    const tb = b.remindAt ? Date.parse(b.remindAt) : Infinity;
+    return ta - tb;
+  }),
+);
+
+function taskName(id) {
+  if (!id) return '';
+  const t = tasks.taskById(id);
+  return t ? t.name : '未知任务';
+}
+function scheduleText(it) {
+  if (it.repeatType && it.repeatType !== 'none') {
+    return `${it.autoRun ? '自动' : '定时'} · ${it.repeatLabel}`;
+  }
+  return it.remindAt ? `一次性 · ${it.remindAt}` : '未排程';
+}
+function nodeType(it) {
+  if (it.status === 'done') return 'info';
+  if (!it.taskId) return 'warning';
+  if (it.autoRun) return 'primary';
+  return 'success';
+}
+
+function buildRepeat() {
+  const t = form.value.repeatType;
+  const n = Math.max(1, Number(form.value.repeatInterval) || 1);
+  const end = form.value.repeatEnd || '';
+  if (t === 'daily') return { type: 'daily', interval: n, by: '', end };
+  if (t === 'weekly') return { type: 'weekly', interval: n, by: (form.value.repeatWeekdays || []).join(','), end };
+  if (t === 'monthly') return {
+    type: 'monthly', interval: n,
+    by: form.value.repeatMonthLast ? 'L' : String(form.value.repeatMonthDay), end,
+  };
+  if (t === 'custom') return { type: 'custom', interval: n, by: '', end };
+  return { type: 'none', interval: 1, by: '', end: '' };
+}
 
 async function load() {
   loading.value = true;
   try {
+    if (!tasks.loaded) await tasks.loadState();
     const res = await fetchTodo();
-    const todo = (res && res.todo) || {};
-    lists.value = todo.lists || [];
-    items.value = todo.items || [];
-    if (!activeListId.value && lists.value.length) activeListId.value = lists.value[0].id;
+    items.value = (res && res.todo && res.todo.items) || [];
   } catch (e) {
     ElMessage.error(e.message || '加载失败');
   } finally {
@@ -149,65 +205,51 @@ async function load() {
   }
 }
 
-function openListDialog(l) {
-  listForm.value = l ? { id: l.id, name: l.name, icon: l.icon || '📋', color: l.color || '#FF5000' }
-    : { id: null, name: '', icon: '📋', color: '#FF5000' };
-  listDlg.value = true;
-}
-function onListCmd(c, l) {
-  if (c === 'edit') openListDialog(l);
-  else if (c === 'delete') removeList(l);
-}
-async function saveList() {
-  if (!listForm.value.name) { ElMessage.warning('请填写名称'); return; }
-  try {
-    const op = listForm.value.id ? 'update' : 'create';
-    const payload = listForm.value.id ? { id: listForm.value.id } : {};
-    await postTodoList(op, Object.assign(payload, {
-      name: listForm.value.name, icon: listForm.value.icon, color: listForm.value.color,
-    }));
-    listDlg.value = false;
-    ElMessage.success('已保存');
-    await load();
-  } catch (e) { ElMessage.error(e.message || '保存失败'); }
-}
-async function removeList(l) {
-  if (!(await app.confirmDialog({ message: `删除清单「${l.name}」？其下条目将一并删除。` }))) return;
-  try {
-    await postTodoList('delete', { id: l.id });
-    ElMessage.success('已删除');
-    await load();
-  } catch (e) { ElMessage.error(e.message || '删除失败'); }
+function openCreate(it) {
+  form.value = it
+    ? {
+      id: it.id, title: it.title, note: it.note || '', taskId: it.taskId || null,
+      autoRun: !!it.autoRun, remindAt: it.remindAt || '',
+      repeatType: it.repeatType || 'none', repeatInterval: it.repeatInterval || 1,
+      repeatWeekdays: (it.repeatBy ? String(it.repeatBy).split(',').map(Number) : [1, 2, 3, 4, 5]),
+      repeatMonthDay: it.repeatBy ? Number(it.repeatBy) || 1 : 1,
+      repeatMonthLast: it.repeatBy === 'L', repeatEnd: it.repeatEnd || '',
+    }
+    : emptyForm();
+  dlgEdit.value = !!it;
+  dlg.value = true;
 }
 
-function openItemDialog(it) {
-  itemForm.value = it
-    ? { id: it.id, title: it.title, note: it.note || '', listId: it.listId, taskId: it.taskId || null, flag: !!it.flag, autoRun: !!it.autoRun }
-    : { id: null, title: '', note: '', listId: activeListId.value, taskId: null, flag: false, autoRun: false };
-  itemDlg.value = true;
-}
-async function saveItem() {
-  if (!itemForm.value.title) { ElMessage.warning('请填写标题'); return; }
+async function save() {
+  if (!form.value.title) { ElMessage.warning('请填写任务名称'); return; }
+  if (form.value.repeatType !== 'none' && !form.value.remindAt) {
+    ElMessage.warning('请选择执行时间'); return;
+  }
   try {
-    const op = itemForm.value.id ? 'update' : 'create';
-    const payload = { title: itemForm.value.title, note: itemForm.value.note, listId: itemForm.value.listId };
-    if (itemForm.value.taskId) { payload.taskId = itemForm.value.taskId; payload.autoRun = itemForm.value.autoRun; payload.flag = itemForm.value.flag; }
-    if (itemForm.value.id) payload.id = itemForm.value.id;
+    const op = form.value.id ? 'update' : 'create';
+    const payload = {
+      title: form.value.title,
+      note: form.value.note,
+      list_id: '',
+      remind_at: form.value.remindAt || '',
+      repeat: buildRepeat(),
+      auto_run: form.value.autoRun ? 1 : 0,
+    };
+    if (form.value.taskId) payload.task_id = form.value.taskId;
+    if (form.value.id) payload.id = form.value.id;
     await postTodoItem(op, payload);
-    itemDlg.value = false;
+    dlg.value = false;
     ElMessage.success('已保存');
     await load();
   } catch (e) { ElMessage.error(e.message || '保存失败'); }
 }
-async function toggle(it) {
-  try { await postTodoItem('toggle', { id: it.id }); await load(); }
-  catch (e) { ElMessage.error(e.message || '操作失败'); }
-}
+
 async function removeItem(it) {
-  if (!(await app.confirmDialog({ message: `删除条目「${it.title}」？` }))) return;
+  if (!(await app.confirmDialog({ message: `删除自动任务「${it.title}」？` }))) return;
   try { await postTodoItem('delete', { id: it.id }); ElMessage.success('已删除'); await load(); }
   catch (e) { ElMessage.error(e.message || '删除失败'); }
 }
+
 async function trigger(it) {
   it._running = true;
   try { await triggerTodoItem(it.id); ElMessage.success('已触发：' + it.title); }
@@ -219,34 +261,24 @@ onMounted(load);
 </script>
 
 <style scoped>
-.todo { padding: var(--sp-20); }
-.todo-bar { display: flex; align-items: baseline; gap: var(--sp-12); margin-bottom: var(--sp-16); flex-wrap: wrap; }
+.auto { padding: var(--sp-20); }
+.auto-bar { display: flex; align-items: baseline; gap: var(--sp-12); margin-bottom: var(--sp-16); flex-wrap: wrap; }
 .v-title { margin: 0; font-size: var(--el-font-size-extra-large); }
 .v-sub { color: var(--el-text-color-secondary); font-size: var(--el-font-size-base); }
-.todo-bar .sp { flex: 1; }
-.todo-body { display: grid; grid-template-columns: 240px 1fr; gap: var(--sp-16); align-items: start; }
-.todo-lists { border: 1px solid var(--el-border-color-lighter); border-radius: var(--el-border-radius-base); overflow: hidden; background: var(--el-bg-color); }
-.todo-list {
-  display: flex; align-items: center; gap: var(--sp-8); padding: var(--sp-12) var(--sp-14);
-  cursor: pointer; border-bottom: 1px solid var(--el-border-color-lighter);
-}
-.todo-list:last-child { border-bottom: none; }
-.todo-list.on { background: var(--el-color-primary-light-9); }
-.todo-list-ic { font-size: 16px; }
-.todo-list-name { flex: 1; font-weight: var(--fw-semibold); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.todo-list-count { font-size: var(--el-font-size-extra-small); color: var(--el-text-color-secondary); }
-.todo-list-more { color: var(--el-text-color-secondary); }
-.todo-items { border: 1px solid var(--el-border-color-lighter); border-radius: var(--el-border-radius-base); background: var(--el-bg-color); min-height: 360px; }
-.todo-items-bar { display: flex; align-items: center; gap: var(--sp-8); padding: var(--sp-12) var(--sp-16); border-bottom: 1px solid var(--el-border-color-lighter); }
-.todo-items-bar .sp { flex: 1; }
-.todo-item-list { list-style: none; margin: 0; padding: var(--sp-8) var(--sp-16); }
-.todo-item { display: flex; align-items: flex-start; gap: var(--sp-10); padding: var(--sp-12) 0; border-bottom: 1px solid var(--el-border-color-lighter); }
-.todo-item:last-child { border-bottom: none; }
-.todo-item.done .todo-item-title { text-decoration: line-through; color: var(--el-text-color-secondary); }
-.todo-item-main { flex: 1; min-width: 0; }
-.todo-item-top { display: flex; align-items: center; gap: var(--sp-6); flex-wrap: wrap; }
-.todo-item-title { font-weight: var(--fw-semibold); }
-.todo-item-note { color: var(--el-text-color-secondary); font-size: var(--el-font-size-extra-small); margin-top: 2px; }
-.todo-item-acts { display: flex; gap: var(--sp-4); flex: none; }
-.todo-state { padding: var(--sp-40); text-align: center; color: var(--el-text-color-secondary); display: flex; gap: var(--sp-8); justify-content: center; align-items: center; }
+.auto-bar .sp { flex: 1; }
+.auto-tl { padding: var(--sp-8) var(--sp-4); max-width: 880px; }
+.node { border: 1px solid var(--el-border-color-lighter); border-radius: var(--el-border-radius-base); background: var(--el-bg-color); padding: var(--sp-12) var(--sp-14); }
+.node.done .node-title { text-decoration: line-through; color: var(--el-text-color-secondary); }
+.node-head { display: flex; align-items: center; gap: var(--sp-6); flex-wrap: wrap; }
+.node-title { font-weight: var(--fw-semibold); display: inline-flex; align-items: center; gap: 4px; }
+.node-star { color: var(--el-color-warning); }
+.node-runat { color: var(--el-text-color-secondary); font-size: var(--el-font-size-extra-small); }
+.node-note { color: var(--el-text-color-secondary); font-size: var(--el-font-size-extra-small); margin-top: 4px; }
+.node-acts { display: flex; gap: var(--sp-4); margin-top: var(--sp-8); }
+.repeat { display: flex; align-items: center; gap: var(--sp-8); flex-wrap: wrap; }
+.repeat-pre { color: var(--el-text-color-secondary); }
+.repeat-unit { color: var(--el-text-color-secondary); }
+.form-hint { color: var(--el-text-color-secondary); font-size: var(--el-font-size-extra-small); margin-top: 4px; }
+.auto-state { padding: var(--sp-40); text-align: center; color: var(--el-text-color-secondary); display: flex; gap: var(--sp-8); justify-content: center; align-items: center; }
+.auto-empty { border: 1px dashed var(--el-border-color); border-radius: var(--el-border-radius-base); }
 </style>

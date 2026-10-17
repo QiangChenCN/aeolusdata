@@ -45,7 +45,7 @@ const routes = [
       { path: 'tasks', name: 'tasks-all', component: TaskCenterView, meta: { title: '全部任务', kind: 'tasks', id: 'all' } },
       { path: 'history', name: 'history', component: HistoryView, meta: { title: '运行记录', kind: 'history', id: '' } },
       { path: 'preset', name: 'preset', component: PresetView, meta: { title: '预设' } },
-      { path: 'todo', name: 'todo', component: TodoView, meta: { title: '工作内容' } },
+      { path: 'todo', name: 'todo', component: TodoView, meta: { title: '自动任务' } },
       { path: 'assess', name: 'assess', component: AssessView, redirect: { name: 'assess-service' }, meta: { title: '考核设置', kind: 'assess' },
         children: [
           { path: 'service', name: 'assess-service', component: AssessServiceView, meta: { title: '服务质量设置', kind: 'assessService', id: '' } },

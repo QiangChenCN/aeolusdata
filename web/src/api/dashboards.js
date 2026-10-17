@@ -11,7 +11,7 @@ const j = (body) => ({
 /* ============ 运行记录 ============ */
 export function fetchHistory() { return request('/history'); }
 
-/* ============ 工作内容（Todo） ============ */
+/* ============ 自动任务（Todo） ============ */
 export function fetchTodo() { return request('/todo'); }
 export function postTodoList(op, payload = {}) {
   return request('/todo/lists', j(Object.assign({ op }, payload)));
