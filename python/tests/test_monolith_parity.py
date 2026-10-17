@@ -129,7 +129,7 @@ POST_NEVER_SEND = {
     "/api/standard/refresh-all": "会启动真实全量刷新（耗时数分钟、消耗接口额度）",
     "/api/run": "会真实启动任务",
     "/api/stop": "无参即生效，会停掉当前任务",
-    "/api/todo/trigger": "会真实触发提醒任务",
+    "/api/cron/trigger": "会真实触发提醒任务",
 }
 # 可写状态文件：POST 探测前后比对哈希，变了就说明该端点会真写入
 STATE_FILES = [
@@ -137,11 +137,11 @@ STATE_FILES = [
     "backend/data/.roles.json", "backend/data/.users.json", "backend/data/org_tree.json",
     "analytics/attend_period_teams.json",
     "python/dashboard/standard/standard_grade_settings.json",
-    "backend/data/todo.db",
+    "backend/data/cron.db",
 ]
 # 可用「文件复制」安全还原的：只有 JSON 配置。
 #
-# SQLite（todo.db）**绝不能**用文件复制还原：Nest 与单体两个进程常态持有它，
+# SQLite（cron.db）**绝不能**用文件复制还原：Nest 与单体两个进程常态持有它，
 # 且运行在 WAL 模式。实测后果：替换活库 -> disk I/O error 数据库损坏，
 # 并把单体进程一起拖崩（RemoteDisconnected）。
 # SQLite 的清理一律走 API 删除；万一有残留，只报错、不还原。
@@ -501,38 +501,38 @@ def test_write_endpoints_parity():
     assert not problems, "写端点与单体行为不一致：\n" + "\n".join(problems)
 
 
-def _todo_of(body):
-    """GET /api/todo -> {'lists': {id: name}, 'items': {id: title}}"""
+def _cron_of(body):
+    """GET /api/cron -> {'lists': {id: name}, 'items': {id: title}}"""
     j, is_json = _parse(body)
     out = {"lists": {}, "items": {}}
     if is_json and isinstance(j, dict):
-        todo = j.get("todo") or {}
-        for li in (todo.get("lists") or []):
+        cron = j.get("cron") or {}
+        for li in (cron.get("lists") or []):
             if isinstance(li, dict) and li.get("id"):
                 out["lists"][str(li["id"])] = li.get("name")
-        for it in (todo.get("items") or []):
+        for it in (cron.get("items") or []):
             if isinstance(it, dict) and it.get("id"):
                 out["items"][str(it["id"])] = it.get("title")
     return out
 
 
-def _todo_snapshot():
-    """语义级：直接读 todo.db 的 list{id:name} 与 item{id:title}。
+def _cron_snapshot():
+    """语义级：直接读 cron.db 的 list{id:name} 与 item{id:title}。
 
     不能用字节哈希 —— SQLite 只要写过一次文件就变，即使行已完全复原。
     """
     import sqlite3
 
     out = {"lists": {}, "items": {}}
-    p = os.path.join(PY_HOME, "workbench", "data", "todo.db")
+    p = os.path.join(PY_HOME, "workbench", "data", "cron.db")
     if not os.path.isfile(p):
         return out
     try:
         con = sqlite3.connect(p)
         try:
-            for lid, name in con.execute("SELECT id, name FROM todo_list"):
+            for lid, name in con.execute("SELECT id, name FROM cron_list"):
                 out["lists"][str(lid)] = name
-            for iid, title in con.execute("SELECT id, title FROM todo_item"):
+            for iid, title in con.execute("SELECT id, title FROM cron_item"):
                 out["items"][str(iid)] = title
         finally:
             con.close()
@@ -541,23 +541,23 @@ def _todo_snapshot():
     return out
 
 
-def test_todo_write_endpoints_parity():
-    """/api/todo/* 的真实写入行为比对（POST 空载荷探测覆盖不到这一层）。
+def test_cron_write_endpoints_parity():
+    """/api/cron/* 的真实写入行为比对（POST 空载荷探测覆盖不到这一层）。
 
     走完整生命周期：建列表 → 两端读回 → 在该列表下建事项 → 两端读回 →
     改标题 → 两端读回 → 清理。任一步两端读到的状态不一致即失败。
 
     清理顺序有讲究：**列表非空时不允许删除**（两端都是这个约束），必须先删事项。
-    残留检测用 todo.db 的语义快照（SQLite 字节哈希不适用）。
+    残留检测用 cron.db 的语义快照（SQLite 字节哈希不适用）。
     """
     tok_n, tok_m = _login()
-    backup = tempfile.mkdtemp(prefix="parity_todo_")
+    backup = tempfile.mkdtemp(prefix="parity_cron_")
     _backup_state(backup)
-    before = _todo_snapshot()
+    before = _cron_snapshot()
 
     problems, list_id, item_id = [], None, None
     try:
-        st, body = _post_json(NEST, "/api/todo/lists", tok_n, True,
+        st, body = _post_json(NEST, "/api/cron/lists", tok_n, True,
                               {"op": "create", "name": "parity_tmp_list",
                                "icon": "list-checks", "color": "#FF5000"})
         j, _ = _parse(body)
@@ -565,9 +565,9 @@ def test_todo_write_endpoints_parity():
         if not list_id:
             problems.append("Nest 建列表失败 status=%s %s" % (st, body[:100]))
 
-        def both_todo(tag):
-            tn = _todo_of(_open(NEST, "/api/todo", tok_n, head=True)[1])
-            tm = _todo_of(_open(MONO, "/api/todo", tok_m, head=False)[1])
+        def both_cron(tag):
+            tn = _cron_of(_open(NEST, "/api/cron", tok_n, head=True)[1])
+            tm = _cron_of(_open(MONO, "/api/cron", tok_m, head=False)[1])
             if tn["lists"].get(list_id) != tm["lists"].get(list_id):
                 problems.append("%s 列表名两端不同 Nest=%s 单体=%s" % (
                     tag, tn["lists"].get(list_id), tm["lists"].get(list_id)))
@@ -577,12 +577,12 @@ def test_todo_write_endpoints_parity():
             return tn, tm
 
         if list_id:
-            tn, _ = both_todo("建列表后")
+            tn, _ = both_cron("建列表后")
             if tn["lists"].get(list_id) != "parity_tmp_list":
                 problems.append("建列表后名称不对：%s" % tn["lists"].get(list_id))
 
             # 反向：经单体在该列表下建事项
-            st, body = _post_json(MONO, "/api/todo/items", tok_m, False,
+            st, body = _post_json(MONO, "/api/cron/items", tok_m, False,
                                   {"op": "create", "title": "parity_tmp_item",
                                    "list_id": list_id, "note": "", "remind_at": ""})
             j, _ = _parse(body)
@@ -591,13 +591,13 @@ def test_todo_write_endpoints_parity():
                 problems.append("单体建事项失败 status=%s %s" % (st, body[:100]))
 
             if item_id:
-                tn, _ = both_todo("建事项后")
+                tn, _ = both_cron("建事项后")
                 if tn["items"].get(item_id) != "parity_tmp_item":
                     problems.append("建事项后标题不对：%s" % tn["items"].get(item_id))
 
-                _post_json(NEST, "/api/todo/items", tok_n, True,
+                _post_json(NEST, "/api/cron/items", tok_n, True,
                            {"op": "update", "id": item_id, "title": "parity_tmp_item_2"})
-                tn, tm = both_todo("改标题后")
+                tn, tm = both_cron("改标题后")
                 if tn["items"].get(item_id) != "parity_tmp_item_2" or \
                         tm["items"].get(item_id) != "parity_tmp_item_2":
                     problems.append("改标题后两端不一致 Nest=%s 单体=%s" % (
@@ -607,18 +607,18 @@ def test_todo_write_endpoints_parity():
         for base, tok, head in ((NEST, tok_n, True), (MONO, tok_m, False)):
             if item_id:
                 try:
-                    _post_json(base, "/api/todo/items", tok, head,
+                    _post_json(base, "/api/cron/items", tok, head,
                                {"op": "delete", "id": item_id})
                 except Exception:
                     pass
             if list_id:
                 try:
-                    _post_json(base, "/api/todo/lists", tok, head,
+                    _post_json(base, "/api/cron/lists", tok, head,
                                {"op": "delete", "id": list_id})
                 except Exception:
                     pass
 
-    after = _todo_snapshot()
+    after = _cron_snapshot()
     residue = []
     if after["lists"] != before["lists"]:
         residue.append("列表集合未复原（多出或缺少：%s）"
@@ -634,9 +634,9 @@ def test_todo_write_endpoints_parity():
     if residue:
         _restore_state(backup)
         shutil.rmtree(backup, ignore_errors=True)
-        pytest.fail("todo 写比对后有残留（已自动还原）：" + "；".join(residue))
+        pytest.fail("cron 写比对后有残留（已自动还原）：" + "；".join(residue))
     shutil.rmtree(backup, ignore_errors=True)
-    assert not problems, "todo 写端点与单体不一致：\n" + "\n".join(problems)
+    assert not problems, "cron 写端点与单体不一致：\n" + "\n".join(problems)
 
 
 def test_remaining_post_endpoints_parity():
@@ -648,7 +648,7 @@ def test_remaining_post_endpoints_parity():
        会完整走一遍校验 → 序列化 → 落盘 → 响应，但内容不变（文件哈希不动）。
        适用于 /api/policy、/api/standard/teams-config、/api/standard/thresholds。
     2) 必然被拒的无效 id：task_id / item_id 不存在，两端都应在产生副作用前拒绝。
-       适用于 /api/run、/api/todo/trigger、/api/groups/forget。
+       适用于 /api/run、/api/cron/trigger、/api/groups/forget。
        /api/stop 只在确认无任务运行（/api/state 的 current 为空）时才发。
 
     /api/standard/refresh-all 不在本用例内：它没有入参校验，任何载荷都会真跑一次
@@ -695,7 +695,7 @@ def test_remaining_post_endpoints_parity():
 
         # 2) 必然被拒的无效 id
         probe("/api/run", {"items": [{"task_id": "__no_such_task__"}]}, "不存在的任务")
-        probe("/api/todo/trigger", {"item_id": "__no_such_item__"}, "不存在的事项")
+        probe("/api/cron/trigger", {"item_id": "__no_such_item__"}, "不存在的事项")
         probe("/api/groups/forget", {"group": "__no_such_group__"}, "不存在的分组")
 
         # 3) stop：仅在无任务运行时才发（否则会真停掉任务）
@@ -710,7 +710,7 @@ def test_remaining_post_endpoints_parity():
             probe("/api/stop", {}, "无任务运行时的停止")
 
         # 4) todo/import 空载荷（不导入任何内容）
-        probe("/api/todo/import", {"lists": [], "items": []}, "空导入")
+        probe("/api/cron/import", {"lists": [], "items": []}, "空导入")
 
     finally:
         after = _state_hashes()

@@ -23,7 +23,7 @@
 | 后端体量 | 单类 1723 行，`do_GET`(1245)+`do_POST`(1521) 手动 `if/elif` 路由，约 20 个端点 | `wc -l server.py` |
 | 后端职责 | 静态服务 + SSE + 子进程跑任务 + cookie/Quark 探活 + 搜群 + 拉团队 + todo CRUD + 文件浏览，**至少 4~5 类职责混在一处** | 路由链 1245–1520 |
 | 数据看板 | `python/dashboard/` 目录**空**（仅 `.gitkeep`），`renderDashView` 是占位 | `ls python/dashboard/` / 1580 |
-| 待办数据源 | **双源并存**：服务端 SQLite(`todo.db`) + 前端 `localStorage` 克隆，首次进入做一次性迁移 | 3434–3496、3452–3489 |
+| 待办数据源 | **双源并存**：服务端 SQLite(`cron.db`) + 前端 `localStorage` 克隆，首次进入做一次性迁移 | 3434–3496、3452–3489 |
 
 ---
 

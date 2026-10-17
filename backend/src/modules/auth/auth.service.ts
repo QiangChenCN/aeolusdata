@@ -98,7 +98,7 @@ const SCRYPT_DKLEN = 64;
 const ROLES_SEED: Record<string, RoleRecord> = {
   admin: { perms: [], parents: [], builtin: true, locked: true, all: true },
   operator: {
-    perms: ['view', 'file:read', 'task:run', 'data:refresh', 'todo:write', 'groups:write', 'config:write'],
+    perms: ['view', 'file:read', 'task:run', 'data:refresh', 'cron:write', 'groups:write', 'config:write'],
     parents: ['viewer'],
     builtin: true,
     locked: false,

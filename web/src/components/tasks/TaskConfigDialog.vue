@@ -1,5 +1,5 @@
 <template>
-  <el-dialog v-model="visible" width="560px" top="6vh" append-to-body @open="build">
+  <el-dialog v-model="visible" width="560px" append-to-body @open="build">
     <template #header>
       <div class="cfg-hd">
         <span class="cfg-hd-ic"><el-icon><Setting /></el-icon></span>

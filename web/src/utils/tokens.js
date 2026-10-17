@@ -13,7 +13,7 @@ export const GROUP_ICONS = {
 };
 
 export const NAV_ICONS = {
-  home: 'HomeFilled', tasks: 'Grid', dash: 'DataLine', todo: 'List', admin: 'Setting',
+  home: 'HomeFilled', tasks: 'Grid', dash: 'DataLine', cron: 'List', admin: 'Setting',
 };
 
 // 参数控件类型 → Element Plus 组件提示（供 ParamForm 分发）

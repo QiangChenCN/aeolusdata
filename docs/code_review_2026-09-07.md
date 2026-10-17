@@ -27,7 +27,7 @@
 ### A. 安全与凭据泄露
 
 **H1 · 任意文件读取（会话劫持）**
-`server.py` 的 `serve_artifact` / `_safe_resolve` 仅约束路径在 `ROOT` 内，未限定为任务声明的 `outputs`/`runs` 白名单。攻击者（无需鉴权）可请求 `/api/file?path=aeolus_sdk/cookie.txt`、`python/workbench/data/todo.db`、`python/workbench/tasks.json`、`.venv` 等。
+`server.py` 的 `serve_artifact` / `_safe_resolve` 仅约束路径在 `ROOT` 内，未限定为任务声明的 `outputs`/`runs` 白名单。攻击者（无需鉴权）可请求 `/api/file?path=aeolus_sdk/cookie.txt`、`python/workbench/data/cron.db`、`python/workbench/tasks.json`、`.venv` 等。
 - **理由**：`cookie.txt` 是风神/钉钉登录态核心凭据，泄露即会话劫持。
 - **建议**：仅放行「任务 outputs 展开白名单 + `runs/*.log`」；显式拒绝 `aeolus_sdk/`、`*/data/`、`*.db` 等敏感前缀；服务端校验，不信任前端传来的 rel。
 

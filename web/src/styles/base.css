@@ -46,6 +46,19 @@ a { color: var(--el-color-primary); text-decoration: none; }
 .ui-dot--info { background: var(--info); }
 .ui-dot--muted{ background: var(--el-text-color-placeholder); }
 
+/* 所有弹窗统一垂直 + 水平居中，去掉 Element Plus 默认的 15vh 顶部间隙。
+   注意：display 不能用 !important，否则会盖过 el-overlay 关闭时的 v-show
+   内联 display:none，导致遮罩层永久显示（全屏发黑）。 */
+.el-overlay,
+.el-overlay-dialog {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.el-dialog {
+  margin: 0;
+}
+
 /* 暗色日志终端（在 el-dialog 内使用，沿用 tokens 的终端色） */
 .term {
   font-family: var(--font-mono);

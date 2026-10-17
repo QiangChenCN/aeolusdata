@@ -3,6 +3,8 @@
     <div class="auto-bar">
       <h2 class="v-title">自动任务</h2>
       <span class="v-sub">按时间线管理自动任务，绑定手动任务后可定时 / 自动执行</span>
+      <el-switch v-model="autoRunEnabled" @change="toggleAuto" inline-prompt
+        active-text="自动开" inactive-text="已暂停" class="auto-sw" title="总开关：关闭后暂停所有自动任务的自动执行" />
       <span class="sp" />
       <el-button type="primary" @click="openCreate()">
         <el-icon><Plus /></el-icon> 新建任务
@@ -13,13 +15,13 @@
       <el-icon class="is-loading"><Loading /></el-icon> 加载中…
     </div>
 
-    <el-timeline v-else-if="sortedItems.length" class="auto-tl">
+    <el-timeline v-else-if="timeSlots.length" class="auto-tl">
       <el-timeline-item
-        v-for="it in sortedItems" :key="it.id"
-        :timestamp="scheduleText(it)" placement="top"
-        :type="nodeType(it)" :hollow="it.status === 'done'"
+        v-for="slot in timeSlots" :key="slot.key"
+        :timestamp="slot.label" placement="top"
+        :type="slotType(slot)" :hollow="slot.key === '~unsched'"
       >
-        <div class="node" :class="{ done: it.status === 'done' }">
+        <div v-for="it in slot.items" :key="it.id" class="node" :class="{ done: it.status === 'done' }">
           <div class="node-head">
             <span class="node-title">
               <el-icon v-if="it.flag" class="node-star" title="重点"><StarFilled /></el-icon>
@@ -28,10 +30,7 @@
             <el-tag v-if="!it.taskId" size="small" type="info" effect="plain">未绑定任务</el-tag>
             <el-tag v-else-if="it.linkState === 'missing'" size="small" type="danger" effect="plain">任务缺失</el-tag>
             <el-tag v-else-if="it.linkState === 'disabled'" size="small" type="warning" effect="plain">任务已禁用</el-tag>
-            <el-tag v-else size="small" type="success" effect="plain">
-              手动任务：{{ taskName(it.taskId) }}
-            </el-tag>
-            <el-tag v-if="it.timeout" size="small" type="warning" effect="plain">超时{{ Math.round(it.timeout / 60) }}分</el-tag>
+            <el-tag v-if="it.timeout" size="small" type="warning" effect="plain">{{ Math.round(it.timeout / 60) }}分钟超时</el-tag>
             <el-tag v-if="it.lastRunStatus" size="small"
               :type="it.lastRunStatus === 'success' ? 'success' : 'danger'">
               {{ it.lastRunStatus }}
@@ -39,10 +38,8 @@
             <span v-if="it.lastRunAt" class="node-runat">上次：{{ it.lastRunAt }}</span>
           </div>
           <div v-if="it.note" class="node-note">{{ it.note }}</div>
+          <div v-if="it.repeatType !== 'none'" class="node-rep">{{ it.repeatLabel }}</div>
           <div class="node-acts">
-            <el-button v-if="it.taskId" size="small" type="primary" plain :loading="it._running" @click="trigger(it)">
-              <el-icon><VideoPlay /></el-icon> 运行
-            </el-button>
             <el-button size="small" text @click="openCreate(it)"><el-icon><Edit /></el-icon> 编辑</el-button>
             <el-button size="small" text type="danger" @click="removeItem(it)"><el-icon><Delete /></el-icon> 删除</el-button>
           </div>
@@ -59,38 +56,19 @@
           <el-select v-model="form.taskId" clearable filterable placeholder="选择已创建的手动任务（必选，任务名即取自它）" style="width:100%">
             <el-option v-for="t in tasks.tasks" :key="t.id" :label="t.name" :value="t.id" />
           </el-select>
-          <div class="form-hint">任务名称自动取所选手动任务的名称；绑定后可在时间线直接「运行」并支持自动执行。</div>
-        </el-form-item>
-        <el-form-item label="开始日期">
-          <el-date-picker v-model="form.startDate" type="date" value-format="YYYY-MM-DD"
-            placeholder="首次执行的日期（一次性任务必填）" style="width:100%" />
-        </el-form-item>
-        <el-form-item label="执行时间">
-          <div class="times">
-            <div v-for="(t, i) in form.times" :key="i" class="time-row">
-              <el-time-picker v-model="form.times[i]" format="HH:mm" value-format="HH:mm"
-                :clearable="false" placeholder="时间" style="width:140px" />
-              <el-button size="small" text type="danger" :disabled="form.times.length <= 1"
-                @click="form.times.splice(i, 1)"><el-icon><Delete /></el-icon></el-button>
-            </div>
-            <el-button size="small" @click="form.times.push('09:00')"><el-icon><Plus /></el-icon> 添加时间</el-button>
-          </div>
-          <div class="form-hint">
-            {{ form.repeatType === 'custom'
-              ? '「每 N 小时」模式以首个时间为起点，多时间设置不生效。'
-              : '可设置多个执行时间（如 09:00、13:00、20:00）；每日 / 每周 / 每月在每个时间点各执行一次。' }}
-          </div>
+          <div class="form-hint">任务名称自动取所选手动任务的名称；绑定后由调度器到点自动执行。</div>
         </el-form-item>
         <el-form-item label="重复">
           <div class="repeat">
-            <el-select v-model="form.repeatType" style="width:140px">
-              <el-option label="不重复" value="none" />
-              <el-option label="每天" value="daily" />
-              <el-option label="每周" value="weekly" />
-              <el-option label="每月" value="monthly" />
-              <el-option label="自定义（小时）" value="custom" />
-            </el-select>
-            <template v-if="form.repeatType !== 'none'">
+            <el-switch v-model="form.repeatEnabled" />
+            <span class="repeat-pre">启用重复</span>
+            <template v-if="form.repeatEnabled">
+              <el-select v-model="form.repeatType" style="width:140px">
+                <el-option label="每天" value="daily" />
+                <el-option label="每周" value="weekly" />
+                <el-option label="每月" value="monthly" />
+                <el-option label="自定义（小时）" value="custom" />
+              </el-select>
               <span class="repeat-pre">每</span>
               <el-input-number v-model="form.repeatInterval" :min="1" :max="999" :controls="false" style="width:80px" />
               <span class="repeat-unit">
@@ -99,7 +77,31 @@
               </span>
             </template>
           </div>
+          <div class="form-hint">关闭则为「一次性任务」，需填写开始日期；开启后按所选周期重复执行。</div>
         </el-form-item>
+        <el-form-item label="开始日期">
+          <el-date-picker v-model="form.startDate" type="date" value-format="YYYY-MM-DD"
+            placeholder="首次执行的日期（一次性任务必填）" style="width:100%" />
+        </el-form-item>
+        <el-form-item label="执行时间">
+          <div class="times">
+            <div v-for="(t, i) in form.times" :key="i" class="time-row">
+              <el-time-picker v-model="form.times[i]" format="HH:mm:ss" value-format="HH:mm:ss"
+                :clearable="false" placeholder="时间" style="width:160px" />
+              <el-button size="small" text type="danger" :disabled="form.times.length <= 1"
+                @click="form.times.splice(i, 1)"><el-icon><Delete /></el-icon></el-button>
+            </div>
+            <el-button size="small" @click="form.times.push('09:00:00')"><el-icon><Plus /></el-icon> 添加时间</el-button>
+          </div>
+          <div class="form-hint">
+            {{ !form.repeatEnabled
+              ? '一次性任务将在开始日期的执行时间运行一次。'
+              : form.repeatType === 'custom'
+                ? '「每 N 小时」模式以首个时间为起点，多时间设置不生效。'
+                : '可设置多个执行时间（如 09:00、13:00、20:00）；每日 / 每周 / 每月在每个时间点各执行一次。' }}
+          </div>
+        </el-form-item>
+
         <el-form-item v-if="form.repeatType === 'weekly'" label="星期">
           <el-checkbox-group v-model="form.repeatWeekdays">
             <el-checkbox-button v-for="d in weekDays" :key="d.v" :value="d.v">{{ d.l }}</el-checkbox-button>
@@ -123,6 +125,10 @@
           <el-switch v-model="form.autoRun" />
           <span class="form-hint">开启后调度器到点自动执行（需已绑定手动任务）。</span>
         </el-form-item>
+        <el-form-item label="排队执行">
+          <el-switch v-model="form.queueRun" />
+          <span class="form-hint">开启后，若上一次执行仍未结束，本次到点仍会执行（进入串行队列排队）。</span>
+        </el-form-item>
         <el-form-item label="超时时长">
           <el-input-number v-model="form.timeout" :min="0" :max="600" :step="5" />
           <span class="repeat-unit">分钟</span>
@@ -142,10 +148,10 @@
 
 <script setup>
 import { computed, onMounted, ref } from 'vue';
-import { Plus, Edit, Delete, VideoPlay, Loading, StarFilled } from '@element-plus/icons-vue';
+import { Plus, Edit, Delete, Loading, StarFilled } from '@element-plus/icons-vue';
 import { useAppStore } from '../stores/app.js';
 import { useTasksStore } from '../stores/tasks.js';
-import { fetchTodo, postTodoItem, triggerTodoItem } from '../api/dashboards.js';
+import { fetchCron, postCronItem, setCronAutoPaused } from '../api/dashboards.js';
 
 const app = useAppStore();
 const tasks = useTasksStore();
@@ -155,6 +161,8 @@ const loading = ref(false);
 const dlg = ref(false);
 const dlgEdit = ref(false);
 const form = ref(emptyForm());
+// 全局「自动执行」总开关（false = 暂停所有自动任务的点火与重试）
+const autoRunEnabled = ref(true);
 
 const weekDays = [
   { v: 1, l: '一' }, { v: 2, l: '二' }, { v: 3, l: '三' }, { v: 4, l: '四' },
@@ -164,38 +172,65 @@ const weekDays = [
 function emptyForm() {
   return {
     id: null, taskId: null, note: '',
-    autoRun: true, startDate: '', times: ['09:00'], timeout: 0, repeatType: 'daily',
+    autoRun: true, queueRun: false, startDate: '', times: ['09:00:00'], timeout: 0,
+    repeatEnabled: true, repeatType: 'daily',
     repeatInterval: 1, repeatWeekdays: [1, 2, 3, 4, 5],
     repeatMonthDay: 1, repeatMonthLast: false, repeatEnd: '',
   };
 }
 
-const sortedItems = computed(() =>
-  [...items.value].sort((a, b) => {
-    const ta = a.remindAt ? Date.parse(a.remindAt) : Infinity;
-    const tb = b.remindAt ? Date.parse(b.remindAt) : Infinity;
-    return ta - tb;
-  }),
-);
+/**
+ * 按时间分槽：把每个自动任务拆到它的各个执行时间点，相同时间点归到一个槽，
+ * 时间线按时间排序（每日时段在前、具体日期在后）。同一时刻要跑哪些任务一目了然。
+ * 完全没有时间信息的事项归到末尾的「未排程」槽。
+ */
+const timeSlots = computed(() => {
+  const map = new Map();
+  for (const it of items.value) {
+    const datePart = it.remindAt ? it.remindAt.slice(0, 10) : '';
+    const times = (it.remindTimes && it.remindTimes.length)
+      ? it.remindTimes.slice().sort()
+      : (it.remindAt ? [it.remindAt.slice(11, 19)] : []);
+    const isOnce = it.repeatType === 'none';
+    if (!times.length) {
+      if (!map.has('~unsched')) {
+        map.set('~unsched', { key: '~unsched', label: '未排程', isOnce: false, items: [] });
+      }
+      map.get('~unsched').items.push(it);
+      continue;
+    }
+    for (const t of times) {
+      let key;
+      let label;
+      if (isOnce) {
+        key = `${datePart || '0000-00-00'}T${t}`;
+        label = `${datePart || ''} ${t}`.trim();
+      } else {
+        key = `0000-00-00T${t}`;
+        label = `${t}`;
+      }
+      if (!map.has(key)) map.set(key, { key, label, isOnce, items: [] });
+      map.get(key).items.push(it);
+    }
+  }
+  return [...map.values()].sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
+});
 
 function taskName(id) {
   if (!id) return '';
   const t = tasks.taskById(id);
   return t ? t.name : '未知任务';
 }
-function scheduleText(it) {
-  const times = (it.remindTimes && it.remindTimes.length) ? it.remindTimes.join(', ') : '';
-  if (it.repeatType && it.repeatType !== 'none') {
-    const prefix = it.autoRun ? '自动' : '定时';
-    return `${prefix} · ${it.repeatLabel}` + (times ? ` · ${times}` : '');
-  }
-  if (times) return `一次性 · ${times}`;
-  return it.remindAt ? `一次性 · ${it.remindAt}` : '未排程';
+// 时间字符串统一补齐到「HH:mm:ss」（兼容旧数据只有分钟的情况）
+function padSec(t) {
+  const s = (t || '').trim();
+  if (/^([01]?\d|2[0-3]):[0-5]\d$/.test(s)) return s + ':00';
+  return s;
 }
-function nodeType(it) {
-  if (it.status === 'done') return 'info';
-  if (!it.taskId) return 'warning';
-  if (it.autoRun) return 'primary';
+function slotType(slot) {
+  if (slot.key === '~unsched') return 'info';
+  if (slot.items.some((i) => !i.taskId)) return 'warning';
+  if (slot.items.every((i) => i.autoRun)) return 'primary';
   return 'success';
 }
 
@@ -217,8 +252,9 @@ async function load() {
   loading.value = true;
   try {
     if (!tasks.loaded) await tasks.loadState();
-    const res = await fetchTodo();
-    items.value = (res && res.todo && res.todo.items) || [];
+    const res = await fetchCron();
+    items.value = (res && res.cron && res.cron.items) || [];
+    autoRunEnabled.value = !(res && res.cron && res.cron.scheduler && res.cron.scheduler.auto_paused);
   } catch (e) {
     ElMessage.error(e.message || '加载失败');
   } finally {
@@ -230,12 +266,13 @@ function openCreate(it) {
   form.value = it
     ? {
       id: it.id, taskId: it.taskId || null, note: it.note || '',
-      autoRun: !!it.autoRun, timeout: Math.round((Number(it.timeout) || 0) / 60),
+      autoRun: !!it.autoRun, queueRun: !!it.queueRun, timeout: Math.round((Number(it.timeout) || 0) / 60),
       startDate: it.remindAt ? it.remindAt.slice(0, 10) : '',
       times: (it.remindTimes && it.remindTimes.length)
-        ? it.remindTimes.slice()
-        : (it.remindAt ? [it.remindAt.slice(11, 16)] : ['09:00']),
-      repeatType: it.repeatType || 'none', repeatInterval: it.repeatInterval || 1,
+        ? it.remindTimes.slice().map(padSec)
+        : (it.remindAt ? [padSec(it.remindAt.slice(11, 19))] : ['09:00:00']),
+      repeatEnabled: !!(it.repeatType && it.repeatType !== 'none'), repeatInterval: it.repeatInterval || 1,
+      repeatType: it.repeatType || 'daily',
       repeatWeekdays: (it.repeatBy ? String(it.repeatBy).split(',').map(Number) : [1, 2, 3, 4, 5]),
       repeatMonthDay: it.repeatBy ? Number(it.repeatBy) || 1 : 1,
       repeatMonthLast: it.repeatBy === 'L', repeatEnd: it.repeatEnd || '',
@@ -248,7 +285,7 @@ function openCreate(it) {
 async function save() {
   if (!form.value.taskId) { ElMessage.warning('请先绑定一个手动任务（任务名即取自它）'); return; }
   if (!form.value.times.length) { ElMessage.warning('请至少添加一个执行时间'); return; }
-  if (!form.value.startDate && form.value.repeatType === 'none') {
+  if (!form.value.startDate && !form.value.repeatEnabled) {
     ElMessage.warning('请选择开始日期（一次性任务需要）'); return;
   }
   try {
@@ -263,13 +300,14 @@ async function save() {
       list_id: '',
       remind_at: remindAt,
       remind_times: times,
-      repeat: buildRepeat(),
+      repeat: form.value.repeatEnabled ? buildRepeat() : { type: 'none', interval: 1, by: '', end: '' },
       auto_run: form.value.autoRun ? 1 : 0,
+      queue_run: form.value.queueRun ? 1 : 0,
       timeout: form.value.timeout * 60,
       task_id: form.value.taskId,
     };
     if (form.value.id) payload.id = form.value.id;
-    await postTodoItem(op, payload);
+    await postCronItem(op, payload);
     dlg.value = false;
     ElMessage.success('已保存');
     await load();
@@ -278,15 +316,20 @@ async function save() {
 
 async function removeItem(it) {
   if (!(await app.confirmDialog({ message: `删除自动任务「${it.title}」？` }))) return;
-  try { await postTodoItem('delete', { id: it.id }); ElMessage.success('已删除'); await load(); }
+  try { await postCronItem('delete', { id: it.id }); ElMessage.success('已删除'); await load(); }
   catch (e) { ElMessage.error(e.message || '删除失败'); }
 }
 
-async function trigger(it) {
-  it._running = true;
-  try { await triggerTodoItem(it.id); ElMessage.success('已触发：' + it.title); }
-  catch (e) { ElMessage.error(e.message || '触发失败'); }
-  finally { it._running = false; }
+async function toggleAuto(val) {
+  const paused = !val;
+  try {
+    const r = await setCronAutoPaused(paused);
+    autoRunEnabled.value = !(r && r.paused);
+    ElMessage.success(paused ? '已暂停全部自动任务' : '已恢复全部自动任务');
+  } catch (e) {
+    autoRunEnabled.value = val; // 失败回滚
+    ElMessage.error(e.message || '操作失败');
+  }
 }
 
 onMounted(load);
@@ -298,6 +341,7 @@ onMounted(load);
 .v-title { margin: 0; font-size: var(--el-font-size-extra-large); }
 .v-sub { color: var(--el-text-color-secondary); font-size: var(--el-font-size-base); }
 .auto-bar .sp { flex: 1; }
+.auto-sw { margin-left: var(--sp-12); }
 .auto-tl { padding: var(--sp-8) var(--sp-4); max-width: 880px; }
 .node { border: 1px solid var(--el-border-color-lighter); border-radius: var(--el-border-radius-base); background: var(--el-bg-color); padding: var(--sp-12) var(--sp-14); }
 .node.done .node-title { text-decoration: line-through; color: var(--el-text-color-secondary); }

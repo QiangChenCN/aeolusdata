@@ -28,7 +28,7 @@
 取数层    根 python/get_data/ (底层 HTTP) · python/dashboard/get_data/ (看板友好签名)
            python/dashboard/standard/get_data.py (re-export shim)
 鉴权层    aeolus_sdk.login (风神 SSO，全项目唯一登录实现) · quark_sdk (Quark DA 兑换)
-存储层    PostgreSQL(ods_*) · SQLite(todo.db) · MinIO(图床) · 本地 out/*.json
+存储层    PostgreSQL(ods_*) · SQLite(cron.db) · MinIO(图床) · 本地 out/*.json
 ```
 
 ### 1.2 关键调用关系

@@ -10,7 +10,7 @@ import { AuthModule } from './modules/auth/auth.module';
 import { ComputeModule } from './modules/compute/compute.module';
 import { StreamingModule } from './modules/streaming/streaming.module';
 import { TasksModule } from './modules/tasks/tasks.module';
-import { TodoModule } from './modules/todo/todo.module';
+import { CronModule } from './modules/cron/cron.module';
 import { ServeModule } from './modules/serve/serve.module';
 import { ProxyModule } from './modules/proxy/proxy.module';
 import { FetchModule } from '../fetch/fetch.module';
@@ -46,7 +46,7 @@ import { StandardModule } from './modules/standard/standard.module';
     ComputeModule,
     StreamingModule,
     TasksModule,
-    TodoModule,
+    CronModule,
     ServeModule,
     ProxyModule,
     FetchModule,

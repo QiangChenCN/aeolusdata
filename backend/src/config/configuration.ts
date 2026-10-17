@@ -2,13 +2,13 @@ import * as Joi from 'joi';
 import * as path from 'path';
 
 // 在 ConfigModule.forRoot 读取前，给 WORKBENCH_DIR 一个可靠默认值（Nest backend 目录：
-// tasks.json 与 todo.db 现已落于 backend/ 下，故默认指向 backend 而非旧 python/workbench）。
+// tasks.json 与 cron.db 现已落于 backend/ 下，故默认指向 backend 而非旧 python/workbench）。
 // 否则 ConfigService.get('WORKBENCH_DIR') 在无 env/.env 时为 undefined，
 // 各模块会把路径解析成 cwd-relative（如 backend/tasks.json），导致注册表/待办库错位。
 if (!process.env.WORKBENCH_DIR) {
   // 后端可能从仓库根或 backend/ 自身启动（ConfigModule 默认只在 cwd 找 .env，
   // 从仓库根启动时 .env 不会被加载，只能靠这里兜底）。
-  // 统一收敛到 backend/ 目录，避免 cwd 不同导致 tasks.json / todo.db 解析错位。
+  // 统一收敛到 backend/ 目录，避免 cwd 不同导致 tasks.json / cron.db 解析错位。
   const cwd = process.cwd();
   process.env.WORKBENCH_DIR =
     path.basename(cwd) === 'backend' ? cwd : path.join(cwd, 'backend');

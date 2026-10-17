@@ -708,7 +708,7 @@ export class ConfigService {
   //     date_overrides: { "<YYYY-MM-DD>": "weekday"|"weekend" }, // 特殊日期：强制按周中/周末算
   //     "<metric>": { "<date_type>": { "<weather>": { t0, t60, t100 } } } } } }
   private sqPath(): string {
-    // 后端本地状态统一落 backend/data/（带点前缀，与 .users.json / todo.db 等同目录）
+    // 后端本地状态统一落 backend/data/（带点前缀，与 .users.json / cron.db 等同目录）
     return path.join(this.root, 'backend', 'data', '.service_quality_targets.json');
   }
   private sqLoadAll(): any {

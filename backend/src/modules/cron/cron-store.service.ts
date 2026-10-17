@@ -32,7 +32,7 @@ const MIGRATIONS: { version: number; sqls: string[] }[] = [
   {
     version: 1,
     sqls: [
-      `CREATE TABLE IF NOT EXISTS todo_list (
+      `CREATE TABLE IF NOT EXISTS cron_list (
         id          TEXT PRIMARY KEY,
         name        TEXT    NOT NULL,
         icon        TEXT    NOT NULL DEFAULT 'list-checks',
@@ -41,7 +41,7 @@ const MIGRATIONS: { version: number; sqls: string[] }[] = [
         created_at  TEXT    NOT NULL,
         updated_at  TEXT    NOT NULL
       )`,
-      `CREATE TABLE IF NOT EXISTS todo_item (
+      `CREATE TABLE IF NOT EXISTS cron_item (
         id              TEXT PRIMARY KEY,
         list_id         TEXT    NOT NULL,
         title           TEXT    NOT NULL,
@@ -63,7 +63,7 @@ const MIGRATIONS: { version: number; sqls: string[] }[] = [
         created_at      TEXT    NOT NULL,
         updated_at      TEXT    NOT NULL
       )`,
-      `CREATE TABLE IF NOT EXISTS todo_run (
+      `CREATE TABLE IF NOT EXISTS cron_run (
         id          INTEGER PRIMARY KEY AUTOINCREMENT,
         item_id     TEXT    NOT NULL,
         fire_key    TEXT    NOT NULL UNIQUE,
@@ -76,33 +76,48 @@ const MIGRATIONS: { version: number; sqls: string[] }[] = [
         run_id      TEXT,
         message     TEXT    NOT NULL DEFAULT ''
       )`,
-      'CREATE INDEX IF NOT EXISTS idx_item_list_status ON todo_item(list_id, status)',
-      `CREATE INDEX IF NOT EXISTS idx_item_due ON todo_item(remind_at)
+      'CREATE INDEX IF NOT EXISTS idx_item_list_status ON cron_item(list_id, status)',
+      `CREATE INDEX IF NOT EXISTS idx_item_due ON cron_item(remind_at)
         WHERE auto_run=1 AND status='open'`,
-      'CREATE INDEX IF NOT EXISTS idx_item_remind ON todo_item(remind_at)',
-      'CREATE INDEX IF NOT EXISTS idx_run_item ON todo_run(item_id, due_at DESC)',
-      `CREATE INDEX IF NOT EXISTS idx_run_open ON todo_run(status)
+      'CREATE INDEX IF NOT EXISTS idx_item_remind ON cron_item(remind_at)',
+      'CREATE INDEX IF NOT EXISTS idx_run_item ON cron_run(item_id, due_at DESC)',
+      `CREATE INDEX IF NOT EXISTS idx_run_open ON cron_run(status)
         WHERE status IN ('running','retrying')`,
     ],
   },
   {
     version: 2,
     sqls: [
-      `ALTER TABLE todo_item ADD COLUMN remind_times TEXT NOT NULL DEFAULT '[]'`,
+      `ALTER TABLE cron_item ADD COLUMN remind_times TEXT NOT NULL DEFAULT '[]'`,
     ],
   },
   {
     version: 3,
     sqls: [
-      `ALTER TABLE todo_item ADD COLUMN timeout INTEGER NOT NULL DEFAULT 0`,
+      `ALTER TABLE cron_item ADD COLUMN timeout INTEGER NOT NULL DEFAULT 0`,
+    ],
+  },
+  {
+    version: 4,
+    sqls: [
+      `CREATE TABLE IF NOT EXISTS cron_kv (
+        key   TEXT PRIMARY KEY,
+        value TEXT NOT NULL
+      )`,
+    ],
+  },
+  {
+    version: 5,
+    sqls: [
+      `ALTER TABLE cron_item ADD COLUMN queue_run INTEGER NOT NULL DEFAULT 0`,
     ],
   },
 ];
 
 /** 工作内容 SQLite 持久层（移植自 workbench/todo_store.py）。 */
 @Injectable()
-export class TodoStoreService implements OnModuleInit {
-  private readonly logger = new Logger(TodoStoreService.name);
+export class CronStoreService implements OnModuleInit {
+  private readonly logger = new Logger(CronStoreService.name);
   private db: DatabaseSync | null = null;
   private dbPath = '';
 
@@ -116,9 +131,20 @@ export class TodoStoreService implements OnModuleInit {
   private ensureDb(): DatabaseSync {
     if (this.db) return this.db;
     const wb = this.config.get<string>('WORKBENCH_DIR') || '';
-    this.dbPath =
+    const cronPath =
       this.config.get<string>('TODO_DB') ||
-      path.join(wb, 'data', 'todo.db');
+      path.join(wb, 'data', 'cron.db');
+    const legacyPath = path.join(wb, 'data', 'todo.db');
+    // 旧库文件 todo.db 改名为 cron.db，保留已有自动任务数据（连同 WAL 的 -wal/-shm 一起迁移，避免丢数据）
+    if (fs.existsSync(legacyPath) && !fs.existsSync(cronPath)) {
+      for (const suffix of ['', '-wal', '-shm']) {
+        const lp = legacyPath + suffix;
+        if (fs.existsSync(lp)) {
+          try { fs.renameSync(lp, cronPath + suffix); } catch { /* ignore */ }
+        }
+      }
+    }
+    this.dbPath = cronPath;
     fs.mkdirSync(path.dirname(this.dbPath), { recursive: true });
     const db = new DatabaseSync(this.dbPath);
     db.exec('PRAGMA journal_mode=WAL');
@@ -145,6 +171,25 @@ export class TodoStoreService implements OnModuleInit {
     this.conn.prepare(sql).run(...params);
   }
 
+  // ------------------------------------------------------------ 键值设置（全局开关等）
+  getMeta(key: string, def = ''): string {
+    const row = this.one('SELECT value FROM cron_kv WHERE key=?', key);
+    return row ? String(row['value']) : def;
+  }
+
+  setMeta(key: string, value: string): void {
+    this.run(
+      'INSERT INTO cron_kv(key,value) VALUES(?,?) ' +
+        'ON CONFLICT(key) DO UPDATE SET value=excluded.value',
+      key, value,
+    );
+  }
+
+  /** 全局「自动执行」主开关是否被暂停（关掉后调度器不再自动点火）。 */
+  isAutoPaused(): boolean {
+    return this.getMeta('auto_paused', '0') === '1';
+  }
+
   // ------------------------------------------------------------ 迁移
   initDb(): [number, number] {
     const db = this.ensureDb();
@@ -157,8 +202,23 @@ export class TodoStoreService implements OnModuleInit {
       db.exec(`PRAGMA user_version = ${version}`);
       next = version;
     }
+    this.migrateLegacyTables();
     if (old === 0 && next >= 1) this.seedDefaultLists();
     return [old, next];
+  }
+
+  /** 把旧版本遗留的 todo_* 表改名到 cron_*（一次性迁移；已是 cron_* 的新库不受影响）。 */
+  private migrateLegacyTables(): void {
+    const db = this.conn;
+    const exists = (t: string) =>
+      !!(db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name=?").get(t));
+    const rename = (from: string, to: string) => {
+      if (exists(from) && !exists(to)) db.exec(`ALTER TABLE ${from} RENAME TO ${to}`);
+    };
+    rename('todo_list', 'cron_list');
+    rename('todo_item', 'cron_item');
+    rename('todo_run', 'cron_run');
+    rename('todo_kv', 'cron_kv');
   }
 
   private seedDefaultLists(): void {
@@ -170,7 +230,7 @@ export class TodoStoreService implements OnModuleInit {
     ];
     for (const [lid, name, icon, color] of defaults) {
       this.run(
-        'INSERT OR IGNORE INTO todo_list(id,name,icon,color,sort_order,created_at,updated_at)' +
+        'INSERT OR IGNORE INTO cron_list(id,name,icon,color,sort_order,created_at,updated_at)' +
           ' VALUES(?,?,?,?,?,?,?)',
         lid, name, icon, color, 0, now, now,
       );
@@ -189,25 +249,26 @@ export class TodoStoreService implements OnModuleInit {
   fmtLocal(d: Date | null): string | null {
     if (!d) return null;
     const p = (n: number) => String(n).padStart(2, '0');
-    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
   }
 
   parseDt(s: string | null | undefined): Date | null {
     const str = (s || '').toString().trim();
     if (!str) return null;
-    try {
-      if (str.length === 10) return new Date(`${str}T00:00:00`);
-      return new Date(`${str.slice(0, 16)}:00`);
-    } catch {
-      return null;
-    }
+    // 纯日期 → 当天 00:00
+    if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return new Date(`${str}T00:00:00`);
+    // 日期+时间（可选含秒），统一规范为「YYYY-MM-DDTHH:mm:ss」以本地时区解析
+    const m = str.match(/^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2})(:\d{2})?$/);
+    if (m) return new Date(`${m[1]}:${m[2] ? m[2].slice(1) : '00'}`);
+    const d = new Date(str);
+    return isNaN(d.getTime()) ? null : d;
   }
 
-  /** 在指定日期 day 上叠加时间 t（"HH:mm"）返回 Date。 */
+  /** 在指定日期 day 上叠加时间 t（"HH:mm" 或 "HH:mm:ss"）返回 Date。 */
   private mkDayTime(day: Date, t: string): Date {
-    const [h, m] = t.split(':').map((x) => parseInt(x, 10));
+    const parts = t.split(':').map((x) => parseInt(x, 10));
     const d = new Date(day);
-    d.setHours(h, m || 0, 0, 0);
+    d.setHours(parts[0] || 0, parts[1] || 0, parts[2] || 0, 0);
     return d;
   }
 
@@ -270,7 +331,7 @@ export class TodoStoreService implements OnModuleInit {
     return { type: t, interval: n, by, end };
   }
 
-  /** 解析时间列表（"HH:mm" 数组），过滤非法值并按时间排序。支持直接传数组或 JSON 字符串。 */
+  /** 解析时间列表（"HH:mm" 或 "HH:mm:ss" 数组），过滤非法值并按时间排序。支持直接传数组或 JSON 字符串。 */
   parseTimes(raw: unknown): string[] {
     let arr: unknown[];
     if (Array.isArray(raw)) arr = raw;
@@ -280,7 +341,7 @@ export class TodoStoreService implements OnModuleInit {
     if (!Array.isArray(arr)) return [];
     return arr
       .map((x) => String(x || '').trim())
-      .filter((x) => /^([01]\d|2[0-3]):[0-5]\d$/.test(x))
+      .filter((x) => /^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/.test(x))
       .sort();
   }
 
@@ -321,7 +382,7 @@ export class TodoStoreService implements OnModuleInit {
     const n = Math.max(1, rule.interval || 1);
     const end = this.parseDt(rule.end);
     const endDay = end ? end.toISOString().slice(0, 10) : null;
-    const tm = { h: anchor.getHours(), m: anchor.getMinutes() };
+    const tm = { h: anchor.getHours(), m: anchor.getMinutes(), s: anchor.getSeconds() };
 
     const ok = (cand: Date | null): Date | null => {
       if (!cand) return null;
@@ -330,7 +391,7 @@ export class TodoStoreService implements OnModuleInit {
     };
     const mk = (day: Date): Date => {
       const d = new Date(day);
-      d.setHours(tm.h, tm.m, 0, 0);
+      d.setHours(tm.h, tm.m, tm.s, 0);
       return d;
     };
 
@@ -396,7 +457,7 @@ export class TodoStoreService implements OnModuleInit {
 
   // ------------------------------------------------------------ 列表 CRUD
   listLists(): Row[] {
-    return this.all('SELECT * FROM todo_list ORDER BY sort_order, created_at');
+    return this.all('SELECT * FROM cron_list ORDER BY sort_order, created_at');
   }
 
   apiList(row: Row): object {
@@ -406,9 +467,9 @@ export class TodoStoreService implements OnModuleInit {
   createList(name: string, icon = 'list-checks', color = '#FF5000'): Row | null {
     const now = this.nowStr();
     const lid = this.uid('l_');
-    const n = Number(this.one('SELECT COUNT(*) c FROM todo_list')?.['c'] || 0);
+    const n = Number(this.one('SELECT COUNT(*) c FROM cron_list')?.['c'] || 0);
     this.run(
-      'INSERT INTO todo_list(id,name,icon,color,sort_order,created_at,updated_at)' +
+      'INSERT INTO cron_list(id,name,icon,color,sort_order,created_at,updated_at)' +
         ' VALUES(?,?,?,?,?,?,?)',
       lid, name || '未命名', icon, color, n, now, now,
     );
@@ -416,7 +477,7 @@ export class TodoStoreService implements OnModuleInit {
   }
 
   getList(lid: string): Row | null {
-    return this.one('SELECT * FROM todo_list WHERE id=?', lid) || null;
+    return this.one('SELECT * FROM cron_list WHERE id=?', lid) || null;
   }
 
   updateList(lid: string, kw: Record<string, unknown>): Row | null {
@@ -427,7 +488,7 @@ export class TodoStoreService implements OnModuleInit {
     fields['updated_at'] = this.nowStr();
     const cols = Object.keys(fields);
     this.run(
-      `UPDATE todo_list SET ${cols.map((c) => `${c}=?`).join(',')} WHERE id=?`,
+      `UPDATE cron_list SET ${cols.map((c) => `${c}=?`).join(',')} WHERE id=?`,
       ...cols.map((c) => fields[c]),
       lid,
     );
@@ -435,19 +496,19 @@ export class TodoStoreService implements OnModuleInit {
   }
 
   deleteList(lid: string): [boolean, string] {
-    const n = Number(this.one('SELECT COUNT(*) c FROM todo_item WHERE list_id=?', lid)?.['c'] || 0);
+    const n = Number(this.one('SELECT COUNT(*) c FROM cron_item WHERE list_id=?', lid)?.['c'] || 0);
     if (n) return [false, `列表下还有 ${n} 条事项，先删掉或移走`];
-    this.run('DELETE FROM todo_list WHERE id=?', lid);
+    this.run('DELETE FROM cron_list WHERE id=?', lid);
     return [true, '已删除列表'];
   }
 
   // ------------------------------------------------------------ 事项 CRUD
   listItems(): Row[] {
-    return this.all('SELECT * FROM todo_item ORDER BY created_at');
+    return this.all('SELECT * FROM cron_item ORDER BY created_at');
   }
 
   getItem(iid: string): Row | null {
-    return this.one('SELECT * FROM todo_item WHERE id=?', iid) || null;
+    return this.one('SELECT * FROM cron_item WHERE id=?', iid) || null;
   }
 
   apiItem(row: Row, linkState = '', hasOpenRun = false): object {
@@ -471,6 +532,7 @@ export class TodoStoreService implements OnModuleInit {
       repeatLabel: this.describeRule(this.ruleOf(row)),
       taskId: row['task_id'] || '',
       autoRun: !!row['auto_run'],
+      queueRun: !!row['queue_run'],
       lastRunAt: row['last_run_at'] || '',
       lastRunStatus: row['last_run_status'] || '',
       linkState,
@@ -483,19 +545,19 @@ export class TodoStoreService implements OnModuleInit {
   createItem(
     title: string, listId: string, note = '', remindAt = '', flag = 0,
     repeat: unknown = {}, taskId = '', autoRun = 0, taskArgs: unknown = {},
-    remindTimes: string[] = [], timeout = 0,
+    remindTimes: string[] = [], timeout = 0, queueRun = 0,
   ): Row | null {
     const now = this.nowStr();
     const { type, interval, by, end } = this.normalizeRule(repeat);
     const iid = this.uid('i_');
     this.run(
-      'INSERT INTO todo_item(id,list_id,title,note,status,flag,remind_at,' +
+      'INSERT INTO cron_item(id,list_id,title,note,status,flag,remind_at,' +
         ' repeat_type,repeat_interval,repeat_by,repeat_end,' +
-        ' task_id,task_args,auto_run,remind_times,timeout,created_at,updated_at)' +
-        ' VALUES(?,?,?,?,\'open\',?,?,?,?,?,?,?,?,?,?,?,?,?)',
+        ' task_id,task_args,auto_run,remind_times,timeout,queue_run,created_at,updated_at)' +
+        ' VALUES(?,?,?,?,\'open\',?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
       iid, listId, title || '未命名', note || '', flag ? 1 : 0, remindAt || '',
       type, interval, by, end, taskId || '',
-      JSON.stringify(taskArgs || {}), autoRun ? 1 : 0, JSON.stringify(remindTimes || []), Number(timeout) || 0, now, now,
+      JSON.stringify(taskArgs || {}), autoRun ? 1 : 0, JSON.stringify(remindTimes || []), Number(timeout) || 0, queueRun ? 1 : 0, now, now,
     );
     return this.getItem(iid);
   }
@@ -505,11 +567,12 @@ export class TodoStoreService implements OnModuleInit {
     if (!row) return null;
     const fields: Record<string, unknown> = {};
     for (const k of ['title', 'note', 'remind_at', 'list_id', 'done_at', 'last_run_at',
-      'last_run_status', 'task_id', 'task_args', 'remind_times', 'timeout']) {
+      'last_run_status', 'task_id', 'task_args', 'remind_times', 'timeout', 'queue_run']) {
       if (k in kw && kw[k] != null) fields[k] = kw[k];
     }
     if ('flag' in kw && kw['flag'] != null) fields['flag'] = kw['flag'] ? 1 : 0;
     if ('auto_run' in kw && kw['auto_run'] != null) fields['auto_run'] = kw['auto_run'] ? 1 : 0;
+    if ('queue_run' in kw && kw['queue_run'] != null) fields['queue_run'] = kw['queue_run'] ? 1 : 0;
     if ('status' in kw && (kw['status'] === STATUS_OPEN || kw['status'] === STATUS_DONE)) {
       fields['status'] = kw['status'];
     }
@@ -524,7 +587,7 @@ export class TodoStoreService implements OnModuleInit {
     fields['updated_at'] = this.nowStr();
     const cols = Object.keys(fields);
     this.run(
-      `UPDATE todo_item SET ${cols.map((c) => `${c}=?`).join(',')} WHERE id=?`,
+      `UPDATE cron_item SET ${cols.map((c) => `${c}=?`).join(',')} WHERE id=?`,
       ...cols.map((c) => fields[c]),
       iid,
     );
@@ -532,8 +595,8 @@ export class TodoStoreService implements OnModuleInit {
   }
 
   deleteItem(iid: string): boolean {
-    this.run('DELETE FROM todo_item WHERE id=?', iid);
-    this.run('DELETE FROM todo_run WHERE item_id=?', iid);
+    this.run('DELETE FROM cron_item WHERE id=?', iid);
+    this.run('DELETE FROM cron_run WHERE item_id=?', iid);
     return true;
   }
 
@@ -569,7 +632,7 @@ export class TodoStoreService implements OnModuleInit {
     }
     const cols = Object.keys(fields);
     this.run(
-      `UPDATE todo_item SET ${cols.map((c) => `${c}=?`).join(',')} WHERE id=?`,
+      `UPDATE cron_item SET ${cols.map((c) => `${c}=?`).join(',')} WHERE id=?`,
       ...cols.map((c) => fields[c]),
       iid,
     );
@@ -591,26 +654,26 @@ export class TodoStoreService implements OnModuleInit {
   }
 
   itemsLinkedTo(taskId: string): Row[] {
-    return this.all('SELECT id,title FROM todo_item WHERE task_id=?', taskId);
+    return this.all('SELECT id,title FROM cron_item WHERE task_id=?', taskId);
   }
 
   // ------------------------------------------------------------ 调度查询
   dueItems(nowStr: string): Row[] {
     return this.all(
-      "SELECT * FROM todo_item WHERE auto_run=1 AND status=? AND remind_at IS NOT NULL" +
+      "SELECT * FROM cron_item WHERE auto_run=1 AND status=? AND remind_at IS NOT NULL" +
         " AND remind_at<>'' AND remind_at<=? ORDER BY remind_at",
       STATUS_OPEN, nowStr,
     );
   }
 
   findRun(itemId: string, dueAt: string | null | undefined): Row | null {
-    return this.one('SELECT * FROM todo_run WHERE fire_key=?', this.fireKey(itemId, dueAt)) || null;
+    return this.one('SELECT * FROM cron_run WHERE fire_key=?', this.fireKey(itemId, dueAt)) || null;
   }
 
   /** 占位式领取一次触发；fire_key UNIQUE 约束保证并发去重（违反时抛错，由调用方捕获）。 */
   claimRun(itemId: string, dueAt: string | null | undefined, runId: string, attempt = 1): Row | null {
     this.run(
-      'INSERT INTO todo_run(item_id,fire_key,due_at,started_at,status,attempt,run_id)' +
+      'INSERT INTO cron_run(item_id,fire_key,due_at,started_at,status,attempt,run_id)' +
         ' VALUES(?,?,?,?,?,?,?)',
       itemId, this.fireKey(itemId, dueAt), dueAt, this.nowFull(),
       RUN_RUNNING, attempt, runId,
@@ -621,7 +684,7 @@ export class TodoStoreService implements OnModuleInit {
   markMissed(itemId: string, dueAt: string | null | undefined, message: string): Row | null {
     try {
       this.run(
-        'INSERT INTO todo_run(item_id,fire_key,due_at,started_at,finished_at,' +
+        'INSERT INTO cron_run(item_id,fire_key,due_at,started_at,finished_at,' +
           ' status,attempt,message) VALUES(?,?,?,?,?,?,0,?)',
         itemId, this.fireKey(itemId, dueAt), dueAt, this.nowFull(), this.nowFull(),
         RUN_MISSED, message,
@@ -635,7 +698,7 @@ export class TodoStoreService implements OnModuleInit {
   markSkipped(itemId: string, dueAt: string | null | undefined, message: string): Row | null {
     try {
       this.run(
-        'INSERT INTO todo_run(item_id,fire_key,due_at,started_at,finished_at,' +
+        'INSERT INTO cron_run(item_id,fire_key,due_at,started_at,finished_at,' +
           ' status,attempt,message) VALUES(?,?,?,?,?,?,0,?)',
         itemId, this.fireKey(itemId, dueAt), dueAt, this.nowFull(), this.nowFull(),
         RUN_SKIPPED, message,
@@ -648,11 +711,11 @@ export class TodoStoreService implements OnModuleInit {
 
   finishRun(itemId: string, dueAt: string | null | undefined, status: string, message = ''): void {
     this.run(
-      'UPDATE todo_run SET status=?, finished_at=?, message=?, retry_at=NULL WHERE fire_key=?',
+      'UPDATE cron_run SET status=?, finished_at=?, message=?, retry_at=NULL WHERE fire_key=?',
       status, this.nowFull(), message || '', this.fireKey(itemId, dueAt),
     );
     this.run(
-      'UPDATE todo_item SET last_run_at=?, last_run_status=?, updated_at=? WHERE id=?',
+      'UPDATE cron_item SET last_run_at=?, last_run_status=?, updated_at=? WHERE id=?',
       this.nowFull(), status, this.nowFull(), itemId,
     );
   }
@@ -666,7 +729,7 @@ export class TodoStoreService implements OnModuleInit {
     const delay = this.retryDelayFor(attempt);
     const retryAt = new Date(Date.now() + delay * 1000).toISOString().slice(0, 19).replace('T', ' ');
     this.run(
-      'UPDATE todo_run SET status=?, attempt=?, message=?, retry_at=? WHERE fire_key=?',
+      'UPDATE cron_run SET status=?, attempt=?, message=?, retry_at=? WHERE fire_key=?',
       RUN_RETRYING, attempt, message || '', retryAt, this.fireKey(itemId, dueAt),
     );
     return true;
@@ -675,28 +738,28 @@ export class TodoStoreService implements OnModuleInit {
   retryDue(nowStr?: string): Row[] {
     const now = nowStr || new Date().toISOString().slice(0, 19).replace('T', ' ');
     return this.all(
-      'SELECT * FROM todo_run WHERE status=? AND retry_at IS NOT NULL AND retry_at<=? ORDER BY retry_at',
+      'SELECT * FROM cron_run WHERE status=? AND retry_at IS NOT NULL AND retry_at<=? ORDER BY retry_at',
       RUN_RETRYING, now,
     );
   }
 
   openRuns(): Row[] {
     return this.all(
-      'SELECT * FROM todo_run WHERE status IN (?,?) ORDER BY id',
+      'SELECT * FROM cron_run WHERE status IN (?,?) ORDER BY id',
       RUN_RUNNING, RUN_RETRYING,
     );
   }
 
   openRunOf(itemId: string): Row | null {
     return this.one(
-      'SELECT * FROM todo_run WHERE item_id=? AND status IN (?,?) ORDER BY id DESC LIMIT 1',
+      'SELECT * FROM cron_run WHERE item_id=? AND status IN (?,?) ORDER BY id DESC LIMIT 1',
       itemId, RUN_RUNNING, RUN_RETRYING,
     ) || null;
   }
 
   markDispatched(itemId: string, dueAt: string | null | undefined, runId: string, attempt: number): Row | null {
     this.run(
-      'UPDATE todo_run SET status=?, run_id=?, attempt=?, started_at=?, finished_at=NULL,' +
+      'UPDATE cron_run SET status=?, run_id=?, attempt=?, started_at=?, finished_at=NULL,' +
         ' retry_at=NULL WHERE fire_key=?',
       RUN_RUNNING, runId, attempt, this.nowFull(), this.fireKey(itemId, dueAt),
     );
@@ -704,7 +767,7 @@ export class TodoStoreService implements OnModuleInit {
   }
 
   itemRuns(itemId: string, limit = 10): Row[] {
-    return this.all('SELECT * FROM todo_run WHERE item_id=? ORDER BY id DESC LIMIT ?', itemId, limit);
+    return this.all('SELECT * FROM cron_run WHERE item_id=? ORDER BY id DESC LIMIT ?', itemId, limit);
   }
 
   advanceAfterRun(iid: string): Row | null {
@@ -757,7 +820,7 @@ export class TodoStoreService implements OnModuleInit {
 
   pruneRuns(keepDays = 30): void {
     const cutoff = new Date(Date.now() - keepDays * 86400000).toISOString().slice(0, 19).replace('T', ' ');
-    this.run('DELETE FROM todo_run WHERE finished_at IS NOT NULL AND finished_at < ?', cutoff);
+    this.run('DELETE FROM cron_run WHERE finished_at IS NOT NULL AND finished_at < ?', cutoff);
   }
 
   // ------------------------------------------------------------ 导入导出
@@ -771,7 +834,7 @@ export class TodoStoreService implements OnModuleInit {
     for (const l of lists) {
       try {
         this.run(
-          'INSERT OR IGNORE INTO todo_list(id,name,icon,color,sort_order,created_at,updated_at)' +
+          'INSERT OR IGNORE INTO cron_list(id,name,icon,color,sort_order,created_at,updated_at)' +
             ' VALUES(?,?,?,?,?,?,?)',
           l['id'] || this.uid('l_'), l['name'] || '未命名', l['icon'] || 'list-checks',
           l['color'] || '#FF5000', nList, now, now,
@@ -784,7 +847,7 @@ export class TodoStoreService implements OnModuleInit {
     for (const it of items) {
       try {
         this.run(
-          'INSERT OR IGNORE INTO todo_item(id,list_id,title,note,status,done_at,' +
+          'INSERT OR IGNORE INTO cron_item(id,list_id,title,note,status,done_at,' +
             ' flag,remind_at,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?)',
           it['id'] || this.uid('i_'), it['listId'] || 'l_work', it['title'] || '未命名',
           it['note'] || '', it['done'] ? STATUS_DONE : STATUS_OPEN,

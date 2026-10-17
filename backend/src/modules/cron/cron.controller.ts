@@ -2,24 +2,24 @@ import { Body, Controller, Get, Post, Query } from '@nestjs/common';
 import { TaskRegistryService } from '../tasks/task-registry.service';
 import { StreamingService } from '../streaming/streaming.service';
 import {
-  TodoStoreService, CATCHUP_GRACE_SEC, MAX_ATTEMPTS,
-} from './todo-store.service';
-import { TodoSchedulerService } from './scheduler.service';
+  CronStoreService, CATCHUP_GRACE_SEC, MAX_ATTEMPTS,
+} from './cron-store.service';
+import { CronSchedulerService } from './cron-scheduler.service';
 
 type Row = Record<string, unknown>;
 
 /** 工作内容（提醒事项）API（移植自 server.py 的 _get_todo / _post_todo_* 处理函数）。 */
 @Controller('api')
-export class TodoController {
+export class CronController {
   constructor(
-    private readonly store: TodoStoreService,
+    private readonly store: CronStoreService,
     private readonly registry: TaskRegistryService,
-    private readonly scheduler: TodoSchedulerService,
+    private readonly scheduler: CronSchedulerService,
     private readonly streaming: StreamingService,
   ) {}
 
-  @Get('todo')
-  getTodo() {
+  @Get('cron')
+  getCron() {
     const items = this.store.listItems().map((it) =>
       this.store.apiItem(
         it,
@@ -29,25 +29,26 @@ export class TodoController {
     );
     return {
       ok: true,
-      todo: {
+      cron: {
         lists: this.store.listLists().map((l) => this.store.apiList(l)),
         items,
         scheduler: {
           running: this.scheduler.isAlive(),
           catchup_grace_min: CATCHUP_GRACE_SEC / 60,
           max_attempts: MAX_ATTEMPTS,
+          auto_paused: this.store.getMeta('auto_paused', '0') === '1',
         },
       },
     };
   }
 
-  @Get('todo/runs')
+  @Get('cron/runs')
   getRuns(@Query('item_id') itemId = '', @Query('limit') limit = '20') {
     const lim = Math.max(1, Math.min(50, parseInt(limit, 10) || 20));
     return { ok: true, runs: this.store.itemRuns(itemId, lim) };
   }
 
-  @Post('todo/lists')
+  @Post('cron/lists')
   postLists(@Body() data: Record<string, unknown>) {
     const op = data['op'];
     try {
@@ -78,7 +79,7 @@ export class TodoController {
     }
   }
 
-  @Post('todo/items')
+  @Post('cron/items')
   postItems(@Body() data: Record<string, unknown>) {
     const op = data['op'];
     try {
@@ -96,6 +97,7 @@ export class TodoController {
           data['task_args'],
           (data['remind_times'] as string[]) || [],
           Number(data['timeout']) || 0,
+          data['queue_run'] as number,
         );
         this.broadcast();
         return { ok: true, item: this.itemOut(r) };
@@ -104,7 +106,7 @@ export class TodoController {
         if (!data['id']) return { ok: false, error: '缺少 id' };
         const kw: Record<string, unknown> = {};
         for (const k of ['title', 'note', 'remind_at', 'list_id', 'task_id',
-          'auto_run', 'flag', 'status', 'remind_times', 'timeout']) {
+          'auto_run', 'flag', 'status', 'remind_times', 'timeout', 'queue_run']) {
           if (k in data) kw[k] = data[k];
         }
         if ('repeat' in data) kw['repeat'] = data['repeat'];
@@ -133,13 +135,13 @@ export class TodoController {
     }
   }
 
-  @Post('todo/trigger')
+  @Post('cron/trigger')
   postTrigger(@Body() data: Record<string, unknown>) {
     const [ok, msg] = this.scheduler.triggerNow(String(data['item_id']));
     return { ok, error: ok ? null : msg };
   }
 
-  @Post('todo/import')
+  @Post('cron/import')
   postImport(@Body() data: Record<string, unknown>) {
     try {
       const [lists, items] = this.store.importPayload(data);
@@ -147,6 +149,15 @@ export class TodoController {
     } catch (e) {
       return { ok: false, error: (e as Error).message };
     }
+  }
+
+  /** 全局「自动执行」总开关：paused=true 暂停所有自动任务的点火与重试，false 恢复。 */
+  @Post('cron/auto-paused')
+  postAutoPaused(@Body() data: Record<string, unknown>) {
+    const paused = !!data['paused'];
+    this.store.setMeta('auto_paused', paused ? '1' : '0');
+    this.broadcast();
+    return { ok: true, paused };
   }
 
   private itemOut(row: Row | null): Row | null {
@@ -166,6 +177,6 @@ export class TodoController {
   }
 
   private broadcast(): void {
-    try { this.streaming.emit({ type: 'todo', event: 'changed' } as never); } catch { /* ignore */ }
+    try { this.streaming.emit({ type: 'cron', event: 'changed' } as never); } catch { /* ignore */ }
   }
 }

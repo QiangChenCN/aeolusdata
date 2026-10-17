@@ -11,22 +11,26 @@ const j = (body) => ({
 /* ============ 运行记录 ============ */
 export function fetchHistory() { return request('/history'); }
 
-/* ============ 自动任务（Todo） ============ */
-export function fetchTodo() { return request('/todo'); }
-export function postTodoList(op, payload = {}) {
-  return request('/todo/lists', j(Object.assign({ op }, payload)));
+/* ============ 自动任务（Cron） ============ */
+export function fetchCron() { return request('/cron'); }
+export function postCronList(op, payload = {}) {
+  return request('/cron/lists', j(Object.assign({ op }, payload)));
 }
-export function postTodoItem(op, payload = {}) {
-  return request('/todo/items', j(Object.assign({ op }, payload)));
+export function postCronItem(op, payload = {}) {
+  return request('/cron/items', j(Object.assign({ op }, payload)));
 }
-export function triggerTodoItem(itemId) {
-  return request('/todo/trigger', j({ item_id: itemId }));
+export function triggerCronItem(itemId) {
+  return request('/cron/trigger', j({ item_id: itemId }));
 }
-export function importTodo(lists, items) {
-  return request('/todo/import', j({ lists, items }));
+/** 全局「自动执行」总开关：paused=true 暂停全部自动任务的点火与重试。 */
+export function setCronAutoPaused(paused) {
+  return request('/cron/auto-paused', j({ paused }));
 }
-export function fetchTodoRuns(itemId, limit = 20) {
-  return request('/todo/runs?item_id=' + enc(itemId) + '&limit=' + limit);
+export function importCron(lists, items) {
+  return request('/cron/import', j({ lists, items }));
+}
+export function fetchCronRuns(itemId, limit = 20) {
+  return request('/cron/runs?item_id=' + enc(itemId) + '&limit=' + limit);
 }
 
 /* ============ 群组 ============ */

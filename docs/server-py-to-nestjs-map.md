@@ -109,7 +109,7 @@
 > 真实前缀为 `standard/`、`overview/`、`attend-period/`、`assessment/`，
 > 见 `backend/src/modules/proxy/proxy.controller.ts` 注释。
 | `GET /api/files?task_id=`、`/api/file?path=`（产物列举/下载） | 文件系统 | **直接移植**（产物在本地磁盘） | 🟡 |
-| `GET/POST /api/todo`、`/api/todo/runs`、`/api/todo/lists`、`/api/todo/items`、`/api/todo/trigger`、`/api/todo/import` + 定时调度器 | `todo` 模块（`todo-store.service` 端口 `todo_store.py` + `todo.controller` + `scheduler.service` 端口 `todo_sched.py` 的 `TodoScheduler`：每 5s 扫描 / 失败重试 3 次 / 补跑宽限 15min / 重启恢复 / 手动触发） | 直接移植（node:sqlite 内置驱动，复用 python/workbench/data/todo.db） | ✅ |
+| `GET/POST /api/cron`、`/api/cron/runs`、`/api/cron/lists`、`/api/cron/items`、`/api/cron/trigger`、`/api/cron/import` + 定时调度器 | `todo` 模块（`todo-store.service` 端口 `todo_store.py` + `todo.controller` + `scheduler.service` 端口 `todo_sched.py` 的 `TodoScheduler`：每 5s 扫描 / 失败重试 3 次 / 补跑宽限 15min / 重启恢复 / 手动触发） | 直接移植（node:sqlite 内置驱动，复用 python/workbench/data/cron.db） | ✅ |
 
 > 委托机制：`ComputePort` 新增 `proxy(endpoint, method, params)`；`NodeComputeAdapter` 对这类端点返回 `{ok:false, code:'NEED_PYTHON'}`；`PythonComputeAdapter` 转发到 `PYTHON_COMPUTE_URL`（默认 `http://127.0.0.1:8900`）。NestJS 侧由 `ProxyController`（`@Controller('api')`）按前缀（`standard` / `attend-period` / `overview` / `realtime` / `cookies/status` / `teams` / `sheet`）转发，并叠加 RBAC + 数据权限闸门后**再**委托（权限裁剪在 NestJS 侧完成，Python 只算数）。`/api/groups` 已由原生 `GroupsModule` 提供，不再转发。**注意**：`standard / attend-period / realtime` 前缀下的**配置端点**（见 §6.1）已由 `ConfigService` 在 proxy 内拦截、不再转发 Python；只有各自前缀下的**计算**端点（如 `standard/achievement`、`attend-period/valid`、`realtime/station`）才继续转发 compute_service。
 

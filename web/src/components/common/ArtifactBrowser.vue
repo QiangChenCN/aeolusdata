@@ -1,5 +1,5 @@
 <template>
-  <el-dialog v-model="visible" :title="title" width="70%" top="6vh" append-to-body>
+  <el-dialog v-model="visible" :title="title" width="70%" append-to-body>
     <div v-if="artifact.loading" class="ab-state">
       <el-icon class="is-loading"><Loading /></el-icon> 加载产物中…
     </div>

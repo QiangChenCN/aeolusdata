@@ -3,24 +3,24 @@ import { TaskRunnerService } from '../tasks/task-runner.service';
 import { TaskRegistryService } from '../tasks/task-registry.service';
 import { StreamingService } from '../streaming/streaming.service';
 import {
-  TodoStoreService,
+  CronStoreService,
   RUN_RUNNING, RUN_RETRYING, RUN_SUCCESS, RUN_FAILED, RUN_SKIPPED, RUN_MISSED,
   MAX_ATTEMPTS, CATCHUP_GRACE_SEC,
-} from './todo-store.service';
+} from './cron-store.service';
 
 /**
- * 工作内容定时调度器（移植自 workbench/todo_sched.py 的 TodoScheduler）。
+ * 自动任务定时调度器（移植自 workbench/todo_sched.py 的 TodoScheduler）。
  *
  * 每 TICK_SEC 秒扫描一次：到点把「关联了任务 + 开了自动执行」的事项丢进
  * TaskRunnerService 的串行队列跑，含三层去重、失败重试（最多 3 次 / 退避 60s/300s）、
  * 补跑宽限（15min）、重启恢复。
  *
- * 不依赖 apscheduler：同一事项同一时刻只触发一次的幂等语义落在 todo_run.fire_key
+ * 不依赖 apscheduler：同一事项同一时刻只触发一次的幂等语义落在 cron_run.fire_key
  * 的 UNIQUE 约束上（库重启后仍在），而非内存 job store。
  */
 @Injectable()
-export class TodoSchedulerService implements OnModuleInit {
-  private readonly logger = new Logger(TodoSchedulerService.name);
+export class CronSchedulerService implements OnModuleInit {
+  private readonly logger = new Logger(CronSchedulerService.name);
   static readonly TICK_SEC = 5;
   static readonly PRUNE_EVERY = 3600;
 
@@ -32,14 +32,14 @@ export class TodoSchedulerService implements OnModuleInit {
   constructor(
     private readonly runner: TaskRunnerService,
     private readonly registry: TaskRegistryService,
-    private readonly store: TodoStoreService,
+    private readonly store: CronStoreService,
     private readonly streaming: StreamingService,
   ) {}
 
   onModuleInit(): void {
     this.store.initDb();
     this.recoverOrphans();
-    this.timer = setInterval(() => this.tick(), TodoSchedulerService.TICK_SEC * 1000);
+    this.timer = setInterval(() => this.tick(), CronSchedulerService.TICK_SEC * 1000);
   }
 
   isAlive(): boolean {
@@ -65,7 +65,7 @@ export class TodoSchedulerService implements OnModuleInit {
     this.fireDue(now);
     this.dispatchRetries();
     this.pollRunning();
-    if (Date.now() / 1000 - this.lastPrune > TodoSchedulerService.PRUNE_EVERY) {
+    if (Date.now() / 1000 - this.lastPrune > CronSchedulerService.PRUNE_EVERY) {
       try { this.store.pruneRuns(); } catch { /* ignore */ }
       this.lastPrune = Date.now() / 1000;
     }
@@ -73,7 +73,7 @@ export class TodoSchedulerService implements OnModuleInit {
 
   // ------------------------------------------------------------ 事件广播
   private emit(event: string, itemId: string | null = null, message = '', extra?: Record<string, unknown>): void {
-    const payload: Record<string, unknown> = { type: 'todo', event, item_id: itemId, message };
+    const payload: Record<string, unknown> = { type: 'cron', event, item_id: itemId, message };
     if (extra) Object.assign(payload, extra);
     try { this.streaming.emit(payload as never); } catch { /* ignore */ }
   }
@@ -102,8 +102,12 @@ export class TodoSchedulerService implements OnModuleInit {
       this.emit('skipped', iid, `关联任务${st === 'missing' ? '已不存在' : '已禁用'}，本次未执行`);
       return;
     }
-    if (this.store.findRun(iid, due)) return; // 本轮已处理
-    if (this.store.openRunOf(iid)) return; // 上一次还没跑完
+    // 全局「自动执行」主开关关闭时，静默跳过（不记 skipped，避免每个 tick 刷库）；
+    // 恢复后若仍在补跑宽限内会自动补火，超窗则记为 missed（暂停不延长窗口）。
+    if (this.store.isAutoPaused()) return;
+    if (this.store.findRun(iid, due)) return; // 同一 due 本轮已处理，不重复点火
+    // 排队执行：开启后不因「上一次还没跑完」而跳过，本次照常入队（TaskRunner 串行队列会排队）
+    if (!item['queue_run'] && this.store.openRunOf(iid)) return; // 未开排队：上一次还没跑完则跳过
 
     const dueDt = this.store.parseDt(due);
     if (!dueDt) return;
@@ -138,6 +142,7 @@ export class TodoSchedulerService implements OnModuleInit {
 
   // ------------------------------------------------------------ 重试
   private dispatchRetries(): void {
+    if (this.store.isAutoPaused()) return; // 全局暂停时连同重试一起挂起
     for (const r of this.store.retryDue()) {
       const item = this.store.getItem(String(r['item_id']));
       if (!item || !item['task_id']) {
@@ -247,7 +252,7 @@ export class TodoSchedulerService implements OnModuleInit {
     if (!item['task_id']) return [false, '这个事项没有关联任务'];
     const st = this.registry.linkState(String(item['task_id']));
     if (st !== 'ok') return [false, `关联任务${st === 'missing' ? '已不存在' : '已禁用'}，无法执行`];
-    if (this.store.openRunOf(itemId)) return [false, '上一次执行还没结束，稍等再试'];
+    if (!item['queue_run'] && this.store.openRunOf(itemId)) return [false, '上一次执行还没结束，稍等再试'];
 
     const due = 'manual:' + (this.store.fmtLocal(new Date()) || '');
     if (this.store.findRun(itemId, due)) return [false, '刚刚已经触发过了，一分钟后再试'];

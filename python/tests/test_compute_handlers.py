@@ -47,7 +47,7 @@ def test_key_routes_present():
     """关键路由必须存在 —— 缺失会直接表现为对应端点 404。
 
     注意这里断言的是 **计算侧仍然负责** 的命名空间。
-    鉴权 / 账号 / 角色 / 策略 / 数据权限 / todo / 任务运行 / 日志下载 / 产物预览
+    鉴权 / 账号 / 角色 / 策略 / 数据权限 / cron / 任务运行 / 日志下载 / 产物预览
     等已由 NestJS 原生实现；teams / sheet / cookies/status / groups 由
     compute_api 自带端点实现 —— 它们**不在**派发表里才是正确的。
     """
@@ -67,7 +67,7 @@ def test_key_routes_present():
 # 已迁移到 NestJS 的端点（抽样）：计算侧不应再持有，否则又变成双份实现
 NEST_NATIVE = (
     "/api/state", "/api/history", "/api/log", "/api/download", "/api/file",
-    "/api/files", "/api/events", "/api/todo", "/api/todo/runs",
+    "/api/files", "/api/events", "/api/cron", "/api/cron/runs",
     "/api/admin/users", "/api/admin/roles", "/api/policy", "/api/data-perms",
     "/api/run", "/api/stop", "/api/cancel", "/api/teams", "/api/sheet",
     "/api/cookies/status",
@@ -96,16 +96,16 @@ def test_no_python_side_data_permission_module():
         importlib.import_module("core.dataperm")
 
 
-def test_no_duplicate_todo_scheduler():
-    """提醒事项的调度归 NestJS，计算进程不得再起第二个调度器。
+def test_no_duplicate_cron_scheduler():
+    """自动任务的调度归 NestJS，计算进程不得再起第二个调度器。
 
-    计算服务是独立进程（uvicorn 8900）。若这里再 `todo_sched.start(MGR)`，等于同时跑
-    两套调度器（Nest 的 TodoSchedulerService 一套 + 本进程一套），同一事项存在被重复
+    计算服务是独立进程（uvicorn 8900）。若这里再 `cron_sched.start(MGR)`，等于同时跑
+    两套调度器（Nest 的 CronSchedulerService 一套 + 本进程一套），同一事项存在被重复
     触发的风险。
     """
     assert not hasattr(handlers, "SCHED"), "计算侧不应再有 SCHED（调度归 NestJS）"
-    assert not hasattr(handlers, "todo_sched"), "计算侧不应再 import todo_sched"
-    assert not hasattr(handlers, "todo_store"), "计算侧不应再 import todo_store"
+    assert not hasattr(handlers, "cron_sched"), "计算侧不应再 import cron_sched"
+    assert not hasattr(handlers, "cron_store"), "计算侧不应再 import cron_store"
 
 
 def test_no_workbench_side_effects():
