@@ -1,12 +1,20 @@
-"""IM 电联看板计算层：站点级 + 骑手级聚合。
+"""IM 电联看板计算层：站点级 + 骑手级聚合（区间汇总 / 每日明细 / 较前日环比）。
 
 行粒度 = 送达日期 × 站点 × 骑手（Quark 透视表展开）。本模块把一组行聚合为：
-  · 站点级指标：5 个计数字段求和 + 2 个比率按「分子/分母」重算；
-  · 骑手级指标：按 (骑手id, 骑手姓名) 分组，同上口径。
+  · 区间汇总：5 个计数字段求和 + 2 个比率按「分子/分母」重算；
+  · 每日明细（daily）：按日期分组同上口径，并带 dod（较前一自然日）；
+  · 骑手级（riders）：按 (骑手id, 骑手姓名) 分组，含各自的区间汇总与每日明细。
 
-比率一律由单量重算，**不跨行平均**报表里的比率值（避免「比率的平均」失真）。
-缓存键带日期区间（start~end），换区间取数自然换键；Nest 落盘后回调失效。
+口径（与报表一致，比率一律由单量重算、不跨行平均）：
+  · 送达电联率   = 剔除后有效电联单量 / 剔除后接单量 × 100
+  · IM及时回复率 = IM及时回复单量 / IM咨询单量 × 100
+  · 环比 dod：比率为百分点差(pp)，计数为绝对差 + 涨幅%；前一自然日无数据时不编造（null）。
+
+展示区间以落盘文件的 start/end 为准：Nest 取数时会多取一天（baseline_date）作为
+首个展示日期的环比基准，该基准日**不计入**汇总与每日表，只用于算 dod。
 """
+
+import datetime as _dt
 
 from analytics import cache as CACHE
 from analytics.im_contact import source as S
@@ -42,14 +50,75 @@ EMPTY_METRICS = {
 }
 
 
-def _riders(rows):
-    """骑手级：按 (骑手id, 骑手姓名) 分组聚合，按 IM咨询单量降序。"""
+def _date_of(r):
+    """行的送达日期 → 'YYYY-MM-DD'（落盘值是 'YYYY-MM-DD HH:MM:SS'，取前 10 位）。"""
+    return S.to_text(r.get(S.F_DATE))[:10]
+
+
+def _prev_day(d):
+    """前一自然日（ISO）。"""
+    y, m, dd = (int(x) for x in d.split("-"))
+    return (_dt.date(y, m, dd) - _dt.timedelta(days=1)).isoformat()
+
+
+def _dod(prev, cur):
+    """环比：比率为百分点差(pp)，计数为绝对差 + 涨幅%（分母为 0 时 pct 记 None）。"""
+    def rate_delta(a, b):
+        return None if a is None or b is None else round(b - a, 2)
+
+    def cnt_delta(a, b):
+        diff = b - a
+        pct = round(diff * 100.0 / a, 2) if a else None
+        return {"diff": diff, "pct": pct}
+
+    return {
+        "call_rate": rate_delta(prev["call_rate"], cur["call_rate"]),
+        "im_reply_rate": rate_delta(prev["im_reply_rate"], cur["im_reply_rate"]),
+        "im_consult_cnt": cnt_delta(prev["im_consult_cnt"], cur["im_consult_cnt"]),
+        "im_reply_cnt": cnt_delta(prev["im_reply_cnt"], cur["im_reply_cnt"]),
+        "valid_call_orders": cnt_delta(prev["valid_call_orders"], cur["valid_call_orders"]),
+    }
+
+
+def _daily(rows):
+    """按日期分组聚合；每天带 dod（较前一自然日）。
+
+    只在「前一自然日也有数据」时给 dod——中间断档的日子不与更早的日子比较，
+    避免把 3 天前的量当成「前一日」算出误导性环比。
+    """
+    by_date = {}
+    for r in rows or []:
+        d = _date_of(r)
+        if not d:
+            continue
+        by_date.setdefault(d, []).append(r)
+    out = []
+    prev_date = None
+    prev_m = None
+    for d in sorted(by_date):
+        m = _agg(by_date[d])
+        dod = _dod(prev_m, m) if (prev_date == _prev_day(d) and prev_m is not None) else None
+        out.append({"date": d, **m, "dod": dod})
+        prev_date, prev_m = d, m
+    return out
+
+
+def _in_range(d, d0, d1):
+    if not d:
+        return False
+    if d0 and d < d0:
+        return False
+    if d1 and d > d1:
+        return False
+    return True
+
+
+def _riders(all_rows, d0, d1):
+    """骑手级：按 (骑手id, 骑手姓名) 分组，每组含区间汇总 + 每日明细（均按展示区间过滤）。"""
     groups = {}
     order = []
-    for r in rows or []:
-        rid = S.to_text(r.get(S.F_RIDER_ID))
-        rname = S.to_text(r.get(S.F_RIDER_NAME))
-        key = (rid, rname)
+    for r in all_rows or []:
+        key = (S.to_text(r.get(S.F_RIDER_ID)), S.to_text(r.get(S.F_RIDER_NAME)))
         if key not in groups:
             groups[key] = []
             order.append(key)
@@ -57,10 +126,14 @@ def _riders(rows):
     out = []
     for key in order:
         rid, rname = key
+        rrows = groups[key]
+        disp = [r for r in rrows if _in_range(_date_of(r), d0, d1)]
+        daily = [x for x in _daily(rrows) if _in_range(x["date"], d0, d1)]
         out.append({
             "rider_id": rid,
             "rider_name": rname or rid,
-            **_agg(groups[key]),
+            **_agg(disp),
+            "daily": daily,
         })
     out.sort(key=lambda x: (-x["im_consult_cnt"], x["rider_id"]))
     return out
@@ -76,16 +149,17 @@ def _team_name(rows, team_id):
 
 
 def build_one(team_id, start=None, end=None):
-    """单站实时概览：站点级指标 + 骑手明细。
+    """单站实时概览：区间汇总 + 每日明细(含环比) + 骑手明细(含各自的每日明细)。
 
-    start/end 仅作缓存键的一部分（数据以落盘文件里的区间为准）；缺省取落盘区间。
+    展示区间取落盘文件的 start/end（用户所选区间）；落盘数据可能多含一天
+    （baseline_date，环比基准），该日不进汇总/每日表，只用于算首个展示日的 dod。
     落盘不可用 → need_refresh=True（前端据此提示去刷新，而非展示 0）。
     """
     team_id = str(team_id)
     st = S.fetch_status() or {}
-    rng = st.get("start") or start or ""
-    rng_end = st.get("end") or end or ""
-    key_date = "%s~%s" % (rng, rng_end)
+    d0 = st.get("start") or start or ""
+    d1 = st.get("end") or end or ""
+    key_date = "%s~%s" % (d0, d1)
     cached = CACHE.get_result(MODULE, team_id, key_date, "", "cache")
     if cached is not None:
         return cached
@@ -106,19 +180,25 @@ def build_one(team_id, start=None, end=None):
             "need_refresh": True,
             "data_status": "no_data",
             "data_note": note,
+            "display_range": {"start": d0, "end": d1},
+            "daily": [],
             "riders": [],
             **EMPTY_METRICS,
         }
 
-    trows = S.rows_of_team(rows, team_id)
+    all_rows = S.rows_of_team(rows, team_id)
+    disp = [r for r in all_rows if _in_range(_date_of(r), d0, d1)]
+    daily = [x for x in _daily(all_rows) if _in_range(x["date"], d0, d1)]
     result = {
         "team_id": team_id,
-        "team_name": _team_name(trows, team_id),
+        "team_name": _team_name(disp, team_id),
         "need_refresh": False,
         "data_status": "ok",
         "data_note": None,
-        **_agg(trows),
-        "riders": _riders(trows),
+        "display_range": {"start": d0, "end": d1},
+        **_agg(disp),
+        "daily": daily,
+        "riders": _riders(all_rows, d0, d1),
     }
     CACHE.put_result(MODULE, team_id, key_date, "", "cache", result)
     return result

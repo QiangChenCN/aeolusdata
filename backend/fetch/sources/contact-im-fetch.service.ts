@@ -248,8 +248,16 @@ export class ContactImFetchService {
       const dimVals = cells.map((c: any) =>
         c && typeof c === 'object' ? (c.value ?? c.v ?? c) : c);
       const valRow = value.values[i];
+      // 指标单元格可能是 {v:...} 包装，也可能是裸值；v 为 null（该骑手无此指标）时
+      // 必须显式还原成 null，否则会漏成 {v:null} 对象污染后续扁平化（toNum 兜底也丑）。
       const metrics = (Array.isArray(valRow) ? valRow : Object.values(valRow || {})).map(
-        (c: any) => (c && typeof c === 'object' ? (c.v ?? c.value ?? c) : c));
+        (c: any) => {
+          if (c && typeof c === 'object') {
+            const v = c.v ?? c.value;
+            return v === undefined ? null : v;
+          }
+          return c;
+        });
       rows.push([...dimVals, ...metrics]);
     }
     return { headers, rows, labels, shape: 'columnPivot', raw };

@@ -79,6 +79,39 @@
           <el-table-column prop="call_excluded_cnt" label="电联剔除单量" min-width="130" align="center" sortable />
           <el-table-column prop="after_exclude_orders" label="剔除后接单量" min-width="130" align="center" sortable />
           <el-table-column prop="valid_call_orders" label="剔除后有效电联单量" min-width="170" align="center" sortable />
+          <!-- 展开行：该站点的每日明细 + 较前日环比 -->
+          <el-table-column type="expand">
+            <template #default="{ row }">
+              <div class="dv-daily">
+                <div class="dv-daily-hd">
+                  {{ row.team_name }} · 每日明细（{{ row.display_range && row.display_range.start ? `${row.display_range.start} ~ ${row.display_range.end}` : '所选区间' }}，含较前日环比）
+                </div>
+                <el-table :data="row.daily" stripe border size="small" class="dv-table dv-daily-table" empty-text="暂无每日数据">
+                  <el-table-column prop="date" label="日期" min-width="120" fixed />
+                  <el-table-column label="送达电联率" min-width="110" align="center">
+                    <template #default="{ row: d }"><span class="rt">{{ fmtRate(d.call_rate) }}</span></template>
+                  </el-table-column>
+                  <el-table-column label="较前日" min-width="100" align="center">
+                    <template #default="{ row: d }"><span :class="ppCls(d.dod && d.dod.call_rate)">{{ fmtPp(d.dod && d.dod.call_rate) }}</span></template>
+                  </el-table-column>
+                  <el-table-column label="IM及时回复率" min-width="120" align="center">
+                    <template #default="{ row: d }"><span class="rt">{{ fmtRate(d.im_reply_rate) }}</span></template>
+                  </el-table-column>
+                  <el-table-column label="较前日" min-width="100" align="center">
+                    <template #default="{ row: d }"><span :class="ppCls(d.dod && d.dod.im_reply_rate)">{{ fmtPp(d.dod && d.dod.im_reply_rate) }}</span></template>
+                  </el-table-column>
+                  <el-table-column prop="im_consult_cnt" label="IM咨询单量" min-width="110" align="center" />
+                  <el-table-column label="较前日" min-width="120" align="center">
+                    <template #default="{ row: d }"><span class="dod-cnt">{{ fmtCnt(d.dod && d.dod.im_consult_cnt) }}</span></template>
+                  </el-table-column>
+                  <el-table-column prop="im_reply_cnt" label="IM及时回复单量" min-width="130" align="center" />
+                  <el-table-column prop="call_excluded_cnt" label="电联剔除单量" min-width="120" align="center" />
+                  <el-table-column prop="after_exclude_orders" label="剔除后接单量" min-width="120" align="center" />
+                  <el-table-column prop="valid_call_orders" label="剔除后有效电联单量" min-width="150" align="center" />
+                </el-table>
+              </div>
+            </template>
+          </el-table-column>
         </el-table>
       </div>
 
@@ -109,6 +142,39 @@
           <el-table-column prop="call_excluded_cnt" label="电联剔除单量" min-width="130" align="center" sortable />
           <el-table-column prop="after_exclude_orders" label="剔除后接单量" min-width="130" align="center" sortable />
           <el-table-column prop="valid_call_orders" label="剔除后有效电联单量" min-width="170" align="center" sortable />
+          <!-- 展开行：该骑手的每日明细 + 较前日环比 -->
+          <el-table-column type="expand">
+            <template #default="{ row }">
+              <div class="dv-daily">
+                <div class="dv-daily-hd">
+                  {{ row.rider_name || row.rider_id }}（{{ row.team_name }}）· 每日明细（含较前日环比）
+                </div>
+                <el-table :data="row.daily" stripe border size="small" class="dv-table dv-daily-table" empty-text="暂无每日数据">
+                  <el-table-column prop="date" label="日期" min-width="120" fixed />
+                  <el-table-column label="送达电联率" min-width="110" align="center">
+                    <template #default="{ row: d }"><span class="rt">{{ fmtRate(d.call_rate) }}</span></template>
+                  </el-table-column>
+                  <el-table-column label="较前日" min-width="100" align="center">
+                    <template #default="{ row: d }"><span :class="ppCls(d.dod && d.dod.call_rate)">{{ fmtPp(d.dod && d.dod.call_rate) }}</span></template>
+                  </el-table-column>
+                  <el-table-column label="IM及时回复率" min-width="120" align="center">
+                    <template #default="{ row: d }"><span class="rt">{{ fmtRate(d.im_reply_rate) }}</span></template>
+                  </el-table-column>
+                  <el-table-column label="较前日" min-width="100" align="center">
+                    <template #default="{ row: d }"><span :class="ppCls(d.dod && d.dod.im_reply_rate)">{{ fmtPp(d.dod && d.dod.im_reply_rate) }}</span></template>
+                  </el-table-column>
+                  <el-table-column prop="im_consult_cnt" label="IM咨询单量" min-width="110" align="center" />
+                  <el-table-column label="较前日" min-width="120" align="center">
+                    <template #default="{ row: d }"><span class="dod-cnt">{{ fmtCnt(d.dod && d.dod.im_consult_cnt) }}</span></template>
+                  </el-table-column>
+                  <el-table-column prop="im_reply_cnt" label="IM及时回复单量" min-width="130" align="center" />
+                  <el-table-column prop="call_excluded_cnt" label="电联剔除单量" min-width="120" align="center" />
+                  <el-table-column prop="after_exclude_orders" label="剔除后接单量" min-width="120" align="center" />
+                  <el-table-column prop="valid_call_orders" label="剔除后有效电联单量" min-width="150" align="center" />
+                </el-table>
+              </div>
+            </template>
+          </el-table-column>
         </el-table>
         <div class="dv-pg">
           <el-pagination
@@ -338,6 +404,27 @@ function fmtRate(v, digits = 3) {
   const n = Number(v);
   return Number.isFinite(n) ? String(Number(n.toFixed(digits))) + '%' : '—';
 }
+/* 环比（较前日）展示：比率用百分点差(pp)，计数用绝对差 + 涨幅% */
+function fmtPp(v) {
+  if (v == null) return '—';
+  const n = Number(v);
+  if (!Number.isFinite(n)) return '—';
+  return (n > 0 ? '+' : '') + Number(n.toFixed(2)) + 'pp';
+}
+function fmtCnt(v) {
+  if (!v || v.diff == null) return '—';
+  const d = Number(v.diff);
+  if (!Number.isFinite(d)) return '—';
+  const pctTxt = v.pct == null ? '' : `（${d > 0 ? '+' : ''}${Number(v.pct)}%）`;
+  return (d > 0 ? '+' : '') + d + pctTxt;
+}
+/* 比率环比着色：≥0 绿、<0 红（比率越高越好）；计数环比不着色（中性） */
+function ppCls(v) {
+  if (v == null) return '';
+  const n = Number(v);
+  if (!Number.isFinite(n)) return '';
+  return n >= 0 ? 'dod-up' : 'dod-down';
+}
 
 /* ── 骑手数据：跨所选站点聚合所有骑手（每行 row.riders 已含骑手指标） ────── */
 const riderRows = computed(() => {
@@ -388,13 +475,12 @@ onMounted(async () => {
   } catch (e) { /* ignore：取不到配置则回落全部站点 */ }
   try {
     const st = await fetchImContactStatus();
-    if (st && st.landed) {
-      landed.value = { start: st.start || '', end: st.end || '' };
+    // 只在「上次取数成功」时沿用已落盘区间；失败（fetch_ok=false）时保持默认 T-1 ——
+    // 否则会把一个拉取失败的「今天」区间带进选择器，用户一点刷新又失败，形成死循环。
+    if (st && st.landed && st.fetch_ok !== false && st.start && st.end) {
+      landed.value = { start: st.start, end: st.end };
       fetchedAt.value = st.fetched_at || '';
-      if (st.start && st.end) range.value = [st.start, st.end];
-      if (st.fetch_ok === false) {
-        refreshNote.value = '上次拉取失败，请点「刷新数据」重试';
-      }
+      range.value = [st.start, st.end];
     }
   } catch (e) { /* ignore */ }
   await load();
@@ -417,6 +503,8 @@ onUnmounted(() => {
 .dv-bar { display: flex; align-items: center; gap: var(--sp-12); margin-bottom: var(--sp-16); flex-wrap: wrap; }
 .v-title { margin: 0; font-size: var(--el-font-size-extra-large); }
 .dv-sel { width: 160px; }
+/* EP 的 daterange 默认宽度 350px 过长，压到 240px（仍容得下两个日期 + 分隔符） */
+.dv-range { width: 240px; }
 .dv-date-tag { font-size: var(--el-font-size-small); color: var(--el-text-color-secondary); }
 .dv-range-tag { font-size: var(--el-font-size-small); color: var(--el-text-color-secondary); }
 .dv-bar .sp { flex: 1; }
@@ -434,5 +522,13 @@ onUnmounted(() => {
 .dv-table { border-radius: var(--el-border-radius-base); }
 .dv-pg { flex: none; padding-top: var(--sp-12); display: flex; justify-content: flex-end; }
 .rt { font-weight: var(--fw-bold); }
+/* 环比着色：比率 ≥0 绿 / <0 红；计数中性 */
+.dod-up { color: var(--ok, #2e7d32); font-weight: var(--fw-bold); }
+.dod-down { color: var(--danger, #d32f2f); font-weight: var(--fw-bold); }
+.dod-cnt { color: var(--el-text-color-secondary); }
+/* 展开行内的每日明细表 */
+.dv-daily { padding: var(--sp-12); background: var(--el-fill-color-lighter); }
+.dv-daily-hd { font-size: var(--el-font-size-small); color: var(--el-text-color-secondary); margin-bottom: var(--sp-8); }
+.dv-daily-table { border-radius: var(--el-border-radius-base); }
 .dv-cfg-group { display: flex; flex-direction: column; gap: 6px; max-height: 320px; overflow: auto; }
 </style>

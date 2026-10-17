@@ -60,6 +60,14 @@ function nowStamp(): string {
   );
 }
 
+/** 日期偏移（UTC 计算，避免时区把日子算偏）：'2026-10-01' + (-1) → '2026-09-30'。 */
+function shiftDay(dateStr: string, offset: number): string {
+  const d = new Date(`${dateStr}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + offset);
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())}`;
+}
+
 /** 宽松数值化：'1,234' / '85.3%' / '12' → number；空 / 非法 → null。 */
 function toNum(v: unknown): number | null {
   if (v === null || v === undefined) return null;
@@ -135,20 +143,29 @@ export class ImContactFetchService {
 
   /**
    * 拉取 [startDate, endDate] 全站 IM 电联明细 → 扁平化 → 覆盖写落盘。
-   * date 缺省今天。失败写 fetch_ok=false（保留旧 rows 便于回查），返回 {ok:false}。
+   *
+   * 会**多取一天**（startDate 前一天）作为「较前日环比」的基准：落盘文件的
+   * start/end 仍是用户选的展示区间，基准日数据只用于算环比，不计入汇总与每日表
+   * （读侧按 start/end 过滤，见 analytics/im_contact/board.py）。
+   * 失败写 fetch_ok=false（保留旧 rows 便于回查），返回 {ok:false}。
    */
   async fetchAndLand(
     startDate: string,
     endDate: string,
   ): Promise<{ ok: boolean; msg: string }> {
     fs.mkdirSync(this.dataDir, { recursive: true });
+    const baseline = shiftDay(startDate, -1);
     let view;
     try {
-      view = await this.contactIm.fetchReportView({ startDate, endDate, region: [] });
+      view = await this.contactIm.fetchReportView({
+        startDate: baseline,
+        endDate,
+        region: [],
+      });
     } catch (e) {
       const err = `IM 电联取数失败：${(e as Error).message}`;
       this.logger.warn(err);
-      this.writeFailed(startDate, endDate, err);
+      this.writeFailed(startDate, endDate, baseline, err);
       return { ok: false, msg: err };
     }
     if (view.shape === 'unknown' || !view.rows.length) {
@@ -162,7 +179,7 @@ export class ImContactFetchService {
         : `IM 电联报表解析出 0 行（shape=${view.shape}，headers=${view.headers.length}）` +
           `——可能是该区间无数据，也可能是请求形态与报表当前配置不符。响应结构：${describeRaw(view.raw)}`;
       this.logger.warn(err);
-      this.writeFailed(startDate, endDate, err);
+      this.writeFailed(startDate, endDate, baseline, err);
       return { ok: false, msg: err };
     }
     let rows: Record<string, unknown>[];
@@ -171,11 +188,11 @@ export class ImContactFetchService {
     } catch (e) {
       const err = `IM 电联扁平化失败：${(e as Error).message}`;
       this.logger.error(err);
-      this.writeFailed(startDate, endDate, err);
+      this.writeFailed(startDate, endDate, baseline, err);
       return { ok: false, msg: err };
     }
-    this.writeOk(startDate, endDate, rows);
-    const msg = `IM 电联 ${rows.length} 行（${startDate}~${endDate}，全站落盘）`;
+    this.writeOk(startDate, endDate, baseline, rows);
+    const msg = `IM 电联 ${rows.length} 行（${startDate}~${endDate}，含环比基准日 ${baseline}）`;
     this.logger.log(`IM 电联看板取数：${msg}`);
     return { ok: true, msg };
   }
@@ -224,10 +241,16 @@ export class ImContactFetchService {
     return out;
   }
 
-  private writeOk(start: string, end: string, rows: Record<string, unknown>[]): void {
+  private writeOk(
+    start: string,
+    end: string,
+    baseline: string,
+    rows: Record<string, unknown>[],
+  ): void {
     const payload = {
       start,
       end,
+      baseline_date: baseline,
       fetched_at: nowStamp(),
       fetch_ok: true,
       fetch_error: null,
@@ -238,7 +261,7 @@ export class ImContactFetchService {
   }
 
   /** 取数失败：整份写 fetch_ok=false，保留旧 rows（便于回查），使读侧视为不可用。 */
-  private writeFailed(start: string, end: string, error: string): void {
+  private writeFailed(start: string, end: string, baseline: string, error: string): void {
     let oldRows: Record<string, unknown>[] = [];
     try {
       const prev = JSON.parse(fs.readFileSync(this.filePath(), 'utf-8'));
@@ -249,6 +272,7 @@ export class ImContactFetchService {
     const payload = {
       start,
       end,
+      baseline_date: baseline,
       fetched_at: nowStamp(),
       fetch_ok: false,
       fetch_error: String(error).slice(0, 300) || null,
