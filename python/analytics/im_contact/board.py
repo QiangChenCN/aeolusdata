@@ -18,6 +18,7 @@ import datetime as _dt
 
 from analytics import cache as CACHE
 from analytics.im_contact import source as S
+from analytics.teams_config import TEAM_NAMES  # 权威站点名兜底源(读 backend/data/teams.json)
 
 MODULE = "im_contact_v1"
 
@@ -175,12 +176,12 @@ def _riders(all_rows, d0, d1, ref=""):
 
 
 def _team_name(rows, team_id):
-    """站点名：取落盘行里的站点名称；缺失回落 id。"""
+    """站点名：优先取落盘行里的站点名称；缺失时回落权威站点目录(teams.json)。"""
     for r in rows or []:
         nm = S.to_text(r.get(S.F_TEAM_NAME))
         if nm:
             return nm
-    return str(team_id)
+    return TEAM_NAMES.get(str(team_id), str(team_id))
 
 
 def build_one(team_id, start=None, end=None):
@@ -212,7 +213,7 @@ def build_one(team_id, start=None, end=None):
             note = "IM 电联数据不可用，请点「刷新数据」重试"
         return {
             "team_id": team_id,
-            "team_name": team_id,
+            "team_name": TEAM_NAMES.get(team_id, team_id),
             "need_refresh": True,
             "data_status": "no_data",
             "data_note": note,
