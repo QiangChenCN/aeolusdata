@@ -78,7 +78,7 @@ export class ImContactController {
     const base = this.config.get<string>('PYTHON_COMPUTE_URL');
     if (!base) return;
     try {
-      await fetch(`${base}/cache/invalidate`, {
+      await fetch(`${base}/api/cache/invalidate`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ all: true }),
