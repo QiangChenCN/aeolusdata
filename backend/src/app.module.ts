@@ -24,6 +24,7 @@ import { ConfigModule as AppConfigModule } from './modules/config/config.module'
 import { BotsModule } from './modules/bots/bots.module';
 import { AssessmentModule } from './modules/assessment/assessment.module';
 import { StandardModule } from './modules/standard/standard.module';
+import { PgModule } from './modules/pg/pg.module';
 
 @Module({
   imports: [
@@ -60,6 +61,7 @@ import { StandardModule } from './modules/standard/standard.module';
     BotsModule,
     AssessmentModule,
     StandardModule,
+    PgModule,
   ],
   // 统一访问闸门：机器令牌闸门 + RBAC 会话鉴权（见 AccessGuard）
   providers: [{ provide: APP_GUARD, useClass: AccessGuard }],

@@ -298,7 +298,7 @@ export class FetchController {
   @Post('violation-save')
   async violationSave(@Body() b: { rows?: Record<string, any>[] }) {
     try {
-      const n = this.realtimeStore.upsertRows(b?.rows || []);
+      const n = await this.realtimeStore.upsertRows(b?.rows || []);
       return { ok: true, saved: n };
     } catch (e) {
       return this.fail(e);
@@ -312,12 +312,13 @@ export class FetchController {
   async violationRangeDb(@Body() b: { start?: string; end?: string }) {
     if (!b?.start || !b?.end) return { ok: false, error: 'start / end 必填（YYYY-MM-DD）' };
     try {
-      const rows = this.realtimeStore.getRange(b.start, b.end);
+      const rows = await this.realtimeStore.getRange(b.start, b.end);
+      const fetchedAt = await this.realtimeStore.lastFetchedAt(b.start, b.end);
       return {
         ok: true,
         total: rows.length,
         rows,
-        fetchedAt: this.realtimeStore.lastFetchedAt(b.start, b.end),
+        fetchedAt,
       };
     } catch (e) {
       return this.fail(e);
@@ -326,9 +327,9 @@ export class FetchController {
 
   /** 按月（YYYY-MM）读取已落库的违规明细（月累计看板数据源）。 */
   @Get('violation-month')
-  violationMonth(@Query('month') month: string) {
+  async violationMonth(@Query('month') month: string) {
     if (!month) return { ok: false, error: 'month 必填（YYYY-MM）' };
-    const rows = this.violationStore.getMonth(month);
+    const rows = await this.violationStore.getMonth(month);
     return { ok: true, month, total: rows.length, rows };
   }
 
@@ -337,18 +338,18 @@ export class FetchController {
    * 配合前端「日期范围」选择器（含快捷选项）使用，替代原先的按月查询。
    */
   @Post('violation-month-range')
-  violationMonthRange(@Body() b: { start?: string; end?: string }) {
+  async violationMonthRange(@Body() b: { start?: string; end?: string }) {
     if (!b?.start || !b?.end) return { ok: false, error: 'start / end 必填（YYYY-MM-DD）' };
-    const rows = this.violationStore.getRange(b.start, b.end);
-    const days = this.violationStore.dayCountRange(b.start, b.end);
+    const rows = await this.violationStore.getRange(b.start, b.end);
+    const days = await this.violationStore.dayCountRange(b.start, b.end);
     return { ok: true, start: b.start, end: b.end, total: rows.length, days, rows };
   }
 
   /** 按天（YYYY-MM-DD）读取已落库的违规明细。 */
   @Get('violation-day')
-  violationDay(@Query('date') date: string) {
+  async violationDay(@Query('date') date: string) {
     if (!date) return { ok: false, error: 'date 必填（YYYY-MM-DD）' };
-    const rows = this.violationStore.getDay(date);
+    const rows = await this.violationStore.getDay(date);
     return { ok: true, date, total: rows.length, rows };
   }
 

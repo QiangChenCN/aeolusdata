@@ -177,7 +177,7 @@ export class ImContactFetchService {
     } catch (e) {
       const err = `IM 电联取数失败：${(e as Error).message}`;
       this.logger.warn(err);
-      this.store.markFailed(err);
+      await this.store.markFailed(err);
       return { ok: false, msg: err };
     }
     if (view.shape === 'unknown' || !view.rows.length) {
@@ -191,7 +191,7 @@ export class ImContactFetchService {
         : `IM 电联报表解析出 0 行（shape=${view.shape}，headers=${view.headers.length}）` +
           `——可能是该区间无数据，也可能是请求形态与报表当前配置不符。响应结构：${describeRaw(view.raw)}`;
       this.logger.warn(err);
-      this.store.markFailed(err);
+      await this.store.markFailed(err);
       return { ok: false, msg: err };
     }
     let rows: Record<string, unknown>[];
@@ -200,29 +200,29 @@ export class ImContactFetchService {
     } catch (e) {
       const err = `IM 电联扁平化失败：${(e as Error).message}`;
       this.logger.error(err);
-      this.store.markFailed(err);
+      await this.store.markFailed(err);
       return { ok: false, msg: err };
     }
     // 累计落库（按 送达日期+骑手id 去重 upsert，跨月自然累计）
-    this.store.upsertRows(rows, nowStamp());
+    await this.store.upsertRows(rows, nowStamp());
     // 导出当月可读备份（IM电联明细.YYYY-MM.json）
     const { start: mStart, end: mEnd } = monthBounds(endDate);
-    this.exportMonth(mStart, mEnd);
+    await this.exportMonth(mStart, mEnd);
     const msg = `IM 电联 ${rows.length} 行（${startDate}~${endDate}，含环比基准日 ${baseline}）已落库累计`;
     this.logger.log(`IM 电联看板取数：${msg}`);
     return { ok: true, msg };
   }
 
   /** 导出「某月」全量（从库读该月）到 IM电联明细.YYYY-MM.json 备份/对账文件。 */
-  private exportMonth(monthStart: string, monthEnd: string): void {
-    const rows = this.store.getRange(monthStart, monthEnd);
+  private async exportMonth(monthStart: string, monthEnd: string): Promise<void> {
+    const rows = await this.store.getRange(monthStart, monthEnd);
     const month = monthStart.slice(0, 7);
     const payload = {
       month,
       start: monthStart,
       end: monthEnd,
-      fetched_at: this.store.meta('last_fetched_at') || nowStamp(),
-      fetch_ok: this.store.meta('last_fetch_ok') !== '0',
+      fetched_at: (await this.store.meta('last_fetched_at')) || nowStamp(),
+      fetch_ok: (await this.store.meta('last_fetch_ok')) !== '0',
       total: rows.length,
       rows,
     };
@@ -277,7 +277,7 @@ export class ImContactFetchService {
    * 当前落盘状态（已落盘区间 / 取数时间 / fetch_ok / 累计条数），供前端判断是否需要刷新。
    * 数据源 = SQLite im_contact.db（与计算侧同源）。
    */
-  status(): {
+  async status(): Promise<{
     ok: boolean;
     landed: boolean;
     start: string | null;
@@ -286,21 +286,21 @@ export class ImContactFetchService {
     fetch_ok: boolean | null;
     fetch_error: string | null;
     total: number;
-  } {
-    const landed = this.store.hasData();
-    const range = this.store.statRange();
-    const okRaw = this.store.meta('last_fetch_ok');
+  }> {
+    const landed = await this.store.hasData();
+    const range = await this.store.statRange();
+    const okRaw = await this.store.meta('last_fetch_ok');
     const fetchOk: boolean | null = okRaw === '1' ? true : okRaw === '0' ? false : null;
-    const errRaw = this.store.meta('last_fetch_error');
+    const errRaw = await this.store.meta('last_fetch_error');
     return {
       ok: true,
       landed,
       start: range.start || null,
       end: range.end || null,
-      fetched_at: this.store.meta('last_fetched_at') || null,
+      fetched_at: (await this.store.meta('last_fetched_at')) || null,
       fetch_ok: fetchOk,
       fetch_error: errRaw || null,
-      total: this.store.countAll(),
+      total: await this.store.countAll(),
     };
   }
 }

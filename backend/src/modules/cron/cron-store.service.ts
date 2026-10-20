@@ -1,9 +1,6 @@
 import { Injectable, OnModuleInit, Logger } from '@nestjs/common';
-import * as fs from 'fs';
-import * as path from 'path';
 import { randomUUID } from 'crypto';
-import { ConfigService } from '@nestjs/config';
-import { DatabaseSync } from 'node:sqlite';
+import { PgService } from '../pg/pg.service';
 
 type Row = Record<string, unknown>;
 
@@ -27,218 +24,129 @@ const WEEKDAY_CN: Record<number, string> = {
   1: '周一', 2: '周二', 3: '周三', 4: '周四', 5: '周五', 6: '周六', 7: '周日',
 };
 
-// ----------------------------------------------------------------- 迁移（对齐 MIGRATIONS）
-const MIGRATIONS: { version: number; sqls: string[] }[] = [
-  {
-    version: 1,
-    sqls: [
-      `CREATE TABLE IF NOT EXISTS cron_list (
-        id          TEXT PRIMARY KEY,
-        name        TEXT    NOT NULL,
-        icon        TEXT    NOT NULL DEFAULT 'list-checks',
-        color       TEXT    NOT NULL DEFAULT '#FF5000',
-        sort_order  INTEGER NOT NULL DEFAULT 0,
-        created_at  TEXT    NOT NULL,
-        updated_at  TEXT    NOT NULL
-      )`,
-      `CREATE TABLE IF NOT EXISTS cron_item (
-        id              TEXT PRIMARY KEY,
-        list_id         TEXT    NOT NULL,
-        title           TEXT    NOT NULL,
-        note            TEXT    NOT NULL DEFAULT '',
-        status          TEXT    NOT NULL DEFAULT 'open',
-        done_at         TEXT,
-        done_count      INTEGER NOT NULL DEFAULT 0,
-        flag            INTEGER NOT NULL DEFAULT 0,
-        remind_at       TEXT,
-        repeat_type     TEXT    NOT NULL DEFAULT 'none',
-        repeat_interval INTEGER NOT NULL DEFAULT 1,
-        repeat_by       TEXT    NOT NULL DEFAULT '',
-        repeat_end      TEXT    NOT NULL DEFAULT '',
-        task_id         TEXT,
-        task_args       TEXT    NOT NULL DEFAULT '{}',
-        auto_run        INTEGER NOT NULL DEFAULT 0,
-        last_run_at     TEXT,
-        last_run_status TEXT,
-        created_at      TEXT    NOT NULL,
-        updated_at      TEXT    NOT NULL
-      )`,
-      `CREATE TABLE IF NOT EXISTS cron_run (
-        id          INTEGER PRIMARY KEY AUTOINCREMENT,
-        item_id     TEXT    NOT NULL,
-        fire_key    TEXT    NOT NULL UNIQUE,
-        due_at      TEXT    NOT NULL,
-        started_at  TEXT,
-        finished_at TEXT,
-        status      TEXT    NOT NULL,
-        attempt     INTEGER NOT NULL DEFAULT 1,
-        retry_at    TEXT,
-        run_id      TEXT,
-        message     TEXT    NOT NULL DEFAULT ''
-      )`,
-      'CREATE INDEX IF NOT EXISTS idx_item_list_status ON cron_item(list_id, status)',
-      `CREATE INDEX IF NOT EXISTS idx_item_due ON cron_item(remind_at)
-        WHERE auto_run=1 AND status='open'`,
-      'CREATE INDEX IF NOT EXISTS idx_item_remind ON cron_item(remind_at)',
-      'CREATE INDEX IF NOT EXISTS idx_run_item ON cron_run(item_id, due_at DESC)',
-      `CREATE INDEX IF NOT EXISTS idx_run_open ON cron_run(status)
-        WHERE status IN ('running','retrying')`,
-    ],
-  },
-  {
-    version: 2,
-    sqls: [
-      `ALTER TABLE cron_item ADD COLUMN remind_times TEXT NOT NULL DEFAULT '[]'`,
-    ],
-  },
-  {
-    version: 3,
-    sqls: [
-      `ALTER TABLE cron_item ADD COLUMN timeout INTEGER NOT NULL DEFAULT 0`,
-    ],
-  },
-  {
-    version: 4,
-    sqls: [
-      `CREATE TABLE IF NOT EXISTS cron_kv (
-        key   TEXT PRIMARY KEY,
-        value TEXT NOT NULL
-      )`,
-    ],
-  },
-  {
-    version: 5,
-    sqls: [
-      `ALTER TABLE cron_item ADD COLUMN queue_run INTEGER NOT NULL DEFAULT 0`,
-    ],
-  },
-];
+// ----------------------------------------------------------------- 表结构（PG，最终态）
+const PG_DDL = `
+CREATE TABLE IF NOT EXISTS cron_list (
+  id          TEXT PRIMARY KEY,
+  name        TEXT    NOT NULL,
+  icon        TEXT    NOT NULL DEFAULT 'list-checks',
+  color       TEXT    NOT NULL DEFAULT '#FF5000',
+  sort_order  INTEGER NOT NULL DEFAULT 0,
+  created_at  TEXT    NOT NULL,
+  updated_at  TEXT    NOT NULL
+);
+CREATE TABLE IF NOT EXISTS cron_item (
+  id              TEXT PRIMARY KEY,
+  list_id         TEXT    NOT NULL,
+  title           TEXT    NOT NULL,
+  note            TEXT    NOT NULL DEFAULT '',
+  status          TEXT    NOT NULL DEFAULT 'open',
+  done_at         TEXT,
+  done_count      INTEGER NOT NULL DEFAULT 0,
+  flag            INTEGER NOT NULL DEFAULT 0,
+  remind_at       TEXT,
+  repeat_type     TEXT    NOT NULL DEFAULT 'none',
+  repeat_interval INTEGER NOT NULL DEFAULT 1,
+  repeat_by       TEXT    NOT NULL DEFAULT '',
+  repeat_end      TEXT    NOT NULL DEFAULT '',
+  task_id         TEXT,
+  task_args       TEXT    NOT NULL DEFAULT '{}',
+  auto_run        INTEGER NOT NULL DEFAULT 0,
+  last_run_at     TEXT,
+  last_run_status TEXT,
+  created_at      TEXT    NOT NULL,
+  updated_at      TEXT    NOT NULL,
+  remind_times    TEXT    NOT NULL DEFAULT '[]',
+  timeout         INTEGER NOT NULL DEFAULT 0,
+  queue_run       INTEGER NOT NULL DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS cron_run (
+  id          SERIAL PRIMARY KEY,
+  item_id     TEXT    NOT NULL,
+  fire_key    TEXT    NOT NULL UNIQUE,
+  due_at      TEXT,
+  started_at  TEXT,
+  finished_at TEXT,
+  status      TEXT    NOT NULL,
+  attempt     INTEGER NOT NULL DEFAULT 1,
+  retry_at    TEXT,
+  run_id      TEXT,
+  message     TEXT    NOT NULL DEFAULT ''
+);
+CREATE TABLE IF NOT EXISTS cron_kv (
+  key   TEXT PRIMARY KEY,
+  value TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_item_list_status ON cron_item(list_id, status);
+CREATE INDEX IF NOT EXISTS idx_item_due ON cron_item(remind_at)
+  WHERE auto_run=1 AND status='open';
+CREATE INDEX IF NOT EXISTS idx_item_remind ON cron_item(remind_at);
+CREATE INDEX IF NOT EXISTS idx_run_item ON cron_run(item_id, due_at DESC);
+CREATE INDEX IF NOT EXISTS idx_run_open ON cron_run(status)
+  WHERE status IN ('running','retrying');
+`;
 
-/** 工作内容 SQLite 持久层（移植自 workbench/todo_store.py）。 */
+/** 工作内容 PostgreSQL 持久层（移植自 workbench/todo_store.py，去掉 SQLite 迁移脚手架）。 */
 @Injectable()
 export class CronStoreService implements OnModuleInit {
   private readonly logger = new Logger(CronStoreService.name);
-  private db: DatabaseSync | null = null;
-  private dbPath = '';
+  // 单例 Promise：保证 PG_DDL（含 CREATE TABLE 自动建的复合类型）在并发初始化下只执行一次，
+  // 避免 onModuleInit 与 scheduler.onModuleInit 同时调用 initDb 导致的类型竞态。
+  private static initPromise: Promise<void> | null = null;
 
-  constructor(private readonly config: ConfigService) {}
+  constructor(private readonly pg: PgService) {}
 
-  onModuleInit(): void {
-    this.initDb();
+  async onModuleInit(): Promise<void> {
+    await this.initDb();
   }
 
   // ------------------------------------------------------------ 连接
-  private ensureDb(): DatabaseSync {
-    if (this.db) return this.db;
-    const wb = this.config.get<string>('WORKBENCH_DIR') || '';
-    const cronPath =
-      this.config.get<string>('TODO_DB') ||
-      path.join(wb, 'data', 'cron.db');
-    const legacyPath = path.join(wb, 'data', 'todo.db');
-    // 旧库文件 todo.db 改名为 cron.db，保留已有自动任务数据（连同 WAL 的 -wal/-shm 一起迁移，避免丢数据）
-    if (fs.existsSync(legacyPath) && !fs.existsSync(cronPath)) {
-      for (const suffix of ['', '-wal', '-shm']) {
-        const lp = legacyPath + suffix;
-        if (fs.existsSync(lp)) {
-          try { fs.renameSync(lp, cronPath + suffix); } catch { /* ignore */ }
-        }
-      }
-    }
-    this.dbPath = cronPath;
-    fs.mkdirSync(path.dirname(this.dbPath), { recursive: true });
-    const db = new DatabaseSync(this.dbPath);
-    db.exec('PRAGMA journal_mode=WAL');
-    db.exec('PRAGMA synchronous=NORMAL');
-    db.exec('PRAGMA busy_timeout=15000');
-    db.exec('PRAGMA foreign_keys=ON');
-    this.db = db;
-    return db;
+  private async all(sql: string, ...params: any[]): Promise<Row[]> {
+    return this.pg.query<Row>(sql, params);
   }
 
-  private get conn(): DatabaseSync {
-    return this.ensureDb();
+  private async one(sql: string, ...params: any[]): Promise<Row | undefined> {
+    const rows = await this.pg.query<Row>(sql, params);
+    return rows[0];
   }
 
-  private all(sql: string, ...params: any[]): Row[] {
-    return this.conn.prepare(sql).all(...params) as Row[];
-  }
-
-  private one(sql: string, ...params: any[]): Row | undefined {
-    return this.conn.prepare(sql).get(...params) as Row | undefined;
-  }
-
-  private run(sql: string, ...params: any[]): void {
-    this.conn.prepare(sql).run(...params);
+  private async run(sql: string, ...params: any[]): Promise<void> {
+    await this.pg.query(sql, params);
   }
 
   // ------------------------------------------------------------ 键值设置（全局开关等）
-  getMeta(key: string, def = ''): string {
-    const row = this.one('SELECT value FROM cron_kv WHERE key=?', key);
+  async getMeta(key: string, def = ''): Promise<string> {
+    const row = await this.one('SELECT value FROM cron_kv WHERE key=$1', key);
     return row ? String(row['value']) : def;
   }
 
-  setMeta(key: string, value: string): void {
-    this.run(
-      'INSERT INTO cron_kv(key,value) VALUES(?,?) ' +
+  async setMeta(key: string, value: string): Promise<void> {
+    await this.run(
+      'INSERT INTO cron_kv(key,value) VALUES($1,$2) ' +
         'ON CONFLICT(key) DO UPDATE SET value=excluded.value',
       key, value,
     );
   }
 
   /** 全局「自动执行」主开关是否被暂停（关掉后调度器不再自动点火）。 */
-  isAutoPaused(): boolean {
-    return this.getMeta('auto_paused', '0') === '1';
+  async isAutoPaused(): Promise<boolean> {
+    return (await this.getMeta('auto_paused', '0')) === '1';
   }
 
-  // ------------------------------------------------------------ 迁移
-  initDb(): [number, number] {
-    const db = this.ensureDb();
-    const cur = db.prepare('PRAGMA user_version').get() as Row;
-    const old = Number(cur['user_version'] || 0);
-    // 先把遗留 todo_* 表改名到 cron_*（旧库是 todo 模块建的，表名不同且 user_version 沿用旧值）。
-    // 必须在版本迁移循环之前完成：否则 version<=old 会跳过建表步骤，后续 ALTER cron_item 会因缺表崩溃。
-    this.migrateLegacyTables();
-    let next = old;
-    for (const { version, sqls } of MIGRATIONS) {
-      if (version <= old) continue;
-      for (const s of sqls) {
-        const add = s.match(/ALTER TABLE\s+\S+\s+ADD COLUMN\s+(\w+)\s+(.*)/i);
-        if (add) this.ensureColumn('cron_item', add[1], add[2].trim());
-        else db.exec(s);
-      }
-      db.exec(`PRAGMA user_version = ${version}`);
-      next = version;
+  // ------------------------------------------------------------ 迁移 / 初始化
+  /** PG 为最终态建表，无需逐版本迁移；返回 [0,5] 兼容旧调用方语义。 */
+  async initDb(): Promise<[number, number]> {
+    if (!CronStoreService.initPromise) {
+      CronStoreService.initPromise = (async () => {
+        await this.pg.query(PG_DDL);
+        await this.seedDefaultLists();
+      })();
     }
-    if (old === 0 && next >= 1) this.seedDefaultLists();
-    return [old, next];
+    await CronStoreService.initPromise;
+    return [0, 5];
   }
 
-  /** 幂等加列：列已存在则跳过，避免遗留版本号错配导致重复 ALTER 报错。 */
-  private ensureColumn(table: string, column: string, def: string): void {
-    const db = this.conn;
-    const cols = (db.prepare(`PRAGMA table_info(${table})`).all() as Row[]).map(
-      (c) => String(c['name']),
-    );
-    if (!cols.includes(column)) {
-      db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${def}`);
-    }
-  }
-
-  /** 把旧版本遗留的 todo_* 表改名到 cron_*（一次性迁移；已是 cron_* 的新库不受影响）。 */
-  private migrateLegacyTables(): void {
-    const db = this.conn;
-    const exists = (t: string) =>
-      !!(db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name=?").get(t));
-    const rename = (from: string, to: string) => {
-      if (exists(from) && !exists(to)) db.exec(`ALTER TABLE ${from} RENAME TO ${to}`);
-    };
-    rename('todo_list', 'cron_list');
-    rename('todo_item', 'cron_item');
-    rename('todo_run', 'cron_run');
-    rename('todo_kv', 'cron_kv');
-  }
-
-  private seedDefaultLists(): void {
+  private async seedDefaultLists(): Promise<void> {
     const now = this.nowStr();
     const defaults: [string, string, string, string][] = [
       ['l_work', '工作', 'list-checks', '#FF5000'],
@@ -246,9 +154,9 @@ export class CronStoreService implements OnModuleInit {
       ['l_temp', '临时', 'lightbulb', '#F5A623'],
     ];
     for (const [lid, name, icon, color] of defaults) {
-      this.run(
-        'INSERT OR IGNORE INTO cron_list(id,name,icon,color,sort_order,created_at,updated_at)' +
-          ' VALUES(?,?,?,?,?,?,?)',
+      await this.run(
+        'INSERT INTO cron_list(id,name,icon,color,sort_order,created_at,updated_at) ' +
+          'VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT(id) DO NOTHING',
         lid, name, icon, color, 0, now, now,
       );
     }
@@ -473,7 +381,7 @@ export class CronStoreService implements OnModuleInit {
   }
 
   // ------------------------------------------------------------ 列表 CRUD
-  listLists(): Row[] {
+  async listLists(): Promise<Row[]> {
     return this.all('SELECT * FROM cron_list ORDER BY sort_order, created_at');
   }
 
@@ -481,51 +389,51 @@ export class CronStoreService implements OnModuleInit {
     return { id: row['id'], name: row['name'], icon: row['icon'], color: row['color'] };
   }
 
-  createList(name: string, icon = 'list-checks', color = '#FF5000'): Row | null {
+  async createList(name: string, icon = 'list-checks', color = '#FF5000'): Promise<Row | null> {
     const now = this.nowStr();
     const lid = this.uid('l_');
-    const n = Number(this.one('SELECT COUNT(*) c FROM cron_list')?.['c'] || 0);
-    this.run(
+    const n = Number((await this.one('SELECT COUNT(*) c FROM cron_list'))?.['c'] || 0);
+    await this.run(
       'INSERT INTO cron_list(id,name,icon,color,sort_order,created_at,updated_at)' +
-        ' VALUES(?,?,?,?,?,?,?)',
+        ' VALUES($1,$2,$3,$4,$5,$6,$7)',
       lid, name || '未命名', icon, color, n, now, now,
     );
     return this.getList(lid);
   }
 
-  getList(lid: string): Row | null {
-    return this.one('SELECT * FROM cron_list WHERE id=?', lid) || null;
+  async getList(lid: string): Promise<Row | null> {
+    return (await this.one('SELECT * FROM cron_list WHERE id=$1', lid)) || null;
   }
 
-  updateList(lid: string, kw: Record<string, unknown>): Row | null {
+  async updateList(lid: string, kw: Record<string, unknown>): Promise<Row | null> {
     const fields = ['name', 'icon', 'color', 'sort_order']
       .filter((k) => k in kw && kw[k] != null)
       .reduce((o, k) => ((o[k] = kw[k]), o), {} as Record<string, unknown>);
     if (!Object.keys(fields).length) return this.getList(lid);
     fields['updated_at'] = this.nowStr();
     const cols = Object.keys(fields);
-    this.run(
-      `UPDATE cron_list SET ${cols.map((c) => `${c}=?`).join(',')} WHERE id=?`,
+    await this.run(
+      `UPDATE cron_list SET ${cols.map((c) => `${c}=$${cols.indexOf(c) + 1}`).join(',')} WHERE id=$${cols.length + 1}`,
       ...cols.map((c) => fields[c]),
       lid,
     );
     return this.getList(lid);
   }
 
-  deleteList(lid: string): [boolean, string] {
-    const n = Number(this.one('SELECT COUNT(*) c FROM cron_item WHERE list_id=?', lid)?.['c'] || 0);
+  async deleteList(lid: string): Promise<[boolean, string]> {
+    const n = Number((await this.one('SELECT COUNT(*) c FROM cron_item WHERE list_id=$1', lid))?.['c'] || 0);
     if (n) return [false, `列表下还有 ${n} 条事项，先删掉或移走`];
-    this.run('DELETE FROM cron_list WHERE id=?', lid);
+    await this.run('DELETE FROM cron_list WHERE id=$1', lid);
     return [true, '已删除列表'];
   }
 
   // ------------------------------------------------------------ 事项 CRUD
-  listItems(): Row[] {
+  async listItems(): Promise<Row[]> {
     return this.all('SELECT * FROM cron_item ORDER BY created_at');
   }
 
-  getItem(iid: string): Row | null {
-    return this.one('SELECT * FROM cron_item WHERE id=?', iid) || null;
+  async getItem(iid: string): Promise<Row | null> {
+    return (await this.one('SELECT * FROM cron_item WHERE id=$1', iid)) || null;
   }
 
   apiItem(row: Row, linkState = '', hasOpenRun = false): object {
@@ -559,19 +467,19 @@ export class CronStoreService implements OnModuleInit {
     };
   }
 
-  createItem(
+  async createItem(
     title: string, listId: string, note = '', remindAt = '', flag = 0,
     repeat: unknown = {}, taskId = '', autoRun = 0, taskArgs: unknown = {},
     remindTimes: string[] = [], timeout = 0, queueRun = 0,
-  ): Row | null {
+  ): Promise<Row | null> {
     const now = this.nowStr();
     const { type, interval, by, end } = this.normalizeRule(repeat);
     const iid = this.uid('i_');
-    this.run(
+    await this.run(
       'INSERT INTO cron_item(id,list_id,title,note,status,flag,remind_at,' +
         ' repeat_type,repeat_interval,repeat_by,repeat_end,' +
         ' task_id,task_args,auto_run,remind_times,timeout,queue_run,created_at,updated_at)' +
-        ' VALUES(?,?,?,?,\'open\',?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+        ' VALUES($1,$2,$3,$4,\'open\',$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)',
       iid, listId, title || '未命名', note || '', flag ? 1 : 0, remindAt || '',
       type, interval, by, end, taskId || '',
       JSON.stringify(taskArgs || {}), autoRun ? 1 : 0, JSON.stringify(remindTimes || []), Number(timeout) || 0, queueRun ? 1 : 0, now, now,
@@ -579,8 +487,8 @@ export class CronStoreService implements OnModuleInit {
     return this.getItem(iid);
   }
 
-  updateItem(iid: string, kw: Record<string, unknown>): Row | null {
-    const row = this.getItem(iid);
+  async updateItem(iid: string, kw: Record<string, unknown>): Promise<Row | null> {
+    const row = await this.getItem(iid);
     if (!row) return null;
     const fields: Record<string, unknown> = {};
     for (const k of ['title', 'note', 'remind_at', 'list_id', 'done_at', 'last_run_at',
@@ -603,22 +511,22 @@ export class CronStoreService implements OnModuleInit {
     if (!Object.keys(fields).length) return row;
     fields['updated_at'] = this.nowStr();
     const cols = Object.keys(fields);
-    this.run(
-      `UPDATE cron_item SET ${cols.map((c) => `${c}=?`).join(',')} WHERE id=?`,
+    await this.run(
+      `UPDATE cron_item SET ${cols.map((c) => `${c}=$${cols.indexOf(c) + 1}`).join(',')} WHERE id=$${cols.length + 1}`,
       ...cols.map((c) => fields[c]),
       iid,
     );
     return this.getItem(iid);
   }
 
-  deleteItem(iid: string): boolean {
-    this.run('DELETE FROM cron_item WHERE id=?', iid);
-    this.run('DELETE FROM cron_run WHERE item_id=?', iid);
+  async deleteItem(iid: string): Promise<boolean> {
+    await this.run('DELETE FROM cron_item WHERE id=$1', iid);
+    await this.run('DELETE FROM cron_run WHERE item_id=$1', iid);
     return true;
   }
 
-  setDone(iid: string, done: boolean): Row | null {
-    const row = this.getItem(iid);
+  async setDone(iid: string, done: boolean): Promise<Row | null> {
+    const row = await this.getItem(iid);
     if (!row) return null;
     const nowDt = new Date();
     const fields: Record<string, unknown> = {};
@@ -641,15 +549,14 @@ export class CronStoreService implements OnModuleInit {
       if (row['done_count']) {
         fields['done_count'] = Math.max(0, parseInt(String(row['done_count'] || '0'), 10) - 1);
       }
-      // 重开已完成的一次性多时间事项：重置 remind_at 到今天首个时间，使其可再次触发
       const times = this.parseTimes(row['remind_times']);
       if (!row['remind_at'] && times.length) {
         fields['remind_at'] = this.fmtLocal(this.mkDayTime(new Date(), times[0]));
       }
     }
     const cols = Object.keys(fields);
-    this.run(
-      `UPDATE cron_item SET ${cols.map((c) => `${c}=?`).join(',')} WHERE id=?`,
+    await this.run(
+      `UPDATE cron_item SET ${cols.map((c) => `${c}=$${cols.indexOf(c) + 1}`).join(',')} WHERE id=$${cols.length + 1}`,
       ...cols.map((c) => fields[c]),
       iid,
     );
@@ -657,7 +564,7 @@ export class CronStoreService implements OnModuleInit {
   }
 
   // ------------------------------------------------------------ 任务关联
-  linkTask(iid: string, taskId: string, autoRun?: boolean): Row | null {
+  async linkTask(iid: string, taskId: string, autoRun?: boolean): Promise<Row | null> {
     if (taskId) {
       const kw: Record<string, unknown> = { task_id: taskId };
       if (autoRun != null) kw['auto_run'] = autoRun;
@@ -666,73 +573,65 @@ export class CronStoreService implements OnModuleInit {
     return this.updateItem(iid, { task_id: '', auto_run: 0, task_args: '{}', last_run_status: null });
   }
 
-  unlinkTask(iid: string): Row | null {
+  async unlinkTask(iid: string): Promise<Row | null> {
     return this.linkTask(iid, '');
   }
 
-  itemsLinkedTo(taskId: string): Row[] {
-    return this.all('SELECT id,title FROM cron_item WHERE task_id=?', taskId);
+  async itemsLinkedTo(taskId: string): Promise<Row[]> {
+    return this.all('SELECT id,title FROM cron_item WHERE task_id=$1', taskId);
   }
 
   // ------------------------------------------------------------ 调度查询
-  dueItems(nowStr: string): Row[] {
+  async dueItems(nowStr: string): Promise<Row[]> {
     return this.all(
-      "SELECT * FROM cron_item WHERE auto_run=1 AND status=? AND remind_at IS NOT NULL" +
-        " AND remind_at<>'' AND remind_at<=? ORDER BY remind_at",
+      "SELECT * FROM cron_item WHERE auto_run=1 AND status=$1 AND remind_at IS NOT NULL" +
+        " AND remind_at<>'' AND remind_at<=$2 ORDER BY remind_at",
       STATUS_OPEN, nowStr,
     );
   }
 
-  findRun(itemId: string, dueAt: string | null | undefined): Row | null {
-    return this.one('SELECT * FROM cron_run WHERE fire_key=?', this.fireKey(itemId, dueAt)) || null;
+  async findRun(itemId: string, dueAt: string | null | undefined): Promise<Row | null> {
+    return (await this.one('SELECT * FROM cron_run WHERE fire_key=$1', this.fireKey(itemId, dueAt))) || null;
   }
 
-  /** 占位式领取一次触发；fire_key UNIQUE 约束保证并发去重（违反时抛错，由调用方捕获）。 */
-  claimRun(itemId: string, dueAt: string | null | undefined, runId: string, attempt = 1): Row | null {
-    this.run(
+  /** 占位式领取一次触发；fire_key UNIQUE 约束保证并发去重（违反时由 ON CONFLICT DO NOTHING 兜底）。 */
+  async claimRun(itemId: string, dueAt: string | null | undefined, runId: string, attempt = 1): Promise<Row | null> {
+    await this.run(
       'INSERT INTO cron_run(item_id,fire_key,due_at,started_at,status,attempt,run_id)' +
-        ' VALUES(?,?,?,?,?,?,?)',
+        ' VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT(fire_key) DO NOTHING',
       itemId, this.fireKey(itemId, dueAt), dueAt, this.nowFull(),
       RUN_RUNNING, attempt, runId,
     );
     return this.findRun(itemId, dueAt);
   }
 
-  markMissed(itemId: string, dueAt: string | null | undefined, message: string): Row | null {
-    try {
-      this.run(
-        'INSERT INTO cron_run(item_id,fire_key,due_at,started_at,finished_at,' +
-          ' status,attempt,message) VALUES(?,?,?,?,?,?,0,?)',
-        itemId, this.fireKey(itemId, dueAt), dueAt, this.nowFull(), this.nowFull(),
-        RUN_MISSED, message,
-      );
-    } catch {
-      return null;
-    }
+  async markMissed(itemId: string, dueAt: string | null | undefined, message: string): Promise<Row | null> {
+    await this.run(
+      'INSERT INTO cron_run(item_id,fire_key,due_at,started_at,finished_at,' +
+        ' status,attempt,message) VALUES($1,$2,$3,$4,$5,$6,0,$7) ON CONFLICT(fire_key) DO NOTHING',
+      itemId, this.fireKey(itemId, dueAt), dueAt, this.nowFull(), this.nowFull(),
+      RUN_MISSED, message,
+    );
     return this.findRun(itemId, dueAt);
   }
 
-  markSkipped(itemId: string, dueAt: string | null | undefined, message: string): Row | null {
-    try {
-      this.run(
-        'INSERT INTO cron_run(item_id,fire_key,due_at,started_at,finished_at,' +
-          ' status,attempt,message) VALUES(?,?,?,?,?,?,0,?)',
-        itemId, this.fireKey(itemId, dueAt), dueAt, this.nowFull(), this.nowFull(),
-        RUN_SKIPPED, message,
-      );
-    } catch {
-      return null;
-    }
+  async markSkipped(itemId: string, dueAt: string | null | undefined, message: string): Promise<Row | null> {
+    await this.run(
+      'INSERT INTO cron_run(item_id,fire_key,due_at,started_at,finished_at,' +
+        ' status,attempt,message) VALUES($1,$2,$3,$4,$5,$6,0,$7) ON CONFLICT(fire_key) DO NOTHING',
+      itemId, this.fireKey(itemId, dueAt), dueAt, this.nowFull(), this.nowFull(),
+      RUN_SKIPPED, message,
+    );
     return this.findRun(itemId, dueAt);
   }
 
-  finishRun(itemId: string, dueAt: string | null | undefined, status: string, message = ''): void {
-    this.run(
-      'UPDATE cron_run SET status=?, finished_at=?, message=?, retry_at=NULL WHERE fire_key=?',
+  async finishRun(itemId: string, dueAt: string | null | undefined, status: string, message = ''): Promise<void> {
+    await this.run(
+      'UPDATE cron_run SET status=$1, finished_at=$2, message=$3, retry_at=NULL WHERE fire_key=$4',
       status, this.nowFull(), message || '', this.fireKey(itemId, dueAt),
     );
-    this.run(
-      'UPDATE cron_item SET last_run_at=?, last_run_status=?, updated_at=? WHERE id=?',
+    await this.run(
+      'UPDATE cron_item SET last_run_at=$1, last_run_status=$2, updated_at=$3 WHERE id=$4',
       this.nowFull(), status, this.nowFull(), itemId,
     );
   }
@@ -742,57 +641,56 @@ export class CronStoreService implements OnModuleInit {
     return RETRY_DELAYS[idx];
   }
 
-  scheduleRetry(itemId: string, dueAt: string | null | undefined, attempt: number, message = ''): boolean {
+  async scheduleRetry(itemId: string, dueAt: string | null | undefined, attempt: number, message = ''): Promise<boolean> {
     const delay = this.retryDelayFor(attempt);
     const retryAt = new Date(Date.now() + delay * 1000).toISOString().slice(0, 19).replace('T', ' ');
-    this.run(
-      'UPDATE cron_run SET status=?, attempt=?, message=?, retry_at=? WHERE fire_key=?',
+    await this.run(
+      'UPDATE cron_run SET status=$1, attempt=$2, message=$3, retry_at=$4 WHERE fire_key=$5',
       RUN_RETRYING, attempt, message || '', retryAt, this.fireKey(itemId, dueAt),
     );
     return true;
   }
 
-  retryDue(nowStr?: string): Row[] {
+  async retryDue(nowStr?: string): Promise<Row[]> {
     const now = nowStr || new Date().toISOString().slice(0, 19).replace('T', ' ');
     return this.all(
-      'SELECT * FROM cron_run WHERE status=? AND retry_at IS NOT NULL AND retry_at<=? ORDER BY retry_at',
+      'SELECT * FROM cron_run WHERE status=$1 AND retry_at IS NOT NULL AND retry_at<=$2 ORDER BY retry_at',
       RUN_RETRYING, now,
     );
   }
 
-  openRuns(): Row[] {
+  async openRuns(): Promise<Row[]> {
     return this.all(
-      'SELECT * FROM cron_run WHERE status IN (?,?) ORDER BY id',
+      'SELECT * FROM cron_run WHERE status IN ($1,$2) ORDER BY id',
       RUN_RUNNING, RUN_RETRYING,
     );
   }
 
-  openRunOf(itemId: string): Row | null {
-    return this.one(
-      'SELECT * FROM cron_run WHERE item_id=? AND status IN (?,?) ORDER BY id DESC LIMIT 1',
+  async openRunOf(itemId: string): Promise<Row | null> {
+    return (await this.one(
+      'SELECT * FROM cron_run WHERE item_id=$1 AND status IN ($2,$3) ORDER BY id DESC LIMIT 1',
       itemId, RUN_RUNNING, RUN_RETRYING,
-    ) || null;
+    )) || null;
   }
 
-  markDispatched(itemId: string, dueAt: string | null | undefined, runId: string, attempt: number): Row | null {
-    this.run(
-      'UPDATE cron_run SET status=?, run_id=?, attempt=?, started_at=?, finished_at=NULL,' +
-        ' retry_at=NULL WHERE fire_key=?',
+  async markDispatched(itemId: string, dueAt: string | null | undefined, runId: string, attempt: number): Promise<Row | null> {
+    await this.run(
+      'UPDATE cron_run SET status=$1, run_id=$2, attempt=$3, started_at=$4, finished_at=NULL,' +
+        ' retry_at=NULL WHERE fire_key=$5',
       RUN_RUNNING, runId, attempt, this.nowFull(), this.fireKey(itemId, dueAt),
     );
     return this.findRun(itemId, dueAt);
   }
 
-  itemRuns(itemId: string, limit = 10): Row[] {
-    return this.all('SELECT * FROM cron_run WHERE item_id=? ORDER BY id DESC LIMIT ?', itemId, limit);
+  async itemRuns(itemId: string, limit = 10): Promise<Row[]> {
+    return this.all('SELECT * FROM cron_run WHERE item_id=$1 ORDER BY id DESC LIMIT $2', itemId, limit);
   }
 
-  advanceAfterRun(iid: string): Row | null {
-    const row = this.getItem(iid);
+  async advanceAfterRun(iid: string): Promise<Row | null> {
+    const row = await this.getItem(iid);
     if (!row) return null;
     const rule = this.ruleOf(row);
     const times = this.parseTimes(row['remind_times']);
-    // 多时间（custom 除外）：同一天按时间列表推进，跨天/跨周期跳到下一日的首个时间
     if (rule.type !== 'custom' && times.length) {
       const fromDue = this.parseDt(String(row['remind_at'] || ''));
       const now = new Date();
@@ -813,12 +711,11 @@ export class CronStoreService implements OnModuleInit {
           if (rule.type === 'none') {
             return this.updateItem(iid, { status: STATUS_DONE, done_at: this.nowStr(), remind_at: null });
           }
-          return row; // 周期已结束，保持现状
+          return row;
         }
         return this.updateItem(iid, { remind_at: this.fmtLocal(next) });
       }
     }
-    // 原逻辑（无多时间 / custom）：按 remind_at 单一时刻推进
     if (rule.type !== 'none') {
       const nxt = this.computeNextDue(rule, String(row['remind_at'] || this.nowStr()), new Date());
       return this.updateItem(iid, { remind_at: nxt ? this.fmtLocal(nxt) : row['remind_at'] });
@@ -826,8 +723,8 @@ export class CronStoreService implements OnModuleInit {
     return row;
   }
 
-  settleSuccess(iid: string): Row | null {
-    const row = this.getItem(iid);
+  async settleSuccess(iid: string): Promise<Row | null> {
+    const row = await this.getItem(iid);
     if (!row) return null;
     if (this.ruleOf(row).type === 'none') {
       return this.updateItem(iid, { status: STATUS_DONE, done_at: this.nowStr() });
@@ -835,13 +732,13 @@ export class CronStoreService implements OnModuleInit {
     return this.advanceAfterRun(iid);
   }
 
-  pruneRuns(keepDays = 30): void {
+  async pruneRuns(keepDays = 30): Promise<void> {
     const cutoff = new Date(Date.now() - keepDays * 86400000).toISOString().slice(0, 19).replace('T', ' ');
-    this.run('DELETE FROM cron_run WHERE finished_at IS NOT NULL AND finished_at < ?', cutoff);
+    await this.run('DELETE FROM cron_run WHERE finished_at IS NOT NULL AND finished_at < $1', cutoff);
   }
 
   // ------------------------------------------------------------ 导入导出
-  importPayload(payload: unknown): [number, number] {
+  async importPayload(payload: unknown): Promise<[number, number]> {
     const data = (payload || {}) as Record<string, unknown>;
     const lists = (data['lists'] as Record<string, unknown>[]) || [];
     const items = (data['items'] as Record<string, unknown>[]) || [];
@@ -850,9 +747,9 @@ export class CronStoreService implements OnModuleInit {
     let nItem = 0;
     for (const l of lists) {
       try {
-        this.run(
-          'INSERT OR IGNORE INTO cron_list(id,name,icon,color,sort_order,created_at,updated_at)' +
-            ' VALUES(?,?,?,?,?,?,?)',
+        await this.run(
+          'INSERT INTO cron_list(id,name,icon,color,sort_order,created_at,updated_at)' +
+            ' VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT(id) DO NOTHING',
           l['id'] || this.uid('l_'), l['name'] || '未命名', l['icon'] || 'list-checks',
           l['color'] || '#FF5000', nList, now, now,
         );
@@ -863,9 +760,10 @@ export class CronStoreService implements OnModuleInit {
     }
     for (const it of items) {
       try {
-        this.run(
-          'INSERT OR IGNORE INTO cron_item(id,list_id,title,note,status,done_at,' +
-            ' flag,remind_at,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?)',
+        await this.run(
+          'INSERT INTO cron_item(id,list_id,title,note,status,done_at,' +
+            ' flag,remind_at,created_at,updated_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)' +
+            ' ON CONFLICT(id) DO NOTHING',
           it['id'] || this.uid('i_'), it['listId'] || 'l_work', it['title'] || '未命名',
           it['note'] || '', it['done'] ? STATUS_DONE : STATUS_OPEN,
           it['doneAt'] || null, it['flag'] ? 1 : 0, it['remindAt'] || '',

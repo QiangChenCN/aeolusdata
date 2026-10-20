@@ -91,7 +91,7 @@ $services = @(
     },
     @{
         Name = 'Python Compute'; Port = 8900; Dir = 'python'; Log = 'python-compute'
-        Cmd  = $pyVenv; Args = @('-m', 'uvicorn', 'compute_api.main:app', '--host', '127.0.0.1', '--port', '8900')
+        Cmd  = $pyVenv; Args = @('-m', 'gunicorn', '-k', 'uvicorn.workers.UvicornWorker', '-w', '4', '--bind', '127.0.0.1:8900', 'compute_api.main:app')
         NeedModules = $false
     },
     @{

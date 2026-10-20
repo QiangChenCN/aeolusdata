@@ -6,19 +6,42 @@
         <el-option label="全部站点" value="__all__" />
         <el-option v-for="t in teamOptions" :key="t.id" :label="t.name" :value="t.id" />
       </el-select>
+      <div class="dv-range-wrap">
+        <el-date-picker
+          v-model="dateRange"
+          type="daterange"
+          value-format="YYYY-MM-DD"
+          :clearable="false"
+          unlink-panels
+          range-separator="~"
+          start-placeholder="开始日期"
+          end-placeholder="结束日期"
+          :shortcuts="dateShortcuts"
+          :disabled-date="disableFutureDate"
+        />
+      </div>
+      <el-tag v-if="isHistory" type="warning" size="small" effect="dark" class="dv-hist-badge">历史数据 · 只读</el-tag>
       <el-button @click="openCfg"><el-icon><Setting /></el-icon> 站点设置</el-button>
-      <el-text v-if="lastUpdated" type="info" size="small" class="dv-updated">
+      <el-text v-if="!isHistory && lastUpdated" type="info" size="small" class="dv-updated">
         更新时间 {{ lastUpdated }}
       </el-text>
+      <el-text v-else-if="isHistory" type="info" size="small" class="dv-updated">
+        数据区间 {{ rangeLabel }}
+      </el-text>
       <span class="sp" />
-      <el-select v-if="autoRefresh" v-model="intervalSec" class="dv-sel" style="width: 120px" @change="restartPoll">
-        <el-option label="5 分钟" :value="300" />
-        <el-option label="10 分钟" :value="600" />
-        <el-option label="15 分钟" :value="900" />
-      </el-select>
-      <el-switch v-model="autoRefresh" inline-prompt active-text="自动" inactive-text="手动" @change="onAutoToggle" />
-      <el-button :loading="loading" :disabled="cooldownRemaining > 0" class="dv-refresh-btn" @click="load(false, true, true)">
-        <template v-if="autoRefresh">
+      <template v-if="!isHistory">
+        <el-select v-if="autoRefresh" v-model="intervalSec" class="dv-sel" style="width: 120px" @change="restartPoll">
+          <el-option label="5 分钟" :value="300" />
+          <el-option label="10 分钟" :value="600" />
+          <el-option label="15 分钟" :value="900" />
+        </el-select>
+        <el-switch v-model="autoRefresh" inline-prompt active-text="自动" inactive-text="手动" @change="onAutoToggle" />
+      </template>
+      <el-button :loading="loading" :disabled="isHistory || cooldownRemaining > 0" class="dv-refresh-btn" @click="load(false, true, true)">
+        <template v-if="isHistory">
+          历史只读
+        </template>
+        <template v-else-if="autoRefresh">
           <span class="dv-cd">（{{ countdown }}s）</span>
         </template>
         <template v-else-if="cooldownRemaining > 0">
@@ -38,6 +61,7 @@
     </el-alert>
     <el-alert v-else-if="dataNote" type="warning" :closable="false" show-icon class="dv-hint">{{ dataNote }}</el-alert>
     <el-alert v-if="refreshNote" type="error" :closable="false" show-icon class="dv-hint">{{ refreshNote }}</el-alert>
+    <el-alert v-if="isHistory && periodNote" type="info" :closable="false" show-icon class="dv-hint">{{ periodNote }}</el-alert>
 
     <!-- KPI 汇总卡片（随选中站点聚合，全部站点=各站求和后重算比率） -->
     <div v-if="cards.length" class="dv-cards">
@@ -68,7 +92,7 @@
         stripe
         border
         class="dv-table"
-        empty-text="暂无实时数据"
+        :empty-text="isHistory ? '该区间暂无历史数据（历史明细自启用日起按日落库累积）' : '暂无实时数据'"
         height="100%"
         :default-sort="{ prop: 'pushed_order_volume', order: 'descending' }"
       >
@@ -123,6 +147,21 @@
               <el-text :class="['rt', { 'dv-zero': num(row.compound_overtime_score) === 0, 'is-bad': scoreBelowFull(row.compound_overtime_score) }]">{{ fmtMin(row.compound_overtime_score) }}</el-text>
             </template>
           </el-table-column>
+          <el-table-column label="电联率得分" align="center" sortable :sort-method="rateSort('call_rate_score')" className="dv-g-score">
+            <template #default="{ row }">
+              <el-text :class="['rt', { 'dv-zero': num(row.call_rate_score) === 0, 'is-bad': scoreBelowFull(row.call_rate_score) }]">{{ fmtMin(row.call_rate_score) }}</el-text>
+            </template>
+          </el-table-column>
+          <el-table-column label="IM及时回复率得分" align="center" sortable :sort-method="rateSort('im_reply_rate_score')" className="dv-g-score">
+            <template #default="{ row }">
+              <el-text :class="['rt', { 'dv-zero': num(row.im_reply_rate_score) === 0, 'is-bad': scoreBelowFull(row.im_reply_rate_score) }]">{{ fmtMin(row.im_reply_rate_score) }}</el-text>
+            </template>
+          </el-table-column>
+          <el-table-column label="商家拜访率得分" align="center" sortable :sort-method="rateSort('visit_rate_score')" className="dv-g-score">
+            <template #default="{ row }">
+              <el-text :class="['rt', { 'dv-zero': num(row.visit_rate_score) === 0, 'is-bad': scoreBelowFull(row.visit_rate_score) }]">{{ fmtMin(row.visit_rate_score) }}</el-text>
+            </template>
+          </el-table-column>
         </el-table-column>
         <el-table-column label="达成率" className="dv-grp-rate">
           <el-table-column label="T8准时率" align="center" sortable :sort-method="rateSort('t8_ontime_rate')" className="dv-g-rate">
@@ -143,6 +182,21 @@
           <el-table-column label="复合超时时长(秒)" align="center" sortable :sort-method="rateSort('avg_compound_overtime_sec')" className="dv-g-rate">
             <template #default="{ row }">
               <el-text :class="['rt', targetCls(row.avg_compound_overtime_sec, row.compound_tiers, 'neg'), { 'dv-zero': num(row.avg_compound_overtime_sec) === 0 }]">{{ fmtMin(row.avg_compound_overtime_sec) }}</el-text>
+            </template>
+          </el-table-column>
+          <el-table-column label="电联率" align="center" sortable :sort-method="rateSort('call_rate')" className="dv-g-rate">
+            <template #default="{ row }">
+              <span class="rt" :class="targetCls(row.call_rate, row.call_rate_tiers, 'pos')">{{ fmtRate(row.call_rate) }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="IM及时回复率" align="center" sortable :sort-method="rateSort('im_reply_rate')" className="dv-g-rate">
+            <template #default="{ row }">
+              <span class="rt" :class="targetCls(row.im_reply_rate, row.im_reply_rate_tiers, 'pos')">{{ fmtRate(row.im_reply_rate) }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="商家拜访率" align="center" sortable :sort-method="rateSort('visit_rate')" className="dv-g-rate">
+            <template #default="{ row }">
+              <span class="rt" :class="targetCls(row.visit_rate, row.visit_rate_tiers, 'pos')">{{ fmtRate(row.visit_rate) }}</span>
             </template>
           </el-table-column>
         </el-table-column>
@@ -219,7 +273,7 @@
       </template>
 
 <script setup>
-import { computed, onMounted, onUnmounted, ref } from 'vue';
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { ElMessage } from 'element-plus';
 
 import { fetchTeams, fetchAssessmentStation, refreshAssessment, refreshAssessmentDelivery, fetchRefreshCooldown, markRefreshCooldown, fetchAssessmentTeams, saveAssessmentTeams, fetchServiceQualityTargets, fetchAssessmentAutoConfig, saveAssessmentAutoConfig } from '../api/dashboards.js';
@@ -247,7 +301,16 @@ const DRILL = {
 function drillTo(row, metric) {
   const d = DRILL[metric];
   if (!d || num(row[metric]) === 0) return;
-  const q = { tab: 'realtime', site: row.team_name, status: '10' };
+  // 历史模式下钻 → 违规处罚「月累计」页签 + 传入日期区间（看历史明细）；
+  // 实时模式仍走「实时」页签（原行为）。
+  const q = { site: row.team_name, status: '10' };
+  if (isHistory.value) {
+    q.tab = 'monthly';
+    q.start = rangeStart();
+    q.end = rangeEnd();
+  } else {
+    q.tab = 'realtime';
+  }
   if (d.cat) q.cat = d.cat;
   if (d.type) q.type = d.type;
   router.push({ name: 'unsatisfied', query: q });
@@ -461,7 +524,7 @@ const agg = computed(() => {
 const cards = computed(() => {
   // 分层目标：与表格列同源 —— 按今日日型 × 所展示站点最严天气档位取 t0/t60/t100，直接比较。
   // 目标配置未拉到/未配置时 tiers 为空，卡片按 is-none 灰色显示（不臆断好坏）。
-  const dateType = resolveDateType(todayYmd());
+  const dateType = resolveDateType(rangeEnd());
   const weather = worstWeatherKey();
   const clsOf = (metric, value, direction) =>
     targetCls(value, metricTiers(metric, dateType, weather), direction);
@@ -676,6 +739,55 @@ function worstWeatherKey() {
 function todayYmd() {
   return new Date(Date.now() + 8 * 3600 * 1000).toISOString().slice(0, 10);
 }
+/* 昨天（北京时间 T-1）：看板默认展示昨日已完结的考核（较今日实时更稳定）。 */
+function yesterYmd() {
+  return new Date(Date.now() + 8 * 3600 * 1000 - 24 * 3600 * 1000).toISOString().slice(0, 10);
+}
+
+/* ── 日期选择（实时 / 历史）────────────────────────────────────────────
+   dateRange = [start, end]（YYYY-MM-DD，el-date-picker value-format 直出字符串）。
+   默认 [今天, 今天] = 实时模式（SSE / 自动刷新可用）；
+   选历史区间或过去单日 = 历史模式（只读：禁用刷新与轮询，标注「历史数据」）。 */
+const dateRange = ref([todayYmd(), todayYmd()]);
+function rangeStart() {
+  const v = dateRange.value && dateRange.value[0];
+  return v || todayYmd();
+}
+function rangeEnd() {
+  const v = dateRange.value && dateRange.value[1];
+  return v || todayYmd();
+}
+/* 实时模式：选中区间末日==今天且为单日；其余（历史区间 / 过去单日）为历史模式。 */
+const isHistory = computed(() => !(rangeStart() === rangeEnd() && rangeEnd() === todayYmd()));
+const rangeLabel = computed(() => (rangeStart() === rangeEnd() ? rangeStart() : `${rangeStart()} ~ ${rangeEnd()}`));
+
+/* 日期选择器快捷项（Element Plus shortcuts 的 value 返回 Date/Date[]，经 value-format 归一为字符串）。 */
+const dateShortcuts = [
+  { text: '今天', value: () => [new Date(), new Date()] },
+  { text: '近 7 天', value: () => { const e = new Date(); const s = new Date(); s.setDate(s.getDate() - 6); return [s, e]; } },
+  { text: '近 30 天', value: () => { const e = new Date(); const s = new Date(); s.setDate(s.getDate() - 29); return [s, e]; } },
+];
+/* 不允许选未来日期（考核数据只可能落在今天及以前）。 */
+function disableFutureDate(time) {
+  const y = time.getFullYear();
+  const m = String(time.getMonth() + 1).padStart(2, '0');
+  const d = String(time.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}` > todayYmd();
+}
+
+/* 分层目标配置按所选区间「末日所在月份」取（历史模式下用历史月份的目标线）。 */
+async function loadSqTargets(month) {
+  try {
+    const sq = await fetchServiceQualityTargets(month);
+    if (sq && sq.ok) {
+      sqTargets.value = sq.targets || null;
+      sqDateOverrides.value = sq.date_overrides || {};
+    }
+  } catch (e) { /* ignore：目标配置不可用时卡片不着色 */ }
+}
+
+/* 历史区间「无明细数据」提示（区别于实时的未落盘 no_data）。 */
+const periodNote = ref('');
 
 async function load(silent = false, fetch = false, manual = false) {
   loading.value = true;
@@ -683,6 +795,10 @@ async function load(silent = false, fetch = false, manual = false) {
   hasError.value = false;
   errorMsg.value = '';
   noData.value = false;
+  periodNote.value = '';
+  const history = isHistory.value;
+  const start = rangeStart();
+  const end = rangeEnd();
   try {
     const ids = teamSel.value === '__all__'
       ? teamOptions.value.map((t) => t.id)
@@ -690,9 +806,10 @@ async function load(silent = false, fetch = false, manual = false) {
     attempted.value = ids.length;
     // 取数触发条件（fetch）：手动刷新（manual=true）与自动轮询都要「取数 + 计算」；
     // 仅页面加载（fetch=false）只读已落盘数据并重新计算，不触发取数。
-    // 手动冷却（manual）只针对用户点刷新按钮：manual=true 时后端走 1 分钟冷却，
-    // 冷却中返回 {cooldown}，成功返回 {remaining_sec}；自动轮询 manual=false 不受冷却限制。
-    if (fetch) {
+    // 历史模式为只读：绝不触发取数（fetch 被忽略），只按区间读历史库重算。
+    if (fetch && !history) {
+      // 手动冷却（manual）只针对用户点刷新按钮：manual=true 时后端走 1 分钟冷却，
+      // 冷却中返回 {cooldown}，成功返回 {remaining_sec}；自动轮询 manual=false 不受冷却限制。
       // 违规 + 运单两路取数并发触发（互不依赖、落盘到不同文件），最后统一回读重算。
       // 各自 catch 内部错误，保证一路失败不影响另一路，且 Promise.all 不会整体 reject。
       const [violationRes, deliveryRes] = await Promise.all([
@@ -731,7 +848,7 @@ async function load(silent = false, fetch = false, manual = false) {
     }
     // 一次批量取回全部站点（替代逐站 N 次请求）；后端按 teams 聚合返回 rows 数组。
     // 注意：首刷后全站 cache miss 会触发整批重算，耗时明显，dashboards.js 已给该接口设了 30s 超时。
-    const resp = await fetchAssessmentStation({ teams: ids }).catch((e) => {
+    const resp = await fetchAssessmentStation({ teams: ids, start, end }).catch((e) => {
       // 请求层异常（网络/超时/5xx）：显式进入错误态，不再静默吞成「空表」或误判「未落盘」。
       hasError.value = true;
       errorMsg.value = (e && e.message) || '读取考核数据失败（网络或超时），请稍后重试';
@@ -745,6 +862,10 @@ async function load(silent = false, fetch = false, manual = false) {
       if (resp.data_status === 'no_data') {
         isNoData = true;
         if (resp.data_note) noDataNoteText = resp.data_note;
+      }
+      // 历史区间无明细（尚未落库）：只读提示，不触发取数。
+      if (history && resp.data_status === 'empty' && resp.data_note) {
+        periodNote.value = resp.data_note;
       }
       for (const row of resp.rows) {
         if (!row) continue;
@@ -762,8 +883,11 @@ async function load(silent = false, fetch = false, manual = false) {
     noDataNote.value = noDataNoteText;
     // 「更新时间」= 数据实际取数/落盘时间（后端 fetched_at，北京时间）。
     // 刷新页面（仅读盘重算）不再跳动，只有真正重新取数、底层数据文件被覆盖写后才更新。
-    const times = resp && resp.fetched_at ? [resp.fetched_at] : [];
-    if (times.length) lastUpdated.value = times.reduce((a, b) => (a > b ? a : b));
+    // 历史模式 fetched_at 为 null（数据来自历史库），不更新「更新时间」，改由区间标签标识。
+    if (!history) {
+      const times = resp && resp.fetched_at ? [resp.fetched_at] : [];
+      if (times.length) lastUpdated.value = times.reduce((a, b) => (a > b ? a : b));
+    }
   } catch (e) {
     if (!silent) ElMessage.error(e.message || '加载失败');
     if (!silent) rows.value = [];
@@ -783,13 +907,7 @@ onMounted(async () => {
   } catch (e) { /* ignore：取不到配置则回落全部站点 */ }
   // 分层目标配置（考核设置：日期类型 × 天气的三档阈值）：供顶部卡片按目标算分着色。
   // 取不到时卡片得分为 null → 灰色，不影响数值展示；后端保存设置后需刷新页面才会拿到新阈值。
-  try {
-    const sq = await fetchServiceQualityTargets(todayYmd().slice(0, 7));
-    if (sq && sq.ok) {
-      sqTargets.value = sq.targets || null;
-      sqDateOverrides.value = sq.date_overrides || {};
-    }
-  } catch (e) { /* ignore：目标配置不可用时卡片不着色 */ }
+  await loadSqTargets(todayYmd().slice(0, 7));
   // 页面加载时从后端恢复手动刷新冷却剩余（后端持久化，刷新页面不失效）
   try {
     const s = await fetchRefreshCooldown();
@@ -808,8 +926,21 @@ onMounted(async () => {
   // 页面加载即读盘展示：避免打开看板空白、要等最长 600s 自动取数推 updated 才出数。
   // fetch=false → 只读盘重算（不触发取数）；若返回 no_data（尚未落盘）上方信息栏会引导刷新，自动取数也会兜底。
   await load(false, false, false);
-  initSse();
-  applyPoll();
+  if (!isHistory.value) { initSse(); applyPoll(); }
+});
+
+/* 日期切换：按新区间末日所在月份重取目标线；历史模式停掉实时轮询/SSE，实时模式恢复；随后重载。 */
+watch(dateRange, () => {
+  void loadSqTargets(rangeEnd().slice(0, 7));
+  if (isHistory.value) {
+    stopPoll();
+    if (es) { es.close(); es = null; }
+    sseConnected.value = false;
+  } else {
+    if (!es) initSse();
+    applyPoll();
+  }
+  load(false, false, false);
 });
 
 onUnmounted(() => {
@@ -825,6 +956,15 @@ onUnmounted(() => {
 .dv-bar { display: flex; align-items: center; gap: var(--sp-12); margin-bottom: var(--sp-16); flex-wrap: wrap; }
 .v-title { margin: 0; font-size: var(--el-font-size-extra-large); }
 .dv-sel { width: 160px; }
+/* daterange 真实宽度由 EP 变量 --el-date-editor-daterange-width(默认 350px) 控制，且 class
+   不透传到 date-picker 根元素；用外层包裹 + :deep 命中 .el-date-editor 改该变量（与
+   UnsatisfiedView / ImContactView 同款写法）。flex:none 防窄屏被拉伸。 */
+.dv-range-wrap { flex: 0 0 auto; }
+.dv-range-wrap :deep(.el-date-editor) {
+  --el-date-editor-daterange-width: 220px !important;
+  width: 220px !important;
+}
+.dv-hist-badge { margin: 0 var(--sp-4); font-weight: 600; letter-spacing: 0.5px; }
 .dv-bar .sp { flex: 1; }
 .dv-updated { margin-left: var(--sp-4); white-space: nowrap; }
 .dv-hint { margin-bottom: var(--sp-12); }

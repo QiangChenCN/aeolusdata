@@ -19,41 +19,45 @@ export class CronController {
   ) {}
 
   @Get('cron')
-  getCron() {
-    const items = this.store.listItems().map((it) =>
-      this.store.apiItem(
-        it,
-        it['task_id'] ? this.registry.linkState(String(it['task_id'])) : '',
-        !!this.store.openRunOf(String(it['id'])),
+  async getCron() {
+    const items = await this.store.listItems();
+    const itemOuts = await Promise.all(
+      items.map(async (it) =>
+        this.store.apiItem(
+          it,
+          it['task_id'] ? this.registry.linkState(String(it['task_id'])) : '',
+          !!(await this.store.openRunOf(String(it['id']))),
+        ),
       ),
     );
+    const lists = (await this.store.listLists()).map((l) => this.store.apiList(l));
     return {
       ok: true,
       cron: {
-        lists: this.store.listLists().map((l) => this.store.apiList(l)),
-        items,
+        lists,
+        items: itemOuts,
         scheduler: {
           running: this.scheduler.isAlive(),
           catchup_grace_min: CATCHUP_GRACE_SEC / 60,
           max_attempts: MAX_ATTEMPTS,
-          auto_paused: this.store.getMeta('auto_paused', '0') === '1',
+          auto_paused: (await this.store.getMeta('auto_paused', '0')) === '1',
         },
       },
     };
   }
 
   @Get('cron/runs')
-  getRuns(@Query('item_id') itemId = '', @Query('limit') limit = '20') {
+  async getRuns(@Query('item_id') itemId = '', @Query('limit') limit = '20') {
     const lim = Math.max(1, Math.min(50, parseInt(limit, 10) || 20));
-    return { ok: true, runs: this.store.itemRuns(itemId, lim) };
+    return { ok: true, runs: await this.store.itemRuns(itemId, lim) };
   }
 
   @Post('cron/lists')
-  postLists(@Body() data: Record<string, unknown>) {
+  async postLists(@Body() data: Record<string, unknown>) {
     const op = data['op'];
     try {
       if (op === 'create') {
-        const r = this.store.createList(
+        const r = await this.store.createList(
           (String(data['name'] || '').trim()) || '新列表',
           (data['icon'] as string) || 'list-checks',
           (data['color'] as string) || '#FF5000',
@@ -62,14 +66,14 @@ export class CronController {
         return { ok: true, list: r };
       }
       if (op === 'update') {
-        const r = this.store.updateList(String(data['id']), {
+        const r = await this.store.updateList(String(data['id']), {
           name: data['name'], icon: data['icon'], color: data['color'],
         });
         this.broadcast();
         return { ok: !!r, list: r };
       }
       if (op === 'delete') {
-        const [ok, msg] = this.store.deleteList(String(data['id']));
+        const [ok, msg] = await this.store.deleteList(String(data['id']));
         if (ok) this.broadcast();
         return { ok, error: ok ? null : msg };
       }
@@ -80,12 +84,12 @@ export class CronController {
   }
 
   @Post('cron/items')
-  postItems(@Body() data: Record<string, unknown>) {
+  async postItems(@Body() data: Record<string, unknown>) {
     const op = data['op'];
     try {
       if (op === 'create') {
-        const lid = (data['list_id'] as string) || this.defaultList();
-        const r = this.store.createItem(
+        const lid = (data['list_id'] as string) || (await this.defaultList());
+        const r = await this.store.createItem(
           String(data['title'] || '').trim(),
           lid,
           (data['note'] as string) || '',
@@ -100,7 +104,7 @@ export class CronController {
           data['queue_run'] as number,
         );
         this.broadcast();
-        return { ok: true, item: this.itemOut(r) };
+        return { ok: true, item: await this.itemOut(r) };
       }
       if (op === 'update') {
         if (!data['id']) return { ok: false, error: '缺少 id' };
@@ -110,24 +114,24 @@ export class CronController {
           if (k in data) kw[k] = data[k];
         }
         if ('repeat' in data) kw['repeat'] = data['repeat'];
-        const r = this.store.updateItem(String(data['id']), kw);
+        const r = await this.store.updateItem(String(data['id']), kw);
         this.broadcast();
-        return { ok: !!r, item: this.itemOut(r) };
+        return { ok: !!r, item: await this.itemOut(r) };
       }
       if (op === 'toggle') {
-        const r = this.store.setDone(String(data['id']), !!data['done']);
+        const r = await this.store.setDone(String(data['id']), !!data['done']);
         this.broadcast();
-        return { ok: !!r, item: this.itemOut(r) };
+        return { ok: !!r, item: await this.itemOut(r) };
       }
       if (op === 'delete') {
-        const ok = this.store.deleteItem(String(data['id']));
+        const ok = await this.store.deleteItem(String(data['id']));
         this.broadcast();
         return { ok };
       }
       if (op === 'unlink') {
-        const r = this.store.unlinkTask(String(data['id']));
+        const r = await this.store.unlinkTask(String(data['id']));
         this.broadcast();
-        return { ok: !!r, item: this.itemOut(r) };
+        return { ok: !!r, item: await this.itemOut(r) };
       }
       return { ok: false, error: '未知操作' };
     } catch (e) {
@@ -136,15 +140,15 @@ export class CronController {
   }
 
   @Post('cron/trigger')
-  postTrigger(@Body() data: Record<string, unknown>) {
-    const [ok, msg] = this.scheduler.triggerNow(String(data['item_id']));
+  async postTrigger(@Body() data: Record<string, unknown>) {
+    const [ok, msg] = await this.scheduler.triggerNow(String(data['item_id']));
     return { ok, error: ok ? null : msg };
   }
 
   @Post('cron/import')
-  postImport(@Body() data: Record<string, unknown>) {
+  async postImport(@Body() data: Record<string, unknown>) {
     try {
-      const [lists, items] = this.store.importPayload(data);
+      const [lists, items] = await this.store.importPayload(data);
       return { ok: true, lists, items };
     } catch (e) {
       return { ok: false, error: (e as Error).message };
@@ -153,26 +157,26 @@ export class CronController {
 
   /** 全局「自动执行」总开关：paused=true 暂停所有自动任务的点火与重试，false 恢复。 */
   @Post('cron/auto-paused')
-  postAutoPaused(@Body() data: Record<string, unknown>) {
+  async postAutoPaused(@Body() data: Record<string, unknown>) {
     const paused = !!data['paused'];
-    this.store.setMeta('auto_paused', paused ? '1' : '0');
+    await this.store.setMeta('auto_paused', paused ? '1' : '0');
     this.broadcast();
     return { ok: true, paused };
   }
 
-  private itemOut(row: Row | null): Row | null {
+  private async itemOut(row: Row | null): Promise<Row | null> {
     if (!row) return null;
     return this.store.apiItem(
       row,
       row['task_id'] ? this.registry.linkState(String(row['task_id'])) : '',
-      !!this.store.openRunOf(String(row['id'])),
+      !!(await this.store.openRunOf(String(row['id']))),
     ) as Row;
   }
 
-  private defaultList(): string {
-    const ls = this.store.listLists();
+  private async defaultList(): Promise<string> {
+    const ls = await this.store.listLists();
     if (ls.length) return String(ls[0]['id']);
-    const created = this.store.createList('工作');
+    const created = await this.store.createList('工作');
     return created ? String(created['id']) : 'l_work';
   }
 

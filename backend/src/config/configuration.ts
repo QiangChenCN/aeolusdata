@@ -32,6 +32,11 @@ export const envValidationSchema = Joi.object({
   PROJECT_ROOT: Joi.string().optional(),
   // 任务注册表目录（tasks.json / runs / data）
   WORKBENCH_DIR: Joi.string().optional(),
+  // PostgreSQL 直连接入（方案 B：PGDG 源安装的 PG）。未配置时 PgService 自动跳过，不影响旧部署。
+  // 格式：postgresql://<role>:<password>@<host>:<port>/<db>
+  DATABASE_URL: Joi.string().uri().optional(),
+  // PG 连接池最大连接数（默认 10）
+  PG_POOL_MAX: Joi.number().optional(),
 }).unknown(true);
 
 export interface AppConfig {

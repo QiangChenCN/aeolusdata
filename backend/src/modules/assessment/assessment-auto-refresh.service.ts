@@ -4,6 +4,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { AssessmentViolationFetchService } from './assessment-violation-fetch.service';
 import { AssessmentDeliveryFetchService } from './assessment-delivery-fetch.service';
+import { VisitFetchService } from './visit-fetch.service';
 import { AssessmentEventsService } from './assessment-events.service';
 
 /**
@@ -28,6 +29,7 @@ export class AssessmentAutoRefreshService implements OnModuleInit, OnModuleDestr
   constructor(
     private readonly violationSvc: AssessmentViolationFetchService,
     private readonly deliverySvc: AssessmentDeliveryFetchService,
+    private readonly visitSvc: VisitFetchService,
     private readonly events: AssessmentEventsService,
     private readonly config: ConfigService,
   ) {
@@ -100,6 +102,13 @@ export class AssessmentAutoRefreshService implements OnModuleInit, OnModuleDestr
         this.logger.warn(
           `考核看板自动取数两路均未成功：${v.msg} / ${d.msg}`,
         );
+      }
+      // 商家拜访取数（尽力而为，失败不影响主流程）：落历史库，供历史区间聚合读取。
+      try {
+        const r = await this.visitSvc.fetchAndLand(undefined, date);
+        if (!r.ok) this.logger.warn('考核看板商家拜访取数未成功：' + r.msg);
+      } catch (ve) {
+        this.logger.warn('考核看板商家拜访取数异常：' + (ve as Error).message);
       }
     } catch (e) {
       this.logger.error('考核看板自动取数异常：' + (e as Error).message);

@@ -65,7 +65,7 @@ export class ImContactController {
 
   /** 当前落盘状态（已落盘区间 / 取数时间 / fetch_ok / 累计条数），供前端判断是否需要刷新。 */
   @Get('status')
-  status() {
+  async status() {
     return this.svc.status();
   }
 

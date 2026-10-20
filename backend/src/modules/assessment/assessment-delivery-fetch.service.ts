@@ -2,7 +2,9 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as fs from 'fs';
 import * as path from 'path';
+import { createHash } from 'crypto';
 import { OrdersFetchService, OrderRow } from '../../../fetch/sources/orders-fetch.service';
+import { AssessmentHistoryStoreService } from './assessment-history-store.service';
 
 /**
  * 考核看板 —— 运单明细「自有取数落盘」（2026-10-14 起：考核看板自行落盘运单，
@@ -23,6 +25,22 @@ import { OrdersFetchService, OrderRow } from '../../../fetch/sources/orders-fetc
  */
 const DATA_FILE = '运单明细-实时.json';
 
+/** 运单稳定主键：优先 trackingId / 运单id / orderNo，缺失则回退整行哈希（保底，幂等）。 */
+function deliveryId(o: Record<string, unknown>): string {
+  const v: Record<string, unknown> = o;
+  const cand =
+    v['trackingId'] ?? v['运单id'] ?? v['orderNo'] ?? v['orderId'] ?? v['订单号'];
+  if (cand != null && String(cand).trim()) return String(cand).trim();
+  return 'h' + createHash('sha1').update(JSON.stringify(o)).digest('hex').slice(0, 24);
+}
+
+/** 运单所属站点（团队 id）。 */
+function deliveryTeam(o: Record<string, unknown>): string {
+  const v: Record<string, unknown> = o;
+  const cand = v['teamId'] ?? v['站点id'] ?? v['teamID'];
+  return cand != null ? String(cand).trim() : '';
+}
+
 /** 北京时间 `YYYY-MM-DD HH:MM:SS`（与 Python 同口径）。 */
 function nowStamp(): string {
   const d = new Date(Date.now() + 8 * 3600 * 1000);
@@ -41,6 +59,7 @@ export class AssessmentDeliveryFetchService {
   constructor(
     private readonly config: ConfigService,
     private readonly orders: OrdersFetchService,
+    private readonly history: AssessmentHistoryStoreService,
   ) {
     const root = path.resolve(
       this.config.get<string>('PROJECT_ROOT') || path.resolve(process.cwd(), '..'),
@@ -54,17 +73,22 @@ export class AssessmentDeliveryFetchService {
   }
 
   /**
-   * 拉取今日（实时：截至当前）全站运单明细 → 落盘单文件（覆盖写）。
-   * date 缺省今天。失败写 fetch_ok=false。
+   * 拉取某日全站运单明细 → 落盘。date 缺省今天。
+   *   · 今天：时间窗 = 北京当日 00:00 ~ 当前（实时，截至此刻的今日运单）；
+   *   · 过去日：时间窗 = 北京当日 00:00 ~ 当日 23:59:59（用于历史回填，避免跨多天）。
+   * opts.historyOnly=true：只写历史库、不覆盖实时 JSON（回填用，防止破坏今日看板）。
+   * 失败写 fetch_ok=false（historyOnly 时不写 JSON）。
    */
-  async fetchAndLand(date?: string): Promise<{ ok: boolean; msg: string }> {
+  async fetchAndLand(date?: string, opts?: { historyOnly?: boolean }): Promise<{ ok: boolean; msg: string }> {
     const d =
       date && /^\d{4}-\d{2}-\d{2}$/.test(date)
         ? date
         : new Date(Date.now() + 8 * 3600 * 1000).toISOString().slice(0, 10);
     const [y, mo, day] = d.split('-').map(Number);
     const startMs = Date.UTC(y, mo - 1, day, -8, 0, 0); // 北京当日 00:00:00
-    const endMs = Date.now() + 8 * 3600 * 1000; // 北京现在（实时）
+    const endOfDayMs = Date.UTC(y, mo - 1, day, 16, 0, 0) - 1; // 北京当日 23:59:59.999
+    const endMs = Math.min(Date.now() + 8 * 3600 * 1000, endOfDayMs); // 今日=现在;过去日=当日结束
+    const historyOnly = opts?.historyOnly === true;
 
     let rows: OrderRow[];
     try {
@@ -72,26 +96,35 @@ export class AssessmentDeliveryFetchService {
     } catch (e) {
       const err = `运单取数失败：${(e as Error).message}`;
       this.logger.warn(err);
-      this.writeFailed(d, err);
+      if (!historyOnly) this.writeFailed(d, err);
       return { ok: false, msg: err };
     }
 
-    this.writeOk(d, rows);
-    const msg = `运单 ${rows.length} 条，已落盘 ${this.filePath()}`;
+    await this.writeOk(d, rows, historyOnly);
+    const msg = `运单 ${rows.length} 条` + (historyOnly ? '，已写历史库' : `，已落盘 ${this.filePath()}`);
     this.logger.log(`考核看板运单取数 ${d}：${msg}`);
     return { ok: true, msg };
   }
 
-  private writeOk(date: string, rows: OrderRow[]): void {
-    const payload = {
+  private async writeOk(date: string, rows: OrderRow[], historyOnly = false): Promise<void> {
+    if (!historyOnly) {
+      const payload = {
+        date,
+        fetched_at: nowStamp(),
+        fetch_ok: true,
+        fetch_error: null,
+        total: rows.length,
+        rows,
+      };
+      fs.writeFileSync(this.filePath(), JSON.stringify(payload), 'utf-8');
+    }
+    // 写入历史库（按 order_id + date 幂等 UPSERT），供历史区间聚合读取。
+    await this.history.upsertDeliveries(rows.map((o) => ({
+      id: deliveryId(o),
+      teamId: deliveryTeam(o),
       date,
-      fetched_at: nowStamp(),
-      fetch_ok: true,
-      fetch_error: null,
-      total: rows.length,
-      rows,
-    };
-    fs.writeFileSync(this.filePath(), JSON.stringify(payload), 'utf-8');
+      payload: o,
+    })));
   }
 
   /** 取数失败：仍写文件但置 fetch_ok=false，便于读侧 / 排障识别。 */

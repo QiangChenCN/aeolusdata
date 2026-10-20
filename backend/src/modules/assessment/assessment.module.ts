@@ -5,6 +5,8 @@ import { AssessmentDeliveryFetchService } from './assessment-delivery-fetch.serv
 import { AssessmentCooldownService } from './assessment-cooldown.service';
 import { AssessmentEventsService } from './assessment-events.service';
 import { AssessmentAutoRefreshService } from './assessment-auto-refresh.service';
+import { AssessmentHistoryStoreService } from './assessment-history-store.service';
+import { VisitFetchService } from './visit-fetch.service';
 import { AssessmentController } from './assessment.controller';
 
 /**
@@ -26,6 +28,8 @@ import { AssessmentController } from './assessment.controller';
     AssessmentCooldownService,
     AssessmentEventsService,
     AssessmentAutoRefreshService,
+    AssessmentHistoryStoreService,
+    VisitFetchService,
   ],
   exports: [
     AssessmentViolationFetchService,
@@ -33,6 +37,8 @@ import { AssessmentController } from './assessment.controller';
     AssessmentCooldownService,
     AssessmentEventsService,
     AssessmentAutoRefreshService,
+    AssessmentHistoryStoreService,
+    VisitFetchService,
   ],
 })
 export class AssessmentModule {}

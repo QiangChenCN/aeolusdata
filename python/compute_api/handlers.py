@@ -758,8 +758,16 @@ def _post_ap_teams(self, data):
 def _get_assessment_station(self, qs):
     from analytics.assessment import board as RTB
     from analytics.assessment import result_store as RS
+    from analytics.assessment import period as PERIOD
     from analytics import cache as CACHE
-    date = CACHE.today_ymd()
+    today = CACHE.today_ymd()
+    start = (qs.get("start") or [None])[0] or today
+    end = (qs.get("end") or [None])[0] or today
+    # 单日且为今天 → 实时（build_one，+15 假设）；其余 → 历史区间（build_range 分层加权）。
+    is_realtime = (start == end == today)
+    basis = "day" if is_realtime else "period"
+    mode = "realtime" if is_realtime else "period"
+    key = today if is_realtime else "%s~%s" % (start, end)
     # 支持批量：teams=id1,id2,id3（逗号分隔）一次性取回多站；单站 team=id 保持向后兼容。
     team_param = (qs.get("team") or [None])[0]
     teams_param = (qs.get("teams") or [None])[0]
@@ -779,15 +787,16 @@ def _get_assessment_station(self, qs):
         rows = []
         for team in team_ids:
             try:
-                row = RTB.build_one(team, date)
+                row = RTB.build_one(team, today) if is_realtime else PERIOD.build_range(team, start, end)
             except Exception:
                 continue  # 单站计算异常不拖垮整批，该站不出现于结果
-            RS.save_result("station", team, date, row)
+            RS.save_result("station", team, key, row)
             rows.append(row)
         # 顶层状态：任一站 no_data（含本次拉取失败）→ no_data（前端弹「未落盘」横幅）；
         # 否则任一站 partial → partial；否则 ok。data_note 取首个 no_data 站的说明。
         any_no_data = any((r.get("need_refresh") or r.get("data_status") == "no_data") for r in rows)
         any_partial = any(r.get("data_status") == "partial" for r in rows)
+        any_empty = bool(rows) and all(r.get("data_status") == "empty" for r in rows)
         if any_no_data:
             data_note = next((r.get("data_note") for r in rows
                              if (r.get("need_refresh") or r.get("data_status") == "no_data")
@@ -795,12 +804,15 @@ def _get_assessment_station(self, qs):
             data_status, need_refresh = "no_data", True
         elif any_partial:
             data_status, need_refresh, data_note = "partial", False, None
+        elif any_empty:
+            data_status, need_refresh = "empty", False
+            data_note = next((r.get("data_note") for r in rows if r.get("data_note")), None)
         else:
             data_status, need_refresh, data_note = "ok", False, None
         self._json({
             "ok": True,
             "teams": team_ids,
-            "start": date, "end": date, "basis": "day",
+            "start": start, "end": end, "basis": basis, "mode": mode,
             "rows": rows,
             # 不能写死 ok：行里可能是 partial（违规明细不可用，运单指标仍有效）。
             "data_status": data_status,
@@ -808,11 +820,11 @@ def _get_assessment_station(self, qs):
             "need_refresh": need_refresh,
             # 更新时间：考核数据（违规明细 + 运单明细两份全站单文件）最近一次取数/落盘时间；
             # 前端据此展示「更新时间」，刷新页面（仅读盘重算）不跳动，真正重新取数后才更新。
-            "fetched_at": RTB.latest_assessment_data_time(date),
+            "fetched_at": (RTB.latest_assessment_data_time(today) if is_realtime else None),
         })
     except Exception as e:
         self._json({"ok": False, "error": "%s: %s" % (type(e).__name__, e),
-                    "start": date, "end": date, "data_status": "error", "need_refresh": False})
+                    "start": start, "end": end, "data_status": "error", "need_refresh": False})
 
 
 # ---------------- IM 电联看板（电联率 / IM 及时回复率，站点 + 骑手）----------------

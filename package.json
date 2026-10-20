@@ -1,1 +1,7 @@
-{}
+{
+  "name": "aeolusdata",
+  "private": true,
+  "scripts": {
+    "dev": "bash dev.sh"
+  }
+}

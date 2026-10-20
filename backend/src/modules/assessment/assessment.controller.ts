@@ -6,6 +6,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { AssessmentViolationFetchService } from './assessment-violation-fetch.service';
 import { AssessmentDeliveryFetchService } from './assessment-delivery-fetch.service';
+import { VisitFetchService } from './visit-fetch.service';
 import { AssessmentCooldownService } from './assessment-cooldown.service';
 import { AssessmentEventsService } from './assessment-events.service';
 import { AssessmentAutoRefreshService } from './assessment-auto-refresh.service';
@@ -25,6 +26,7 @@ export class AssessmentController {
   constructor(
     private readonly violationSvc: AssessmentViolationFetchService,
     private readonly deliverySvc: AssessmentDeliveryFetchService,
+    private readonly visitSvc: VisitFetchService,
     private readonly cooldownSvc: AssessmentCooldownService,
     private readonly config: ConfigService,
     private readonly events: AssessmentEventsService,
@@ -142,6 +144,21 @@ export class AssessmentController {
   @Sse('stream')
   stream(): Observable<MessageEvent> {
     return this.events.toMessage();
+  }
+
+  /**
+   * 拉取商家拜访明细（新专送拜访，15 分）：调风神 xtop querySubTaskPage → 落历史库。
+   * 入参：mainTaskId（缺省 VISIT_MAIN_TASK_ID / 91467）、date（YYYY-MM-DD，缺省今天）。
+   * 返回 {ok, msg, visited, total}（提取不到时 visited/total 为 null，由计算侧降级）。
+   */
+  @Post('visit')
+  async fetchVisit(@Body() b: { mainTaskId?: number; date?: string }) {
+    try {
+      const r = await this.visitSvc.fetchAndLand(b.mainTaskId, b.date);
+      return r;
+    } catch (e) {
+      return { ok: false, error: (e as Error).message };
+    }
   }
 
   /** 读取服务端自动取数配置（enabled / intervalSec，多端共享）。 */

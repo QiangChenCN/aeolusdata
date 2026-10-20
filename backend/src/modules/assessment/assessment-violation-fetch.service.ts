@@ -2,7 +2,9 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as fs from 'fs';
 import * as path from 'path';
+import { createHash } from 'crypto';
 import { ViolationFetchService } from '../../../fetch/sources/violation-fetch.service';
+import { AssessmentHistoryStoreService } from './assessment-history-store.service';
 
 /**
  * 考核看板 —— 违规处罚明细「自有取数」（与标准达成 / 服务质量完全解耦）。
@@ -38,6 +40,25 @@ function dayRangeMs(date: string): [number, number] {
     Date.parse(`${date}T00:00:00.000+08:00`),
     Date.parse(`${date}T23:59:59.999+08:00`),
   ];
+}
+
+/**
+ * 违规稳定主键：同一违规（同站点 + 同运单 + 同类型 + 同原因）幂等去重；
+ * 状态（成立/不成立）翻转时覆盖同一行而非新增，避免历史计数虚高。
+ */
+function violationId(r: Record<string, string>): string {
+  const base =
+    (r['团队ID'] ?? r['teamId'] ?? '') +
+    '|' + (r['运单号'] ?? '') +
+    '|' + (r['违规类型'] ?? '') +
+    '|' + (r['违规原因'] ?? '');
+  return createHash('sha1').update(base).digest('hex').slice(0, 24);
+}
+
+/** 违规所属站点（团队 id）。 */
+function violationTeam(r: Record<string, string>): string {
+  const cand = r['团队ID'] ?? r['teamId'];
+  return cand != null ? String(cand).trim() : '';
 }
 
 /**
@@ -125,6 +146,7 @@ export class AssessmentViolationFetchService {
   constructor(
     private readonly config: ConfigService,
     private readonly violation: ViolationFetchService,
+    private readonly history: AssessmentHistoryStoreService,
   ) {
     const root = path.resolve(
       this.config.get<string>('PROJECT_ROOT') || path.resolve(process.cwd(), '..'),
@@ -142,9 +164,10 @@ export class AssessmentViolationFetchService {
    * （backend/data/违规处罚明细-实时.json）。失败（下载/解析）时整份写 fetch_ok=false，
    * 并保留旧 rows 便于回查。落盘全站所有站点，与前端是否选中无关。
    */
-  async fetchAndLand(_teams: string[], date: string): Promise<{ ok: boolean; msg: string }> {
+  async fetchAndLand(_teams: string[], date: string, opts?: { historyOnly?: boolean }): Promise<{ ok: boolean; msg: string }> {
     fs.mkdirSync(this.rawDir, { recursive: true });
     const [startMs, endMs] = dayRangeMs(date);
+    const historyOnly = opts?.historyOnly === true;
 
     let text: string;
     try {
@@ -153,7 +176,7 @@ export class AssessmentViolationFetchService {
     } catch (e) {
       const err = `违规取数失败：${(e as Error).message}`;
       this.logger.warn(err);
-      this.writeFailed(date, err);
+      if (!historyOnly) this.writeFailed(date, err);
       return { ok: false, msg: err };
     }
 
@@ -163,25 +186,34 @@ export class AssessmentViolationFetchService {
     } catch (e) {
       const err = `CSV 解析失败：${(e as Error).message}`;
       this.logger.error(err);
-      this.writeFailed(date, err);
+      if (!historyOnly) this.writeFailed(date, err);
       return { ok: false, msg: err };
     }
 
-    this.writeOk(date, rows);
-    const msg = `违规 ${rows.length} 条（全站合并落盘）`;
+    await this.writeOk(date, rows, historyOnly);
+    const msg = `违规 ${rows.length} 条` + (historyOnly ? '（已写历史库）' : '（全站合并落盘）');
     this.logger.log(`考核看板违规取数 ${date}：${msg}`);
     return { ok: true, msg };
   }
 
-  private writeOk(date: string, rows: Record<string, string>[]): void {
-    const payload = {
+  private async writeOk(date: string, rows: Record<string, string>[], historyOnly = false): Promise<void> {
+    if (!historyOnly) {
+      const payload = {
+        date,
+        fetched_at: nowStamp(),
+        fetch_ok: true,
+        fetch_error: null,
+        rows,
+      };
+      fs.writeFileSync(this.rawPath(), JSON.stringify(payload), 'utf-8');
+    }
+    // 写入历史库（按 vid + date 幂等 UPSERT），供历史区间聚合读取。
+    await this.history.upsertViolations(rows.map((r) => ({
+      id: violationId(r),
+      teamId: violationTeam(r),
       date,
-      fetched_at: nowStamp(),
-      fetch_ok: true,
-      fetch_error: null,
-      rows,
-    };
-    fs.writeFileSync(this.rawPath(), JSON.stringify(payload), 'utf-8');
+      payload: r,
+    })));
   }
 
   /** 取数失败：整份写 fetch_ok=false，保留旧 rows（便于回查），使读侧视为不可用。 */

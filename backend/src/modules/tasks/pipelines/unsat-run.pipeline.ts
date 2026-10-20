@@ -284,8 +284,8 @@ export class UnsatRunPipeline implements TaskHandler {
       state.fileUrl = fileUrl;
     });
 
-    p.stage('store', '落库去重', () => {
-      const [added, all] = this.store.upsertOrders(state.rows!, state.dateStr!);
+    p.stage('store', '落库去重', async () => {
+      const [added, all] = await this.store.upsertOrders(state.rows!, state.dateStr!);
       ctx.log(`落库：新增 ${added} 条，当日共 ${all.length} 条`);
     });
 
@@ -341,7 +341,9 @@ export class UnsatRunPipeline implements TaskHandler {
       });
       ctx.log(`已写入明细 ${matrix.length} 行 → D${emptyRow}:R${endRow}`);
       // 4) 回填 sheet_row
-      rows.forEach((r, i) => this.store.setSheetRow(r['违规编号'] || '', emptyRow + i));
+      for (let i = 0; i < rows.length; i++) {
+        await this.store.setSheetRow(rows[i]['违规编号'] || '', emptyRow + i);
+      }
       ctx.log(`已回填 ${rows.length} 条运单的表格行号`);
       state.matrix = matrix;
     });

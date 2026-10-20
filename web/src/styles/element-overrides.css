@@ -1,5 +1,9 @@
-/* element-overrides.css —— 仅把 Element Plus 主色收敛为项目品牌色（主题色）。
-   其余全部回归 Element Plus 原生默认，不再用自定义令牌覆盖任何 --el-* 变量。 */
+/* element-overrides.css —— 全局收敛 Element Plus 行为（本文件在 main.js 中晚于
+   element-plus/dist/index.css 引入，故同 :root 选择器下按源序覆盖生效）。
+   1) 主题色收敛为品牌色；
+   2) daterange 日期选择器默认宽度：Element Plus 默认 350px 过宽，这里全局压到 220px，
+      作为**根治**——所有看板（含今后新建）的 daterange 一律默认 220px，不必再逐个视图改。
+      个别视图若需不同宽度，仍可在本地用 :deep(.el-date-editor) 覆盖。 */
 :root {
   /* 主题色 = 品牌橙 #FF5000（含 hover/dark 与各级浅底） */
   --el-color-primary: var(--c-brand);
@@ -9,4 +13,7 @@
   --el-color-primary-light-8: #FFDCCC;
   --el-color-primary-light-9: var(--c-brand-soft);
   --el-color-primary-dark-2: var(--c-brand-dark);
+
+  /* daterange 默认宽度 350px → 220px（!important 兜底，确保压过 EP 原生默认） */
+  --el-date-editor-daterange-width: 220px !important;
 }

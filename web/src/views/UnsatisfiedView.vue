@@ -355,29 +355,32 @@ const mergeSel = (prev, available) => {
   return (prev || []).filter((c) => available.includes(c));
 };
 
-// 违规分类
+// 违规分类（选项 = 数据中出现的分类 ∪ 已选中的下钻值；保证下钻设定的分类即使在
+// 选项加载前 / 数据暂无该项时也以中文标签回显，而不是英文原始码）
 const realtimeCats = ref([]);
-const realtimeCatOptions = computed(() =>
-  distinctOf(realtimeRows.value, catOf).map((v) => ({ value: v, label: catLabel(v) })),
-);
+const realtimeCatOptions = computed(() => {
+  const vals = [...new Set([...distinctOf(realtimeRows.value, catOf), ...realtimeCats.value])];
+  return vals.map((v) => ({ value: v, label: catLabel(v) }));
+});
 const monthlyCats = ref([]);
-const monthlyCatOptions = computed(() =>
-  distinctOf(monthlyRows.value, catOf).map((v) => ({ value: v, label: catLabel(v) })),
-);
+const monthlyCatOptions = computed(() => {
+  const vals = [...new Set([...distinctOf(monthlyRows.value, catOf), ...monthlyCats.value])];
+  return vals.map((v) => ({ value: v, label: catLabel(v) }));
+});
 
-// 违规类型（按数值排序，便于查找）
+// 违规类型（按数值排序，便于查找；同样并入已选下钻值保证中文回显）
 const realtimeTypes = ref([]);
-const realtimeTypeOptions = computed(() =>
-  distinctOf(realtimeRows.value, typeOf)
-    .sort((a, b) => a.localeCompare(b, 'en', { numeric: true }))
-    .map((v) => ({ value: v, label: typeLabel(v) })),
-);
+const realtimeTypeOptions = computed(() => {
+  const vals = [...new Set([...distinctOf(realtimeRows.value, typeOf), ...realtimeTypes.value])];
+  return vals.sort((a, b) => a.localeCompare(b, 'en', { numeric: true }))
+    .map((v) => ({ value: v, label: typeLabel(v) }));
+});
 const monthlyTypes = ref([]);
-const monthlyTypeOptions = computed(() =>
-  distinctOf(monthlyRows.value, typeOf)
-    .sort((a, b) => a.localeCompare(b, 'en', { numeric: true }))
-    .map((v) => ({ value: v, label: typeLabel(v) })),
-);
+const monthlyTypeOptions = computed(() => {
+  const vals = [...new Set([...distinctOf(monthlyRows.value, typeOf), ...monthlyTypes.value])];
+  return vals.sort((a, b) => a.localeCompare(b, 'en', { numeric: true }))
+    .map((v) => ({ value: v, label: typeLabel(v) }));
+});
 
 // 站点（teamName）。站点较多，选项支持搜索过滤。
 const realtimeSites = ref([]);
@@ -778,6 +781,13 @@ function applyDrillQuery() {
   const status = q.status ? String(q.status).split(',').filter(Boolean) : [];
   const sites = [site, teamId].filter(Boolean);
   if (q.tab === 'monthly') {
+    // 下钻带日期区间（考核看板历史模式下钻）：直接把月累计区间设为该区间，
+    // onMounted 的 loadMonthly() 会按此区间取数，从而看到历史明细。
+    const s = q.start ? String(q.start) : '';
+    const e = q.end ? String(q.end) : '';
+    if (/^\d{4}-\d{2}-\d{2}$/.test(s) && /^\d{4}-\d{2}-\d{2}$/.test(e)) {
+      monthRange.value = [s, e];
+    }
     if (sites.length) monthlySites.value = sites;
     if (cats.length) monthlyCats.value = cats;
     if (types.length) monthlyTypes.value = types;

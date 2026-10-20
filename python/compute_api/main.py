@@ -12,7 +12,12 @@ AeolusData 独立计算服务（§6「Python 生态独占端点」的 FastAPI �
 - 端点路径与 Nest 代理转发的 `req.url` 严格对齐（含 /api 前缀），响应体形状与 server.py
   保持一致（扁平 JSON：{ok, ...}），Nest 侧会原样透传给前端。
 
-启动（在 python/ 目录下）：.venv\Scripts\python.exe -m uvicorn compute_api.main:app --host 127.0.0.1 --port 8900
+启动（在 python/ 目录下）：
+  # 生产/常驻（多 worker，绕过 GIL 扛并发）：
+  .venv\Scripts\python.exe -m gunicorn -k uvicorn.workers.UvicornWorker -w 4 \
+      --bind 127.0.0.1:8900 compute_api.main:app
+  # 开发/单进程调试（等价旧 uvicorn 单 worker）：
+  .venv\Scripts\python.exe -m uvicorn compute_api.main:app --host 127.0.0.1 --port 8900
 """
 import os
 
@@ -382,4 +387,5 @@ async def _namespace_catch_all(request: Request):
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run(app, host="127.0.0.1", port=8900)
+    # 直接 `python -m compute_api.main` 跑的是单进程调试态；生产请用 gunicorn 多 worker（见顶部注释）。
+    uvicorn.run(app, host="127.0.0.1", port=8900, workers=4)

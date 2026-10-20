@@ -57,6 +57,75 @@ from analytics.assessment import violations as RV
 from analytics.assessment import delivery_source as DS
 from analytics.assessment import compound as COMP
 from analytics import service_quality as SQ
+from analytics.im_contact import source as ICS
+from analytics.assessment import visit_source as VS
+
+EXTRA_METRICS = ("call_rate", "im_reply_rate", "visit_rate")
+
+
+def _im_rates_for_range(team_id: str, start: str, end: str):
+    """区间电联率 / IM 及时回复率：从 im_contact.db 按送达日期一次性读取并求和分子分母（线性可加）。
+
+    口径与 period._im_rates 一致（中文列名、按站点过滤）；无数据返回 (None, None)。
+    """
+    if not ICS.pg_configured():
+        return None, None
+    rows = ICS.load_rows(start, end)
+    if not rows:
+        return None, None
+    tid = ICS.to_text(team_id)
+    call_v = call_t = im_v = im_t = 0.0
+    for r in rows:
+        if not isinstance(r, dict):
+            continue
+        if tid and ICS.to_text(r.get("站点id")) != tid:
+            continue
+        call_v += ICS.to_num(r.get("剔除后有效电联单量"))
+        call_t += ICS.to_num(r.get("剔除后接单量"))
+        im_v += ICS.to_num(r.get("IM及时回复单量"))
+        im_t += ICS.to_num(r.get("IM咨询单量"))
+    call_rate = round(call_v / call_t * 100, 2) if call_t > 0 else None
+    im_reply_rate = round(im_v / im_t * 100, 2) if im_t > 0 else None
+    return call_rate, im_reply_rate
+
+
+def attach_extra_metrics(result, team_id, start, end, settings, date_type, weather, rates=None, realtime=False):
+    """给看板结果补上三项无实时数据指标（电联率 / IM 及时回复率 / 新专送拜访）的
+    **率值 + 得分(0-100) + 命中目标线(tiers)**，供前端表格列展示。
+
+    · realtime=True（当天实时）：三项按满分(+15)假设计入总分——率值不单独取数（记 None，
+      前端显示「-」），得分记满分 100；
+    · realtime=False（历史区间）：rates 缺省时自行从 im_contact.db / visit 历史库按 [start,end]
+      读取，算真实率值 + 按目标线算真实得分；值或 tiers 缺失 → None（前端「—」）；
+    · 只在 result 上**新增展示字段**，不改 total_score。
+    """
+    try:
+        if realtime:
+            for metric in EXTRA_METRICS:
+                result[metric] = None
+                result[metric + "_score"] = 100
+                result[metric + "_tiers"] = {}
+            return result
+        if rates is None:
+            call_rate, im_reply_rate = _im_rates_for_range(team_id, start, end)
+            visit_rate = VS.fetch_visit_rate_period(team_id, start, end)
+            rates = {"call_rate": call_rate, "im_reply_rate": im_reply_rate, "visit_rate": visit_rate}
+        for metric in EXTRA_METRICS:
+            val = rates.get(metric)
+            result[metric] = val
+            tiers = SQ.metric_tiers(settings, metric, date_type, weather)
+            direction = SQ.metric_direction(metric)
+            sc = SQ.score_metric(val, tiers, direction) if (val is not None and tiers) else None
+            result[metric + "_score"] = None if sc is None else round(sc, 2)
+            result[metric + "_tiers"] = tiers if isinstance(tiers, dict) else {}
+    except Exception as e:  # 三项为附加展示，绝不因它拖垮主看板
+        result.setdefault("call_rate", None)
+        result.setdefault("im_reply_rate", None)
+        result.setdefault("visit_rate", None)
+        for m in EXTRA_METRICS:
+            result.setdefault(m + "_score", None)
+            result.setdefault(m + "_tiers", {})
+    return result
 
 BJ = datetime.timezone(datetime.timedelta(hours=8))
 MODULE = "assessment_board"
@@ -456,6 +525,9 @@ def build_one(team_id, date=None):
     result.update(violation_metrics(team_id, date, pushed, completed, orders))
     # 评分：按当天日型 × 天气取配置阈值，算各指标得分与总分（写回 result 对应 score 字段）。
     _compute_scores(result, orders, date)
+    # 三项无实时数据指标（电联率/IM及时回复率/新专送拜访）：当天实时按满分(+15)假设计入总分，
+    # 率值显示「-」、得分记 100（展示用，不改 total_score）。
+    attach_extra_metrics(result, team_id, date, date, None, None, None, realtime=True)
     # 违规派生指标不可用时，行级状态不能继续报 ok —— 那等于声称一切正常，而实际上
     # 投诉/差评/索赔/不满意率/物流妥投率这一半指标全是空的。降级为 partial 并说明原因，
     # 由前端渲染提示；运单类指标（推配送/完成/T8）仍然有效，故不是 no_data。

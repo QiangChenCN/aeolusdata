@@ -17,6 +17,7 @@ import {
  *
  * 不依赖 apscheduler：同一事项同一时刻只触发一次的幂等语义落在 cron_run.fire_key
  * 的 UNIQUE 约束上（库重启后仍在），而非内存 job store。
+ * 存储层已迁 PostgreSQL（异步），本服务所有相关方法均 async/await。
  */
 @Injectable()
 export class CronSchedulerService implements OnModuleInit {
@@ -36,10 +37,12 @@ export class CronSchedulerService implements OnModuleInit {
     private readonly streaming: StreamingService,
   ) {}
 
-  onModuleInit(): void {
-    this.store.initDb();
-    this.recoverOrphans();
-    this.timer = setInterval(() => this.tick(), CronSchedulerService.TICK_SEC * 1000);
+  async onModuleInit(): Promise<void> {
+    await this.store.initDb();
+    await this.recoverOrphans();
+    this.timer = setInterval(() => {
+      void this.tick();
+    }, CronSchedulerService.TICK_SEC * 1000);
   }
 
   isAlive(): boolean {
@@ -52,21 +55,21 @@ export class CronSchedulerService implements OnModuleInit {
   }
 
   // ------------------------------------------------------------ 主循环
-  private tick(): void {
+  private async tick(): Promise<void> {
     try {
-      this.tickOnce();
+      await this.tickOnce();
     } catch (e) {
       this.note(`调度异常：${(e as Error).message}`);
     }
   }
 
-  private tickOnce(): void {
+  private async tickOnce(): Promise<void> {
     const now = new Date();
-    this.fireDue(now);
-    this.dispatchRetries();
-    this.pollRunning();
+    await this.fireDue(now);
+    await this.dispatchRetries();
+    await this.pollRunning();
     if (Date.now() / 1000 - this.lastPrune > CronSchedulerService.PRUNE_EVERY) {
-      try { this.store.pruneRuns(); } catch { /* ignore */ }
+      try { await this.store.pruneRuns(); } catch { /* ignore */ }
       this.lastPrune = Date.now() / 1000;
     }
   }
@@ -86,52 +89,52 @@ export class CronSchedulerService implements OnModuleInit {
   }
 
   // ------------------------------------------------------------ 到点触发
-  private fireDue(now: Date): void {
+  private async fireDue(now: Date): Promise<void> {
     const nowStr = this.store.fmtLocal(now) || '';
-    for (const item of this.store.dueItems(nowStr)) this.maybeFire(item, now);
+    for (const item of await this.store.dueItems(nowStr)) await this.maybeFire(item, now);
   }
 
-  private maybeFire(item: Record<string, unknown>, now: Date): void {
+  private async maybeFire(item: Record<string, unknown>, now: Date): Promise<void> {
     const iid = String(item['id']);
     const due = String(item['remind_at'] || '');
     const taskId = String(item['task_id'] || '');
 
     const st = this.registry.linkState(taskId);
     if (st !== 'ok') {
-      this.store.markSkipped(iid, due, `关联任务${st === 'missing' ? '已不存在' : '已禁用'}，已跳过本次`);
+      await this.store.markSkipped(iid, due, `关联任务${st === 'missing' ? '已不存在' : '已禁用'}，已跳过本次`);
       this.emit('skipped', iid, `关联任务${st === 'missing' ? '已不存在' : '已禁用'}，本次未执行`);
       return;
     }
     // 全局「自动执行」主开关关闭时，静默跳过（不记 skipped，避免每个 tick 刷库）；
     // 恢复后若仍在补跑宽限内会自动补火，超窗则记为 missed（暂停不延长窗口）。
-    if (this.store.isAutoPaused()) return;
-    if (this.store.findRun(iid, due)) return; // 同一 due 本轮已处理，不重复点火
+    if (await this.store.isAutoPaused()) return;
+    if (await this.store.findRun(iid, due)) return; // 同一 due 本轮已处理，不重复点火
     // 排队执行：开启后不因「上一次还没跑完」而跳过，本次照常入队（TaskRunner 串行队列会排队）
-    if (!item['queue_run'] && this.store.openRunOf(iid)) return; // 未开排队：上一次还没跑完则跳过
+    if (!item['queue_run'] && (await this.store.openRunOf(iid))) return; // 未开排队：上一次还没跑完则跳过
 
     const dueDt = this.store.parseDt(due);
     if (!dueDt) return;
     const late = (now.getTime() - dueDt.getTime()) / 1000;
     if (late > CATCHUP_GRACE_SEC) {
-      this.store.markMissed(iid, due, `服务未运行，已跳过本次（超出 ${CATCHUP_GRACE_SEC / 60} 分钟补跑宽限）`);
-      this.settle(iid, false);
+      await this.store.markMissed(iid, due, `服务未运行，已跳过本次（超出 ${CATCHUP_GRACE_SEC / 60} 分钟补跑宽限）`);
+      await this.settle(iid, false);
       this.emit('missed', iid, '到点未执行：服务当时未运行，已跳过');
       return;
     }
-    this.dispatch(item, due, 1);
+    await this.dispatch(item, due, 1);
   }
 
-  private dispatch(item: Record<string, unknown>, due: string, attempt = 1): string | null {
+  private async dispatch(item: Record<string, unknown>, due: string, attempt = 1): Promise<string | null> {
     let args: Record<string, unknown> = {};
     try { args = JSON.parse(String(item['task_args'] || '{}')); } catch { args = {}; }
     const taskId = String(item['task_id'] || '');
     const runIds = this.runner.enqueue([{ task_id: taskId, args, timeout: Number(item['timeout'] || 0) }]);
     if (!runIds.length) {
-      this.store.markSkipped(String(item['id']), due, '任务入队失败（任务可能已被移除）');
+      await this.store.markSkipped(String(item['id']), due, '任务入队失败（任务可能已被移除）');
       return null;
     }
     try {
-      this.store.claimRun(String(item['id']), due, runIds[0], attempt);
+      await this.store.claimRun(String(item['id']), due, runIds[0], attempt);
     } catch {
       return null; // 被并发抢先，安静放弃
     }
@@ -141,26 +144,26 @@ export class CronSchedulerService implements OnModuleInit {
   }
 
   // ------------------------------------------------------------ 重试
-  private dispatchRetries(): void {
-    if (this.store.isAutoPaused()) return; // 全局暂停时连同重试一起挂起
-    for (const r of this.store.retryDue()) {
-      const item = this.store.getItem(String(r['item_id']));
+  private async dispatchRetries(): Promise<void> {
+    if (await this.store.isAutoPaused()) return; // 全局暂停时连同重试一起挂起
+    for (const r of await this.store.retryDue()) {
+      const item = await this.store.getItem(String(r['item_id']));
       if (!item || !item['task_id']) {
-        this.store.finishRun(String(r['item_id']), String(r['due_at']), RUN_FAILED, '事项或关联任务已不存在');
+        await this.store.finishRun(String(r['item_id']), String(r['due_at']), RUN_FAILED, '事项或关联任务已不存在');
         continue;
       }
       const st = this.registry.linkState(String(item['task_id']));
       if (st !== 'ok') {
-        this.store.finishRun(String(r['item_id']), String(r['due_at']), RUN_SKIPPED,
+        await this.store.finishRun(String(r['item_id']), String(r['due_at']), RUN_SKIPPED,
           `重试时关联任务${st === 'missing' ? '已不存在' : '已禁用'}`);
-        this.settle(String(r['item_id']), false);
+        await this.settle(String(r['item_id']), false);
         continue;
       }
       let args: Record<string, unknown> = {};
       try { args = JSON.parse(String(item['task_args'] || '{}')); } catch { args = {}; }
       const runIds = this.runner.enqueue([{ task_id: String(item['task_id']), args }]);
       if (!runIds.length) continue; // 入队失败，下个 tick 再试
-      this.store.markDispatched(String(r['item_id']), String(r['due_at']), runIds[0], Number(r['attempt']));
+      await this.store.markDispatched(String(r['item_id']), String(r['due_at']), runIds[0], Number(r['attempt']));
       this.note(`重试「${item['title']}」第 ${r['attempt']} 次`);
       this.emit('retried', String(r['item_id']), `第 ${r['attempt']} 次重试：${item['title']}`,
         { run_id: runIds[0] });
@@ -168,8 +171,8 @@ export class CronSchedulerService implements OnModuleInit {
   }
 
   // ------------------------------------------------------------ 结果回收
-  private pollRunning(): void {
-    for (const r of this.store.openRuns()) {
+  private async pollRunning(): Promise<void> {
+    for (const r of await this.store.openRuns()) {
       if (r['status'] === RUN_RETRYING) continue; // 由 dispatchRetries 管
       const st = this.runner.runStatus(String(r['run_id']));
       if (!st) continue; // 还没派到 / 已丢失
@@ -179,85 +182,85 @@ export class CronSchedulerService implements OnModuleInit {
       const iid = String(r['item_id']);
       const due = String(r['due_at']);
       if (status === 'success') {
-        this.store.finishRun(iid, due, RUN_SUCCESS, '执行成功');
-        this.store.settleSuccess(iid);
-        this.note(`「${this.itemTitle(iid)}」执行成功`);
+        await this.store.finishRun(iid, due, RUN_SUCCESS, '执行成功');
+        await this.store.settleSuccess(iid);
+        this.note(`「${await this.itemTitle(iid)}」执行成功`);
         this.emit('succeeded', iid, '执行成功');
         continue;
       }
       if (status === 'stopped') {
-        this.store.finishRun(iid, due, RUN_FAILED, '已被手动终止，不再自动重试');
-        this.settle(iid, false);
+        await this.store.finishRun(iid, due, RUN_FAILED, '已被手动终止，不再自动重试');
+        await this.settle(iid, false);
         this.emit('failed', iid, '执行被手动终止');
         continue;
       }
       // 失败 / 超时
       const attempt = Number(r['attempt']);
       if (attempt < MAX_ATTEMPTS) {
-        this.store.scheduleRetry(iid, due, attempt + 1,
+        await this.store.scheduleRetry(iid, due, attempt + 1,
           `第 ${attempt} 次失败（退出码 ${st.exitCode}），${this.store.retryDelayFor(attempt)} 秒后重试`);
         this.emit('retrying', iid, `执行失败，${this.store.retryDelayFor(attempt)} 秒后第 ${attempt + 1} 次重试`);
       } else {
-        this.store.finishRun(iid, due, RUN_FAILED,
+        await this.store.finishRun(iid, due, RUN_FAILED,
           `已重试 ${MAX_ATTEMPTS - 1} 次仍失败（退出码 ${st.exitCode}）`);
-        this.settle(iid, false);
+        await this.settle(iid, false);
         this.emit('failed', iid, `重试 ${MAX_ATTEMPTS - 1} 次仍失败，已跳过本次`);
       }
     }
   }
 
-  private settle(iid: string, success: boolean): void {
+  private async settle(iid: string, success: boolean): Promise<void> {
     try {
-      if (success) this.store.settleSuccess(iid);
-      else this.store.advanceAfterRun(iid);
+      if (success) await this.store.settleSuccess(iid);
+      else await this.store.advanceAfterRun(iid);
     } catch (e) {
       this.note(`推进事项失败：${(e as Error).message}`);
     }
   }
 
-  private itemTitle(iid: string): string {
-    const it = this.store.getItem(iid);
+  private async itemTitle(iid: string): Promise<string> {
+    const it = await this.store.getItem(iid);
     return (it && String(it['title'])) || iid;
   }
 
   // ------------------------------------------------------------ 启动恢复
-  private recoverOrphans(): void {
+  private async recoverOrphans(): Promise<void> {
     const now = new Date();
-    for (const r of this.store.openRuns()) {
-      const item = this.store.getItem(String(r['item_id']));
-      const title = this.itemTitle(String(r['item_id']));
+    for (const r of await this.store.openRuns()) {
+      const item = await this.store.getItem(String(r['item_id']));
+      const title = await this.itemTitle(String(r['item_id']));
       const taskId = item && String(item['task_id'] || '');
       if (item && taskId && this.registry.linkState(taskId) === 'ok') {
         const dueDt = this.store.parseDt(String(r['due_at']));
         const late = dueDt ? (now.getTime() - dueDt.getTime()) / 1000 : 1e9;
         const attempt = Number(r['attempt']);
         if (attempt < MAX_ATTEMPTS && late <= CATCHUP_GRACE_SEC) {
-          this.store.scheduleRetry(String(r['item_id']), String(r['due_at']), attempt + 1,
+          await this.store.scheduleRetry(String(r['item_id']), String(r['due_at']), attempt + 1,
             `服务重启，补跑第 ${attempt + 1} 次`);
           this.note(`重启恢复：补跑「${title}」第 ${attempt + 1} 次`);
           continue;
         }
       }
-      this.store.finishRun(String(r['item_id']), String(r['due_at']), RUN_FAILED, '服务重启，上次执行中断');
-      this.settle(String(r['item_id']), false);
+      await this.store.finishRun(String(r['item_id']), String(r['due_at']), RUN_FAILED, '服务重启，上次执行中断');
+      await this.settle(String(r['item_id']), false);
       this.note(`重启恢复：中断的执行已收尾 —— ${title}`);
     }
     this.emit('recovered', null, '调度器已启动，待执行项已恢复');
   }
 
   // ------------------------------------------------------------ 手动触发
-  triggerNow(itemId: string): [boolean, string] {
-    const item = this.store.getItem(itemId);
+  async triggerNow(itemId: string): Promise<[boolean, string]> {
+    const item = await this.store.getItem(itemId);
     if (!item) return [false, '事项不存在'];
     if (!item['task_id']) return [false, '这个事项没有关联任务'];
     const st = this.registry.linkState(String(item['task_id']));
     if (st !== 'ok') return [false, `关联任务${st === 'missing' ? '已不存在' : '已禁用'}，无法执行`];
-    if (!item['queue_run'] && this.store.openRunOf(itemId)) return [false, '上一次执行还没结束，稍等再试'];
+    if (!item['queue_run'] && (await this.store.openRunOf(itemId))) return [false, '上一次执行还没结束，稍等再试'];
 
     const due = 'manual:' + (this.store.fmtLocal(new Date()) || '');
-    if (this.store.findRun(itemId, due)) return [false, '刚刚已经触发过了，一分钟后再试'];
+    if (await this.store.findRun(itemId, due)) return [false, '刚刚已经触发过了，一分钟后再试'];
 
-    const runId = this.dispatch(item, due, 1);
+    const runId = await this.dispatch(item, due, 1);
     if (!runId) return [false, '入队失败，请重试'];
     return [true, '已触发执行'];
   }
