@@ -166,7 +166,8 @@ export class JobQueueService implements OnModuleInit {
       `UPDATE task_job
          SET status='queued', worker_id=NULL, claimed_at=NULL, started_at=NULL, heartbeat_at=NULL
        WHERE status='running'
-         AND heartbeat_at < $1::timestamp - (GREATEST(COALESCE(timeout_sec,600),600)+120) * INTERVAL '1 second'`,
+         AND heartbeat_at IS NOT NULL
+         AND heartbeat_at::timestamp < $1::timestamp - (GREATEST(COALESCE(timeout_sec,600),600)+120) * INTERVAL '1 second'`,
       [this.nowStr()],
     );
     return rows.length;
