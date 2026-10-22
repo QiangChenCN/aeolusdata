@@ -1,0 +1,10 @@
+node_modules/
+dist/
+.env
+*.log
+*.err
+coverage/
+# Playwright 运行产物（测试报告 / 失败追踪 / 浏览器缓存，不进版本控制）
+test-results/
+playwright-report/
+.playwright/

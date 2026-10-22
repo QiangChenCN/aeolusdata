@@ -1,0 +1,14 @@
+{
+  // 基础配置：只放「两种格式共用」的编译选项，不指定 module / outDir。
+  // 具体格式由 tsconfig.cjs.json（CommonJS，给 NestJS）与 tsconfig.esm.json（ESM，给 Vite）各自覆盖。
+  // 这样 IDE 与 tsc 的「无配置默认」都走这里，避免两份差异配置各写一遍。
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "moduleResolution": "Bundler",
+    "rootDir": "src",
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true
+  },
+  "include": ["src"]
+}

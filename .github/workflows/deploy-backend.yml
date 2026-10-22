@@ -1,10 +1,11 @@
 name: Deploy (Backend + Web + Compute)
 
 # 主流部署方式：代码推到 main 后，由 GitHub Actions 负责全量部署
-#   · Backend (NestJS 8787)：npm ci + build → rsync dist/ → restart aeolus-backend
-#   · Web (前端静态)：npm ci + build → rsync web/dist/（后端 main.ts 托管，无需重启）
-#   · Compute (Python 8900)：rsync 源码（保留服务器本地数据）→ pip 同步依赖 → restart aeolus-compute
+#   · Backend (NestJS 8787)：pnpm install --frozen-lockfile + build → rsync dist/ → restart aeolusdata-backend
+#   · Web (前端静态)：pnpm install --frozen-lockfile + build → rsync apps/web/dist/（后端 main.ts 托管，无需重启）
+#   · Compute (Python 8900)：rsync 源码（保留服务器本地数据）→ pip 同步依赖 → restart aeolusdata-compute
 # 构建产物（dist/）与 .venv 不进 git 仓库，均在各自步骤现场产出 / 复用。
+# 依赖管理统一用 pnpm（见仓库根 pnpm-workspace.yaml / pnpm-lock.yaml；packageManager 锁定版本，靠 corepack 启用）。
 #
 # 需要在仓库 Settings → Secrets and variables → Actions 中配置：
 #   ECS_HOST      服务器 IP 或域名
@@ -15,11 +16,17 @@ on:
   push:
     branches: [main]
     paths:
-      - 'backend/**'
-      - 'web/**'
-      - 'python/**'
+      - 'apps/api/**'
+      - 'apps/web/**'
+      - 'packages/**'
+      - 'services/compute/**'
       - 'deploy/**'
       - '.github/workflows/**'
+      - 'pnpm-workspace.yaml'
+      - 'pnpm-lock.yaml'
+      - 'turbo.json'
+      - 'package.json'
+      - '.npmrc'
   workflow_dispatch: {}
 
 jobs:
@@ -33,8 +40,15 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '24'
-          cache: npm
-          cache-dependency-path: '**/package-lock.json'
+          cache: pnpm
+
+      # 用根 package.json 的 packageManager 字段锁定 pnpm 版本（corepack 据此启用对应版本）
+      - name: Enable Corepack (pnpm)
+        run: corepack enable
+
+      # 单一依赖安装入口：pnpm 工作区一次性装齐（api/web/shared），后续构建步骤直接复用
+      - name: Install dependencies (frozen)
+        run: pnpm install --frozen-lockfile
 
       # ---------- Backend ----------
       - name: Build & Deploy Backend
@@ -45,16 +59,13 @@ jobs:
         run: |
           eval "$(ssh-agent -s)"
           echo "$ECS_SSH_KEY" | tr -d '\r' | ssh-add -
-          cd backend
-          npm ci
-          npm run build
-          cd ..
+          pnpm --filter aeolus-workbench-backend build
           rsync -az --delete \
             -e "ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null" \
-            backend/dist/ \
-            "$ECS_USER@$ECS_HOST:/opt/aeolusdata/backend/dist/"
+            apps/api/dist/ \
+            "$ECS_USER@$ECS_HOST:/opt/aeolusdata/apps/api/dist/"
           ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-            "$ECS_USER@$ECS_HOST" 'systemctl restart aeolus-backend'
+            "$ECS_USER@$ECS_HOST" 'systemctl restart aeolusdata-backend aeolusdata-worker'
 
       # ---------- Web（静态由后端托管，仅同步 dist，无需重启）----------
       - name: Build & Deploy Web
@@ -65,19 +76,16 @@ jobs:
         run: |
           eval "$(ssh-agent -s)"
           echo "$ECS_SSH_KEY" | tr -d '\r' | ssh-add -
-          cd web
-          npm ci
-          npm run build
-          cd ..
+          pnpm --filter aeolus-workbench-web build
           rsync -az --delete \
             -e "ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null" \
-            web/dist/ \
-            "$ECS_USER@$ECS_HOST:/opt/aeolusdata/web/dist/"
+            apps/web/dist/ \
+            "$ECS_USER@$ECS_HOST:/opt/aeolusdata/apps/web/dist/"
 
       # ---------- Compute (Python) ----------
-      # 注意：python/ 内含服务器本地运行时数据（dashboard/standard/*.json、logs/ 等，均 gitignore），
+      # 注意：services/compute/ 内含服务器本地运行时数据（dashboard/standard/*.json、logs/ 等，均 gitignore），
       # 绝不可用 --delete，否则会删除服务器本地配置、搞坏其他看板。
-      # 仅同步源码 + 排除 .venv/缓存；依赖用 pip 在服务器 venv 内同步；最后 restart aeolus-compute。
+      # 仅同步源码 + 排除 .venv/缓存；依赖用 pip 在服务器 venv 内同步；最后 restart aeolusdata-compute。
       # 本次把 analytics/assessment/timeout.py 迁到 analytics/delivery_timeout/，显式删掉服务器上的旧文件。
       - name: Deploy Compute (Python)
         env:
@@ -91,11 +99,15 @@ jobs:
             --exclude='.venv' --exclude='__pycache__' --exclude='*.pyc' \
             --exclude='*.err' --exclude='*.log' --exclude='logs/' \
             -e "ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null" \
-            python/ \
-            "$ECS_USER@$ECS_HOST:/opt/aeolusdata/python/"
+            services/compute/ \
+            "$ECS_USER@$ECS_HOST:/opt/aeolusdata/services/compute/"
           ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
             "$ECS_USER@$ECS_HOST" \
-            'rm -f /opt/aeolusdata/python/analytics/assessment/timeout.py
+            'export PATH="$HOME/.local/bin:$PATH"
              cd /opt/aeolusdata
-             python/.venv/bin/python -m pip install -r python/requirements.txt
-             systemctl restart aeolus-compute'
+             rm -f /opt/aeolusdata/services/compute/analytics/assessment/timeout.py
+             # 按 uv.lock 精确复现依赖（含 OpenTelemetry）；--frozen 与 pyproject.toml 不一致会直接报错。
+             (cd services/compute && uv sync --frozen --no-dev)
+             # 重启前预检：otel 包在服务器 venv 内可正常导入，避免 OTEL_ENABLED=true 时服务起不来。
+             (cd services/compute && OTEL_ENABLED=true uv run python -c "import compute_api.otel" && echo "compute otel import OK")
+             systemctl restart aeolusdata-compute'

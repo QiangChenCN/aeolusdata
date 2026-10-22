@@ -1,0 +1,22 @@
+[Unit]
+Description=Aeolusdata Task Worker (NestJS, 任务执行进程)
+After=network.target aeolusdata-backend.service
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/aeolusdata/apps/api
+# 任务执行进程：从 PG 任务队列（task_job）抢占并执行任务，与 8787 API 解耦。
+# 构建产物 dist/ 由 GitHub Actions 预编译并 rsync 下发；ExecStart 指向 main-worker 入口。
+ExecStart=/usr/bin/node dist/src/main-worker
+# 优雅停止：先 TERM 给主进程，最多等 15s（进行中的任务由 worker 自行结束，崩溃任务由 recoverStale 重排）
+ExecStop=/bin/kill -TERM $MAINPID
+TimeoutStopSec=15
+Environment=NODE_ENV=production
+# 端口 / AUTH_TOKEN / DATABASE_URL 等见仓库根 .env（/opt/aeolusdata/.env）
+EnvironmentFile=/opt/aeolusdata/.env
+Restart=always
+RestartSec=5
+User=root
+
+[Install]
+WantedBy=multi-user.target

@@ -110,7 +110,7 @@ backend/src/modules/
 
 **Quark 凭证链已重写为 Nest 原生**（`fetch/quark-creds.service.ts`，2026-09-23）：
 getReport（fetch）→ report.htm / daLogin（**spawn `curl` 取中性 TLS 指纹**）→ 解析 curl cookie 罐拿 `DA_TOKEN`
-→ 报表页提取 `reportIdToken/secureParams/metaTime`。缓存落 `backend/data/quark/da_cache.json`
+→ 报表页提取 `reportIdToken/secureParams/metaTime`。缓存落 `apps/api/runtime/quark/da_cache.json`
 （`{cookie, jar, saved_at}`，原子写）。**实测完整兑换 3.2 秒**（原 Python 约 13s），
 `DA_TOKEN` 与三件套齐备，缓存探针 valid，`task_equipment` 全链路正常。
 `python/tools/quark_creds_dump.py`、`quark_sdk/` 已删除；`server.py::_check_quark_cookie` 改为
@@ -153,7 +153,7 @@ Python 侧 `python/get_data/auth.refresh_cookie()` 仅转发 `POST /api/fetch/ae
    的高危确认弹窗已容忍缺失 `cmd`（改显示「Nest 原生流水线 · 任务名」）。
    实测 9 个任务均为 `hasCmd=false / hasNativeHandler=true`，`jidan_fetch` 实跑通过。
 3. ✅ 注释/文档残留清理：`server.py`（2 处）、`python/get_data/__init__.py`、`python/venv_guard.py`、
-   `aeolus_sdk/__init__.py`、`DEPLOY.md`、`docs/SERVER_DEPLOY_GUIDE.md`（含 scp 清单与验证命令已改为 Nest 侧）。
+   `aeolus_sdk/__init__.py`、`deploy/DEPLOY.md`、`docs/SERVER_DEPLOY_GUIDE.md`（含 scp 清单与验证命令已改为 Nest 侧）。
 4. ✅ `python/requirements.txt` 移除已无引用的 `Pillow` / `minio`（仅保留 `openpyxl` —— `server.py`
    与 `python/get_data/delivery_export.py` 仍在用）。`deploy/setup.sh` 复核无失效引用。
 
@@ -182,7 +182,7 @@ Python 侧 `python/get_data/auth.refresh_cookie()` 仅转发 `POST /api/fetch/ae
 - **测试改造**：`python/tests/test_server_routes.py` → `python/tests/test_compute_handlers.py`
   （新增 `test_no_workbench_side_effects`，防止工作台职责从后门回流）；
   `test_data_scope.py`、`test_monolith_parity.py` 的引用一并改到 `compute_service.handlers`。
-- **文档同步**：`DEPLOY.md`（分层说明 / 暂存示例 / runbook 的 systemd 单元名）、
+- **文档同步**：`deploy/DEPLOY.md`（分层说明 / 暂存示例 / runbook 的 systemd 单元名）、
   `deploy/nginx-aeolus.conf`、`deploy/setup.sh`、`index.html` 注释、本文件与
   `docs/server-py-to-nestjs-map.md`。
 
@@ -330,7 +330,7 @@ pytest 与 Jest 均全绿。
   删除后已无任何调用方，故一并移除。看板需要的 xlsx **解析**能力不受影响，
   仍在 `python/compute_service/handlers.py::sheet_to_json`（那条 Excel 边界不变）。
   若日后还要「导出运单明细」，应基于 Nest 的 `POST /api/fetch/orders-raw` 重做，而不是恢复本地拉取。
-- **配置**：`NEST_FETCH_URL` 废弃（`deploy/.env.example`、`deploy/aeolus-compute.service` 已更新）；
+- **配置**：`NEST_FETCH_URL` 废弃（`deploy/.env.example`、`deploy/aeolusdata-compute.service` 已更新）；
   回调基址改为 `NEST_BASE` / `DING_NEST_BASE` → loopback（两服务同机时无需任何配置）。
 - **注释债清扫**：7 个 Python 文件中指向 `refresh_all._*` / `orders_fetch` / `get_data.delivery`
   的失效指针全部改指现址（Nest 的 `refresh-all.service.ts` / `refresh-runner.service.ts` /
@@ -396,7 +396,7 @@ Jest **10 passed**。
 
 **结果层删除**：`python/dashboard/standard/cache/{rider,ach}_*.json` 与 `cache.save()` / `cache.load()` 一并移除
 —— 迁移时核实全仓**无任何读取方**（Python 无 `CACHE.load(` 调用，前端与 Nest 也不读），
-是 write-only 死物（已清掉盘上 90 个文件 / 2.28MB；`pace_state.json` 保留，它与 Nest 共用）。
+是 write-only 死物（已清掉盘上 90 个文件 / 2.28MB；`apps/api/runtime/pace_state.json` 保留，它与 Nest 共用）。
 
 **验证**：真实计算步端到端 —— `POST /api/compute/rider-dimension`（`reuse_orders=true`）
 `{ok:true, source:"live", rows:77}`，`att_<team>_<date>.json` 由 Nest 重写；`achievement` 在删除当日

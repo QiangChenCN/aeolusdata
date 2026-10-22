@@ -44,24 +44,26 @@ rm -rf /opt/aeolusdata
 git clone git@github.com:QiangChenCN/aeolusdata.git
 cd /opt/aeolusdata
 
-# 4) Python 虚拟环境 + 依赖
-# venv 必须建在 python/ 下：venv_guard / run.sh / compute_api 都按此路径查找
-python3 -m venv python/.venv
-python/.venv/bin/python -m pip install -r python/requirements.txt
-# 可选（按你实际跑的模块）：delivery 入库 / 表格解析
-# python/.venv/bin/python -m pip install psycopg2-binary openpyxl xlrd
+# 4) Python 虚拟环境 + 依赖（由 uv 接管）
+#    单一来源 = services/compute/pyproject.toml；锁文件 = services/compute/uv.lock（已入库）。
+#    venv 落在 services/compute/.venv，与 deploy/aeolusdata-compute.service 的 ExecStart、
+#    以及 scripts/manage.sh / watchdog.sh 三处路径保持一致，不再有两套布局。
+#    首次部署的机器通常没有 uv，这里自带安装（已装则跳过）。
+export PATH="$HOME/.local/bin:$PATH"
+command -v uv >/dev/null 2>&1 || curl -LsSf https://astral.sh/uv/install.sh | sh
+(cd services/compute && uv sync --frozen --no-dev)
 
 # 5) 前端构建（dist 被 .gitignore 忽略，需每次构建；构建在 ECS 上完成）
-cd web && npm install && npm run build && cd ..
+cd apps/web && pnpm install && pnpm --filter aeolus-workbench-web build && cd ..
 
-# 6) 后端构建（NestJS：TypeScript → backend/dist，systemd 里直接 node dist/src/main）
-cd backend && npm ci && npm run build && cd ..
+# 6) 后端构建（NestJS：TypeScript → apps/api/dist，systemd 里直接 node dist/src/main）
+cd apps/api && pnpm install --frozen-lockfile && pnpm --filter aeolus-workbench-backend build && cd ..
 
 # 7) 生成环境文件骨架（.env 被 gitignore，全新部署需从模板生成；密钥项稍后补全）
 #    单一配置来源 = 仓库根 .env（/opt/aeolusdata/.env）：systemd 的 EnvironmentFile 注入同一份，
-#    Nest 显式读它，Python 回读它兜底。不再维护 backend/.env（避免两份漂移）。
+#    Nest 显式读它，Python 回读它兜底。不再维护 apps/api/.env（避免两份漂移）。
 if [ ! -f /opt/aeolusdata/.env ]; then
-  cp backend/.env.example /opt/aeolusdata/.env
+  cp apps/api/.env.example /opt/aeolusdata/.env
 fi
 
 echo "== setup 完成 =="
@@ -70,23 +72,24 @@ echo "  1) 编辑 /opt/aeolusdata/.env，把 AUTH_TOKEN 与 NEST_AUTH_TOKEN 改�
 echo "     （二者必须一致；这是唯一配置来源，Python 计算服务读取该文件兜底）"
 echo "       openssl rand -hex 24   # 生成一段随机值粘进去"
 echo "  2) 把本地凭据单独传上来（这些不在仓库里，必须手动带外传输）："
-echo "       scp -r backend/aeolus_sdk/cookie.txt \\"
-echo "             backend/minio_config.json \\"
-echo "             backend/data/jobs/delivery/db_config.json \\"
-echo "             root@<IP>:/opt/aeolusdata/backend/对应路径"
+echo "       scp -r apps/api/aeolus_sdk/cookie.txt \\"
+echo "             apps/api/minio_config.json \\"
+echo "             apps/api/runtime/jobs/delivery/db_config.json \\"
+echo "             root@<IP>:/opt/aeolusdata/apps/api/对应路径"
 echo "     —— 缺 cookie.txt / minio / db_config 只影响对应取数模块，不影响启动；按需补"
-echo "  3) 启用并启动两个服务："
-echo "       sudo cp deploy/aeolus-backend.service deploy/aeolus-compute.service /etc/systemd/system/ \\"
+echo "  3) 启用并启动三个服务："
+echo "       sudo cp deploy/aeolusdata-backend.service deploy/aeolusdata-compute.service deploy/aeolusdata-worker.service /etc/systemd/system/ \\"
 echo "       && sudo systemctl daemon-reload \\"
-echo "       && sudo systemctl enable --now aeolus-backend aeolus-compute"
+echo "       && sudo systemctl enable --now aeolusdata-backend aeolusdata-compute aeolusdata-worker"
 echo "       （旧架构的单体 server.py（8917）已整体删除，只需启用上面两个服务）"
-echo "       sudo journalctl -u aeolus-backend -n 30 --no-pager   # 确认无报错、看到 bootstrap"
+echo "       sudo journalctl -u aeolusdata-backend -n 30 --no-pager   # 确认无报错、看到 bootstrap"
 echo "  4) 配置 nginx 反代（只暴露 443，证书放 /etc/nginx/ssl/aeolus/）："
 echo "       sudo cp deploy/nginx-aeolus.conf /etc/nginx/sites-available/aeolus \\"
 echo "       && sudo ln -s /etc/nginx/sites-available/aeolus /etc/nginx/sites-enabled/ \\"
 echo "       && sudo nginx -t && sudo systemctl reload nginx"
 
-# ---- Alibaba Cloud Linux 3 替代步骤（默认 python3 是 3.8，Pillow 12.3 需 >=3.9）----
-# dnf install -y python3.11 python3.11-pip nginx git curl fonts-noto-cjk
-# 然后用 python3.11 -m venv python/.venv 代替上面的 python3 -m venv python/.venv
-# Node 用 dnf 或 nvm 装 18+ 即可
+# ---- Alibaba Cloud Linux 3 替代步骤（默认 python3 是 3.8，而 numpy==2.5.4 需 >=3.12）----
+# dnf install -y python3.12 python3.12-pip nginx git curl fonts-noto-cjk
+# 然后显式指定解释器：
+#   (cd services/compute && uv sync --frozen --no-dev --python python3.12)
+# Node 用 dnf 或 nvm 装 22+ 即可（后端 tasks 模块依赖内置 node:sqlite，需 >=22.5）

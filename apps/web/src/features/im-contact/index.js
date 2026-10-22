@@ -1,0 +1,3 @@
+// IM 电联看板的公开面：外部（路由/其它页面）只从这里导入。
+// 与后端 modules/im-contact/index.ts 同约定 —— 见 apps/web/scripts/check-arch.mjs。
+export { default as ImContactView } from './ImContactView.vue';

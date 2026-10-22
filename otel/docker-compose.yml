@@ -1,0 +1,62 @@
+# AeolusData 可观测栈（OpenTelemetry Collector + Tempo + Grafana），纯旁路，不依赖现有业务服务。
+#
+# 启动（在仓库根，需先装 docker + docker compose）：
+#   docker compose -f otel/docker-compose.yml up -d
+#
+# 访问 Grafana（已自动配置 Tempo 数据源）：
+#   http://<ECS-IP>:3000   （匿名可读，Admin 密码 admin）
+#   进入 Explore → 选 Tempo → 按 service.name 搜 aeolus-web / aeolus-api / aeolus-compute
+#
+# 对外端口：
+#   4317  OTLP gRPC（NestJS / Python 上报）
+#   4318  OTLP HTTP（前端浏览器上报，已放开 CORS）
+#   3200  Tempo 查询
+#   3000  Grafana
+#
+# 注意：
+#  - 生产环境请把下面所有镜像的 :latest 固定为具体版本标签（如 otel/opentelemetry-collector-contrib:0.130.0）。
+#  - Tempo 数据默认落容器卷 tempo-data（compose 已声明），重启不丢；保留期 24h，可在 tempo.yml 调。
+#  - 三端默认 OTEL_ENABLED=false，本栈没起来也不影响业务。
+
+services:
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:latest
+    container_name: aeolus-otel-collector
+    command: ["--config=/etc/otel/otel-collector.yml"]
+    volumes:
+      - ./otel-collector.yml:/etc/otel/otel-collector.yml:ro
+    ports:
+      - "4317:4317"
+      - "4318:4318"
+    restart: unless-stopped
+    depends_on:
+      - tempo
+
+  tempo:
+    image: grafana/tempo:latest
+    container_name: aeolus-tempo
+    command: ["-config.file=/etc/tempo/tempo.yml"]
+    volumes:
+      - ./tempo.yml:/etc/tempo/tempo.yml:ro
+      - tempo-data:/tmp/tempo
+    ports:
+      - "3200:3200"
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: aeolus-grafana
+    environment:
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    volumes:
+      - ./grafana-provisioning:/etc/grafana/provisioning/datasources:ro
+    ports:
+      - "3000:3000"
+    restart: unless-stopped
+    depends_on:
+      - tempo
+
+volumes:
+  tempo-data:

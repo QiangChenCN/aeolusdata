@@ -28,7 +28,7 @@
 
 ### 1. 运单库 PostgreSQL（仅 delivery load/verify 节点）—— 仅剩的这一道真硬阻塞
 - 入库已迁到 NestJS（`backend/src/modules/fetch/delivery-db.service.ts`，Node `pg` 驱动）→ **不再需要 `psycopg2-binary`**。
-- `backend/data/jobs/delivery/db_config.json` 指向 `127.0.0.1:5432 / postgres / admin`（密码明文，已被 gitignore）；该文件仍被 Nest 读取（数据/配置保留在 `backend/data/jobs/` 下）。
+- `apps/api/runtime/jobs/delivery/db_config.json` 指向 `127.0.0.1:5432 / postgres / admin`（密码明文，已被 gitignore）；该文件仍被 Nest 读取（数据/配置保留在 `apps/api/runtime/jobs/` 下）。
 - 服务器需：① 运行 PostgreSQL；② 已建库；③ init 节点会 `DROP TABLE ... CASCADE` 重建表。
 - 未部署 PG 时：load/verify 节点连接失败；raw 节点（抓 JSONL）仍可独立跑完。
 
@@ -41,10 +41,10 @@
 - **不影响功能**：`python/venv_guard.py` 已做跨平台（`os.name=="nt"` 区分 `Scripts`/`bin`），直接 `python script.py` 即可，它会自动切到正确解释器。`run.sh` 是个坏掉的便捷脚本，弃用即可。
 
 ### 4. 凭据文件 git 不带，需手动传
-- `.gitignore` 忽略：`backend/aeolus_sdk/cookie.txt` / `backend/data/quark/`（DA cookie 缓存 + curl 罐） / `backend/minio_config.json` / `backend/data/jobs/delivery/db_config.json` / `.env` 及 Nest 状态文件。
+- `.gitignore` 忽略：`apps/api/aeolus_sdk/cookie.txt` / `apps/api/runtime/quark/`（DA cookie 缓存 + curl 罐） / `apps/api/minio_config.json` / `apps/api/runtime/jobs/delivery/db_config.json` / `.env` 及 Nest 状态文件。
 - `git clone` 只拿源码 → 这些全丢。首次跑会：重新登录（风神账密常量在 `login.py` 内，可自动）/ 重兑 DA（需 curl，Nest 自动完成）/ 重配 MinIO（需 minio_config）/ 重连 PG（需 db_config）。
 - **必须手动 `scp/rsync` 这些文件**，否则每次重登且依赖账密硬编码可用（或重新走登录流程）。
-- 注意：`quark_sdk/` 已删除，Quark 凭证缓存改到 `backend/data/quark/`，**无需手工传**（首次运行自动兑换）。
+- 注意：`quark_sdk/` 已删除，Quark 凭证缓存改到 `apps/api/runtime/quark/`，**无需手工传**（首次运行自动兑换）。
 
 ---
 
@@ -80,7 +80,7 @@ export DING_FONT_PATH=/usr/share/fonts/.../NotoSansCJK-Regular.ttc
 | 项 | 做法 |
 |---|---|
 | 中文字体出图乱码 | 设 `DING_FONT_PATH` 指向服务器中文字体（Noto Sans CJK / 文泉驿），Pillow 能加载 |
-| Python 依赖 | `pip install -r python/requirements.txt` 后**额外** `pip install psycopg2-binary` |
+| Python 依赖 | `uv sync --frozen --no-dev`（单一来源 `services/compute/pyproject.toml` + 锁文件 `uv.lock`；解释器需 3.12+） |
 | venv 重建 | 服务器上 `python -m venv .venv` + 装依赖（Windows 的 `.venv` 二进制不兼容，不能打包上传） |
 | server 公网访问 | 绑定 `0.0.0.0` + 反向代理 + **加鉴权**（当前零鉴权，且 `/api/file` 可读任意文件含 cookie，公网暴露高危） |
 
@@ -106,14 +106,13 @@ export DING_FONT_PATH=/usr/share/fonts/.../NotoSansCJK-Regular.ttc
 rsync -av --exclude='.venv' --exclude='__pycache__' --exclude='preview' ./ user@server:/opt/fengshen/
 
 # 2. 手动传凭据（git 不带！）
-#    Quark DA cookie 由 Nest 自动兑换并缓存到 backend/data/quark/，无需手工传
-scp backend/aeolus_sdk/cookie.txt backend/minio_config.json backend/data/jobs/delivery/db_config.json .env \
+#    Quark DA cookie 由 Nest 自动兑换并缓存到 apps/api/runtime/quark/，无需手工传
+scp apps/api/aeolus_sdk/cookie.txt apps/api/minio_config.json apps/api/runtime/jobs/delivery/db_config.json .env \
     user@server:/opt/fengshen/对应路径
 
 # 3. 建 venv + 装依赖
 cd /opt/fengshen
-python3 -m venv .venv
-.venv/bin/python -m pip install -r python/requirements.txt psycopg2-binary
+(cd services/compute && uv sync --frozen --no-dev)
 # 确认系统有 curl
 which curl
 
@@ -135,7 +134,7 @@ export DING_FONT_PATH=/usr/share/fonts/.../NotoSansCJK-Regular.ttc
 # load/verify 节点前先跑 init 节点 DROP 重建
 
 # 6. 起 Nest 后端（取数 / 加工 / 出图 / 上传 / 发送 / 编排 全在 Nest）
-cd backend && npm ci && npx nest build && node dist/main &    # 监听 8787
+cd apps/api && pnpm install --frozen-lockfile && pnpm build && node dist/src/main &    # 监听 8787
 #    验证 Quark 凭证链（只读探针：valid / invalid / nocache / unknown）
 curl -s -H "Authorization: Bearer $NEST_AUTH_TOKEN" http://127.0.0.1:8787/api/fetch/quark/status
 #    跑任务：任务中心页面点「运行」，或 POST /api/run

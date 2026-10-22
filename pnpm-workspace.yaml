@@ -1,0 +1,7 @@
+packages:
+  # 应用（含各自 package.json）
+  - 'apps/*'
+  # 跨应用共享库（占位：@aeolus/shared）
+  - 'packages/*'
+  # 说明：services/compute 是 Python 工程（自带 .venv），无 package.json，不在 pnpm 工作区内，
+  #       由自身虚拟环境管理，与 JS 工作区共存于同一 monorepo。

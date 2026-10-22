@@ -1,0 +1,81 @@
+import * as Joi from 'joi';
+import * as path from 'path';
+import * as fs from 'fs';
+
+/**
+ * 仓库根定位：后端现位于 <repo>/apps/api（旧布局为仓库根级 backend/）。
+ * 若仍用 `path.resolve(cwd, '..')` 作 PROJECT_ROOT，会多嵌套一层 apps
+ * （如 apps/apps/api/runtime）。向上查找「同时含 apps/ 与 services/」的目录得到仓库根，
+ * 与 Python 侧 `_find_repo_root()` 同口径，迁移前后均稳健。
+ */
+function resolveRepoRoot(): string {
+  let d = path.resolve(process.cwd());
+  while (d && d !== path.dirname(d)) {
+    if (fs.existsSync(path.join(d, 'apps')) && fs.existsSync(path.join(d, 'services'))) {
+      return d;
+    }
+    d = path.dirname(d);
+  }
+  return path.resolve(process.cwd(), '..');
+}
+
+// 在 ConfigModule.forRoot 读取前，给 PROJECT_ROOT / WORKBENCH_DIR 可靠默认值。
+// 否则各模块会把路径解析成 cwd-relative，导致运行时目录错位（如 apps/apps/...）。
+if (!process.env.PROJECT_ROOT) {
+  process.env.PROJECT_ROOT = resolveRepoRoot();
+}
+if (!process.env.WORKBENCH_DIR) {
+  // 后端现位于 apps/api（旧布局为仓库根级 backend/），统一收敛到后端自身目录。
+  const cwd = process.cwd();
+  process.env.WORKBENCH_DIR =
+    path.basename(cwd) === 'api' ? cwd : path.join(cwd, 'apps', 'api');
+}
+
+/**
+ * 环境变量校验 Schema（启动时强校验，缺失/非法直接失败）。
+ * 新增配置必须同步更新 .env.example 与本 Schema。
+ */
+export const envValidationSchema = Joi.object({
+  PORT: Joi.number().default(8787),
+  NODE_ENV: Joi.string()
+    .valid('development', 'production', 'test')
+    .default('development'),
+  AUTH_TOKEN: Joi.string().required(),
+  // 默认取 python：代理端点（standard / attend-period / overview / assessment / groups …）
+  // 依赖 Python 生态，node 模式下它们恒定返回 NEED_PYTHON，默认值取 node 会误导。
+  COMPUTE_PROVIDER: Joi.string().valid('node', 'python').default('python'),
+  PYTHON_COMPUTE_URL: Joi.string().uri().optional(),
+  // 项目根（jobs/、common/ 所在）：后端默认在上层目录
+  PROJECT_ROOT: Joi.string().optional(),
+  // 任务注册表目录（tasks.json / runs / data）
+  WORKBENCH_DIR: Joi.string().optional(),
+  // PostgreSQL 直连接入（方案 B：PGDG 源安装的 PG）。未配置时 PgService 自动跳过，不影响旧部署。
+  // 格式：postgresql://<role>:<password>@<host>:<port>/<db>
+  DATABASE_URL: Joi.string().uri().optional(),
+  // PG 连接池最大连接数（默认 10）
+  PG_POOL_MAX: Joi.number().optional(),
+}).unknown(true);
+
+export interface AppConfig {
+  port: number;
+  nodeEnv: string;
+  authToken: string;
+  computeProvider: 'node' | 'python';
+  pythonComputeUrl?: string;
+  projectRoot: string;
+  workbenchDir: string;
+}
+
+export function loadAppConfig(): AppConfig {
+  const projectRoot =
+    process.env.PROJECT_ROOT || resolveRepoRoot();
+  return {
+    port: Number(process.env.PORT) || 8787,
+    nodeEnv: process.env.NODE_ENV || 'development',
+    authToken: process.env.AUTH_TOKEN || '',
+    computeProvider: (process.env.COMPUTE_PROVIDER as 'node' | 'python') || 'python',
+    pythonComputeUrl: process.env.PYTHON_COMPUTE_URL,
+    projectRoot,
+    workbenchDir: process.env.WORKBENCH_DIR || path.join(projectRoot, 'apps', 'api'),
+  };
+}

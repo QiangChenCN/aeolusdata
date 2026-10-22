@@ -1,0 +1,780 @@
+{
+  "_comment": "风神数据处理 · 任务运行工作台 任务注册表（单一来源）。修改本文件即可增删任务，无需改代码。cmd 中 {py} 会自动替换为项目 .venv 的 python.exe。",
+  "groups": [
+    {
+      "id": "attendance",
+      "name": "排班考勤",
+      "color": "#FF5000"
+    },
+    {
+      "id": "task",
+      "name": "商站任务",
+      "color": "#7A5AF8"
+    },
+    {
+      "id": "equip",
+      "name": "装备点亮",
+      "color": "#0F9D58"
+    },
+    {
+      "id": "delivery",
+      "name": "运单处理",
+      "color": "#1A73E8"
+    },
+    {
+      "id": "unsat",
+      "name": "不满意单",
+      "color": "#F5A623"
+    },
+    {
+      "id": "tool",
+      "name": "其他工具",
+      "color": "#5F6368"
+    }
+  ],
+  "tasks": [
+    {
+      "id": "attendance",
+      "name": "实时在线播报",
+      "group": "attendance",
+      "desc": "拉取实时考勤 → 渲染图片 → 上传到MinIO → 发生产群 @站长",
+      "nodes": [
+        {
+          "id": "fetch",
+          "name": "拉取实时考勤",
+          "desc": "HTTP 拉取全部站点实时在线 + 写 raw / summary JSON（站点动态获取，不写死）"
+        },
+        {
+          "id": "render",
+          "name": "渲染图片",
+          "desc": "把 summary JSON 渲染成 attendance_absent.png"
+        },
+        {
+          "id": "upload",
+          "name": "上传图片到MinIO",
+          "desc": "PNG 上传 MinIO 拿公网直链（供 markdown 内联图）"
+        },
+        {
+          "id": "send",
+          "name": "发送消息到钉钉",
+          "desc": "组装 markdown 并发送（默认发生产群 + @站长）"
+        }
+      ],
+      "params": [
+        {
+          "flag": "--begin",
+          "label": "开始节点",
+          "type": "select",
+          "default": "fetch",
+          "options_source": "nodes",
+          "options": []
+        },
+        {
+          "flag": "--end",
+          "label": "结束节点",
+          "type": "select",
+          "default": "send",
+          "options_source": "nodes",
+          "options": []
+        },
+        {
+          "flag": "--teams",
+          "label": "选择站点",
+          "type": "multi-team",
+          "default": "",
+          "placeholder": "不选则沿用上次选择的站点"
+        },
+        {
+          "flag": "--group",
+          "label": "目标群",
+          "type": "group",
+          "default": "",
+          "placeholder": "留空用默认群（站点日常管理通知群）"
+        },
+        {
+          "flag": "--no-at",
+          "label": "不 @ 站长",
+          "type": "switch",
+          "default": false
+        }
+      ],
+      "risk": "external",
+      "timeout": 600,
+      "outputs": [
+        "apps/api/runtime/jobs/attendance/out/attendance_absent.png",
+        "apps/api/runtime/jobs/attendance/out/attendance_summary.json",
+        "apps/api/runtime/jobs/attendance/out/attendance_raw/"
+      ],
+      "artifact_keep": 1,
+      "confirm": "将向钉钉群发送实时在线播报并 @ 站长，这是真实的群消息，无法撤回。确认继续？"
+    },
+    {
+      "id": "appeal_reminder",
+      "name": "不满意单申诉提醒",
+      "group": "unsat",
+      "desc": "拉违规 CSV → 筛非超时待申诉 → 渲染图片 → 发群并按站点 @ 站长",
+      "params": [
+        {
+          "flag": "--no-send",
+          "label": "只预览不发送",
+          "type": "switch",
+          "default": false
+        },
+        {
+          "flag": "--no-at",
+          "label": "不 @ 站长",
+          "type": "switch",
+          "default": false
+        },
+        {
+          "flag": "--markdown",
+          "label": "单条 Markdown（不渲染图）",
+          "type": "switch",
+          "default": false
+        },
+        {
+          "flag": "--group",
+          "label": "目标群",
+          "type": "group",
+          "default": "",
+          "placeholder": "留空用默认群（站点日常管理通知群）"
+        },
+        {
+          "flag": "--begin",
+          "label": "开始节点",
+          "type": "select",
+          "default": "download",
+          "options_source": "nodes",
+          "options": []
+        },
+        {
+          "flag": "--end",
+          "label": "结束节点",
+          "type": "select",
+          "default": "send",
+          "options_source": "nodes",
+          "options": []
+        }
+      ],
+      "risk": "external",
+      "timeout": 600,
+      "outputs": [
+        "apps/api/runtime/jobs/appeal/out/violations.csv",
+        "apps/api/runtime/jobs/appeal/out/violation_detail.png"
+      ],
+      "confirm": "将向钉钉群发送违规申诉明细并 @ 对应站长，这是真实的群消息。确认继续？",
+      "nodes": [
+        {
+          "id": "download",
+          "name": "下载违规 CSV",
+          "desc": "登录风神 + POST download 接口 + 下载 CSV(GBK)"
+        },
+        {
+          "id": "filter",
+          "name": "筛选非超时待申诉",
+          "desc": "违规分类 != 超时 且 申诉状态 == 待申诉；0 条则中止"
+        },
+        {
+          "id": "render",
+          "name": "渲染明细图",
+          "desc": "9 列表格渲染成 violation_detail.png"
+        },
+        {
+          "id": "upload",
+          "name": "上传 MinIO",
+          "desc": "PNG 上传 MinIO 拿公网直链（失败则 send 降级为附件）"
+        },
+        {
+          "id": "send",
+          "name": "发送钉钉群",
+          "desc": "组装消息 + @ 对应站长（--no-send 只预览不真发）"
+        }
+      ]
+    },
+    {
+      "id": "task_board",
+      "name": "站长任务看板",
+      "group": "task",
+      "desc": "拉站长任务列表 → 筛已开始 → 渲染 → 发钉钉 @ 执行人",
+      "params": [
+        {
+          "flag": "--no-at",
+          "label": "不 @ 执行人",
+          "type": "switch",
+          "default": false
+        },
+        {
+          "flag": "--dry-run",
+          "label": "仅预演不发送",
+          "type": "switch",
+          "default": false
+        },
+        {
+          "flag": "--group",
+          "label": "目标群",
+          "type": "group",
+          "default": "",
+          "placeholder": "留空用默认群（站点日常管理通知群）"
+        },
+        {
+          "flag": "--begin",
+          "label": "开始节点",
+          "type": "select",
+          "default": "fetch",
+          "options_source": "nodes",
+          "options": []
+        },
+        {
+          "flag": "--end",
+          "label": "结束节点",
+          "type": "select",
+          "default": "send",
+          "options_source": "nodes",
+          "options": []
+        }
+      ],
+      "risk": "external",
+      "timeout": 300,
+      "outputs": [
+        "apps/api/runtime/jobs/board/out/task_started.png",
+        "apps/api/runtime/jobs/board/out/task_list_raw.json"
+      ],
+      "confirm": "将向钉钉群发送任务看板并 @ 执行人，这是真实的群消息。确认继续？",
+      "nodes": [
+        {
+          "id": "fetch",
+          "name": "拉取任务列表",
+          "desc": "HTTP 拉「已开始」站长任务（status=started 服务端过滤）+ 落 task_list_raw.json"
+        },
+        {
+          "id": "filter",
+          "name": "筛选已开始",
+          "desc": "只留 status=已开始 + 计算剩余时间；0 条则中止后续"
+        },
+        {
+          "id": "render",
+          "name": "渲染看板图",
+          "desc": "渲染 task_started.png（淘宝闪购橙主题）"
+        },
+        {
+          "id": "resolve",
+          "name": "解析站长 openid",
+          "desc": "执行人姓名 → 钉钉 openDingTalkId（未解析的跳过 @）"
+        },
+        {
+          "id": "send",
+          "name": "发送任务看板",
+          "desc": "原图传 MinIO + 组 markdown + 发钉钉 + @ 执行人"
+        }
+      ]
+    },
+    {
+      "id": "jidan_fetch",
+      "name": "抓取三站在途急单",
+      "group": "delivery",
+      "desc": "dispatcher 抓黄江/万科/大岭山在途急单 + 完整订单详情",
+      "params": [
+        {
+          "flag": "--begin",
+          "label": "开始节点",
+          "type": "select",
+          "default": "fetch",
+          "options_source": "nodes",
+          "options": []
+        },
+        {
+          "flag": "--end",
+          "label": "结束节点",
+          "type": "select",
+          "default": "write",
+          "options_source": "nodes",
+          "options": []
+        }
+      ],
+      "risk": "safe",
+      "timeout": 900,
+      "outputs": [
+        "apps/api/runtime/jobs/rush/out/dispatcher_jidan_3stations.json",
+        "apps/api/runtime/jobs/rush/out/dispatcher_jidan_3stations.csv"
+      ],
+      "nodes": [
+        {
+          "id": "fetch",
+          "name": "拉取三站在途急单",
+          "desc": "登录风神 + 分页拉三站 trackingId/订单/急单"
+        },
+        {
+          "id": "merge",
+          "name": "合并去重",
+          "desc": "三站数据并集 + 按站点汇总"
+        },
+        {
+          "id": "write",
+          "name": "落盘 CSV/JSON",
+          "desc": "写 dispatcher_jidan_3stations.csv / .json"
+        }
+      ]
+    },
+    {
+      "id": "delivery_pipeline",
+      "name": "运单明细入库",
+      "group": "delivery",
+      "desc": "端到端流水线：抓原始层 → 入库 → 核对。默认跑补数三步（抓原始层→入库→核对）；勾「导出 CSV」会在抓完原始层后顺带用 JSONL 本地平铺一份中文表头 CSV（不打接口，秒出）；勾「DROP 重建表」会立刻弹高危确认窗（确认才勾上，取消自动拨回），确认后运行即真实清空全部已入库数据。",
+      "params": [
+        {
+          "flag": "--date",
+          "label": "单日",
+          "type": "date",
+          "default": "",
+          "placeholder": "默认昨天"
+        },
+        {
+          "flag": "--start-date",
+          "label": "开始日期",
+          "type": "date",
+          "default": "",
+          "placeholder": "与 --end-date 搭配"
+        },
+        {
+          "flag": "--end-date",
+          "label": "结束日期",
+          "type": "date",
+          "default": "",
+          "placeholder": "与 --start-date 搭配"
+        },
+        {
+          "flag": "--with-csv",
+          "label": "导出 CSV",
+          "type": "switch",
+          "default": false
+        },
+        {
+          "flag": "--reinit",
+          "label": "DROP 重建表",
+          "type": "switch",
+          "default": false
+        },
+        {
+          "flag": "--begin",
+          "label": "开始节点",
+          "type": "select",
+          "default": "raw",
+          "options_source": "nodes",
+          "options": []
+        },
+        {
+          "flag": "--end",
+          "label": "结束节点",
+          "type": "select",
+          "default": "verify",
+          "options_source": "nodes",
+          "options": []
+        }
+      ],
+      "risk": "caution",
+      "timeout": 7200,
+      "outputs": [
+        "apps/api/runtime/jobs/delivery/out/delivery_raw/*.jsonl",
+        "apps/api/runtime/jobs/delivery/out/aeolus_delivery_*.csv"
+      ],
+      "needs": [
+        "apps/api/runtime/jobs/delivery/out/delivery_raw/"
+      ],
+      "prereq_note": "load / verify 节点需 PostgreSQL 在 localhost:5432 在线（库 postgres / 用户 admin），否则这两个节点连接失败；raw 节点可独立跑完。导出 CSV 不再是独立节点，而是 raw 的收尾动作——需要先抓到 JSONL（即区间要包含 raw）。",
+      "confirm": "将写入/读取 PostgreSQL（数据库 postgres / 表 ods_delivery_tracking）。",
+      "nodes": [
+        {
+          "id": "raw",
+          "name": "抓运单原始层 JSONL",
+          "desc": "登录风神 + 按天分页拉原始数据（JSONL：一行一条运单 JSON）。每天都重抓，不再看 .ok 完成标记；勾了「导出 CSV」时在抓完后顺带由 JSONL 本地平铺出中文表头 CSV。⏱ 页间随机 0.1~1s，一天约 120 页 ≈ 5 分钟 —— 进度条长时间停在 raw 属正常，不是卡死"
+        },
+        {
+          "id": "load",
+          "name": "逐日 upsert 入库",
+          "desc": "扫描 delivery_raw/*.jsonl 按 trackingId 幂等 upsert，结尾报告表内行数"
+        },
+        {
+          "id": "verify",
+          "name": "核对行数对账",
+          "desc": "统计表内每日行数，与 delivery_raw/*.meta.json 中接口 total 对账"
+        }
+      ]
+    },
+    {
+      "id": "rule_doc",
+      "name": "规则文档生成",
+      "group": "tool",
+      "desc": "按规则 ID 拉骑士规则详情 → 生成 HTML + Markdown 文档",
+      "params": [
+        {
+          "flag": "--rule",
+          "label": "规则 ID（必填）",
+          "type": "text",
+          "default": "",
+          "placeholder": "如 6923；已下线规则须选「历史版本(全量)」",
+          "required": true
+        },
+        {
+          "flag": "--history",
+          "label": "版本",
+          "type": "select",
+          "default": "--history",
+          "options": [
+            {
+              "value": "--history",
+              "label": "历史版本"
+            },
+            {
+              "value": "--no-history",
+              "label": "现行版本"
+            }
+          ],
+          "raw": true
+        },
+        {
+          "flag": "--begin",
+          "label": "开始节点",
+          "type": "select",
+          "default": "login",
+          "options_source": "nodes",
+          "options": []
+        },
+        {
+          "flag": "--end",
+          "label": "结束节点",
+          "type": "select",
+          "default": "write",
+          "options_source": "nodes",
+          "options": []
+        }
+      ],
+      "risk": "safe",
+      "timeout": 300,
+      "outputs": [
+        "apps/api/runtime/jobs/ruledoc/out/rule_doc_<id>.html",
+        "apps/api/runtime/jobs/ruledoc/out/rule_doc_<id>.md"
+      ],
+      "output_vars": {
+        "id": "--rule"
+      },
+      "nodes": [
+        {
+          "id": "login",
+          "name": "登录风神",
+          "desc": "复用本地有效 cookie，失效才重新登录"
+        },
+        {
+          "id": "query",
+          "name": "查询规则",
+          "desc": "调 knight-rule-center 拿规则 JSON"
+        },
+        {
+          "id": "build",
+          "name": "组装文档",
+          "desc": "按 block_spec 渲染成 HTML"
+        },
+        {
+          "id": "write",
+          "name": "写出 HTML",
+          "desc": "写 rule_doc_<id>.html"
+        }
+      ]
+    },
+    {
+      "id": "orange_storm",
+      "name": "橙色风暴明细抓取",
+      "group": "tool",
+      "desc": "拉橙色风暴（QC 抽检判定）明细 → 写 JSON + 全字段 CSV + 精简 CSV 到 out/",
+      "params": [
+        {
+          "flag": "--month",
+          "label": "整月 YYYY-MM",
+          "type": "text",
+          "default": "",
+          "placeholder": "如 2026-08，默认上个月"
+        },
+        {
+          "flag": "--start-date",
+          "label": "开始日期",
+          "type": "date",
+          "default": "",
+          "placeholder": "与 --end-date 搭配"
+        },
+        {
+          "flag": "--end-date",
+          "label": "结束日期",
+          "type": "date",
+          "default": "",
+          "placeholder": "与 --start-date 搭配"
+        },
+        {
+          "flag": "--begin",
+          "label": "开始节点",
+          "type": "select",
+          "default": "login",
+          "options_source": "nodes",
+          "options": []
+        },
+        {
+          "flag": "--end",
+          "label": "结束节点",
+          "type": "select",
+          "default": "write",
+          "options_source": "nodes",
+          "options": []
+        }
+      ],
+      "risk": "safe",
+      "timeout": 600,
+      "outputs": [
+        "apps/api/runtime/jobs/orange_storm/out/orange_storm_*.json",
+        "apps/api/runtime/jobs/orange_storm/out/orange_storm_*.csv",
+        "apps/api/runtime/jobs/orange_storm/out/orange_storm_*_slim.csv"
+      ],
+      "nodes": [
+        {
+          "id": "login",
+          "name": "登录风神",
+          "desc": "复用本地有效 cookie，失效才重新登录"
+        },
+        {
+          "id": "fetch",
+          "name": "分页拉取 QC 列表",
+          "desc": "按时间范围自动翻页直到拉满 total"
+        },
+        {
+          "id": "write",
+          "name": "写出数据文件",
+          "desc": "写 JSON + 全字段 CSV + 精简 CSV，并打印统计"
+        }
+      ]
+    },
+    {
+      "id": "unsat_run",
+      "name": "不满意复盘反馈",
+      "group": "unsat",
+      "desc": "拉昨天不满意单数据 → 写钉钉表 → 渲染 → 发群",
+      "params": [
+        {
+          "flag": "--no-send",
+          "label": "只拉数填表不发群",
+          "type": "switch",
+          "default": false
+        },
+        {
+          "flag": "--sheet-url",
+          "label": "文档地址",
+          "type": "text",
+          "default": "",
+          "placeholder": "钉钉在线表完整链接；留空沿用上次填写的地址"
+        },
+        {
+          "flag": "--date",
+          "label": "指定日期",
+          "type": "date",
+          "default": "",
+          "placeholder": "默认昨天"
+        },
+        {
+          "flag": "--begin",
+          "label": "开始节点",
+          "type": "select",
+          "default": "fetch",
+          "options_source": "nodes",
+          "options": []
+        },
+        {
+          "flag": "--end",
+          "label": "结束节点",
+          "type": "select",
+          "default": "send",
+          "options_source": "nodes",
+          "options": []
+        }
+      ],
+      "risk": "external",
+      "timeout": 1200,
+      "confirm": "将拉取数据、写入钉钉表并向群内发送消息，这是真实动作。确认继续？",
+      "nodes": [
+        {
+          "id": "fetch",
+          "name": "拉取不满意单",
+          "desc": "拉昨天（或 --date）数据 + 拿原始文件下载链接"
+        },
+        {
+          "id": "store",
+          "name": "落库去重",
+          "desc": "init_db + 按单号 upsert，供后续提醒去重"
+        },
+        {
+          "id": "sheet",
+          "name": "填在线表",
+          "desc": "写入表格；已存在全部明细则跳过"
+        },
+        {
+          "id": "send",
+          "name": "渲染并发群",
+          "desc": "渲染图片 + 发群（--no-send 只渲染预览）"
+        }
+      ]
+    },
+    {
+      "id": "task_equipment",
+      "name": "骑手装备点亮提醒",
+      "group": "equip",
+      "desc": "拉取 T-1 数据 + 筛未点亮 + 渲染明细图 + 上传 MinIO + 发台账安全处理群 @站长",
+      "risk": "external",
+      "timeout": 900,
+      "needs": [],
+      "outputs": [
+        "apps/api/runtime/jobs/equipment/out/rider_equipment.csv",
+        "apps/api/runtime/jobs/equipment/out/rider_equipment_raw.json",
+        "apps/api/runtime/jobs/equipment/out/rider_equipment_warning.png",
+        "apps/api/runtime/jobs/equipment/out/rider_equipment_unlit.csv"
+      ],
+      "confirm": "将向「台账安全处理群」发送装备未点亮明细并 @ 站长，这是真实的群消息。确认继续？",
+      "params": [
+        {
+          "flag": "--date",
+          "label": "指定日期",
+          "type": "date",
+          "default": "",
+          "placeholder": "默认昨天"
+        },
+        {
+          "flag": "--no-at",
+          "label": "不 @ 站长",
+          "type": "switch",
+          "default": false
+        },
+        {
+          "flag": "--no-send",
+          "label": "只生成不发送",
+          "type": "switch",
+          "default": false
+        },
+        {
+          "flag": "--group",
+          "label": "目标群",
+          "type": "group",
+          "default": "cid0e98U3LKJztg311F+lpXhA==",
+          "placeholder": "留空用默认群（台账沟通群）"
+        },
+        {
+          "flag": "--begin",
+          "label": "开始节点",
+          "type": "select",
+          "default": "fetch",
+          "options_source": "nodes",
+          "options": []
+        },
+        {
+          "flag": "--end",
+          "label": "结束节点",
+          "type": "select",
+          "default": "send",
+          "options_source": "nodes",
+          "options": []
+        }
+      ],
+      "nodes": [
+        {
+          "id": "fetch",
+          "name": "取数",
+          "desc": "健康探针 → WidgetAction 取数（DA cookie 优先复用缓存，含 3 次抗顶号重试）"
+        },
+        {
+          "id": "save",
+          "name": "落盘原始层+CSV",
+          "desc": "写 rider_equipment_raw.json + 解析导出 rider_equipment.csv"
+        },
+        {
+          "id": "report",
+          "name": "打印摘要",
+          "desc": "打印响应摘要与列 schema（排查用）"
+        },
+        {
+          "id": "filter",
+          "name": "筛选未点亮",
+          "desc": "从 rider_equipment.csv 筛出未点亮记录；0 条则中止后续"
+        },
+        {
+          "id": "render",
+          "name": "渲染明细图",
+          "desc": "出 rider_equipment_warning.png + 同步导出 rider_equipment_unlit.csv"
+        },
+        {
+          "id": "upload",
+          "name": "上传 MinIO",
+          "desc": "PNG 上传 MinIO 拿公网直链（供 markdown 内联图）"
+        },
+        {
+          "id": "send",
+          "name": "发送钉钉群",
+          "desc": "解析目标群 + @ 对应站长 + 发 markdown"
+        }
+      ]
+    }
+  ],
+  "presets": [
+    {
+      "id": "p_attendance_prod",
+      "name": "考勤全流程（生产群）",
+      "desc": "跑全部 4 个节点：拉取 → 渲染 → 上传 → 发生产群 @站长",
+      "steps": [
+        {
+          "id": "attendance"
+        }
+      ]
+    },
+    {
+      "id": "p_attendance_test",
+      "name": "考勤试跑（测试群·不@）",
+      "desc": "跑全部 4 个节点，目标群改为测试群且不 @ 站长",
+      "steps": [
+        {
+          "id": "attendance",
+          "args": {
+            "--group": "cidgMWYCeQ/qcEskQffKBGh7A==",
+            "--no-at": true
+          }
+        }
+      ]
+    },
+    {
+      "id": "p_task_prod",
+      "name": "商站任务全流程",
+      "desc": "跑全部 5 个节点：拉任务 → 筛已开始 → 渲染 → 解析 openid → 发生产群 @执行人",
+      "steps": [
+        {
+          "id": "task_board"
+        }
+      ]
+    },
+    {
+      "id": "p_equip_daily",
+      "name": "装备点亮日报",
+      "desc": "T-1 数据 → 筛未点亮 → 渲染 → 上传 MinIO → 发台账安全处理群 @站长",
+      "steps": [
+        {
+          "id": "task_equipment"
+        }
+      ]
+    },
+    {
+      "id": "p_delivery_daily",
+      "name": "运单日流水（抓数 + 导出 CSV）",
+      "desc": "抓昨天运单原始层，勾「导出 CSV」顺带平铺出中文表头 CSV（本地转换，不打接口）",
+      "steps": [
+        {
+          "id": "delivery_pipeline",
+          "args": {
+            "--with-csv": true,
+            "--begin": "raw",
+            "--end": "raw"
+          }
+        }
+      ]
+    }
+  ]
+}

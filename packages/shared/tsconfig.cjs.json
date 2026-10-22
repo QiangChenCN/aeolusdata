@@ -1,0 +1,9 @@
+{
+  // CommonJS 产物：供 apps/api（NestJS，编译为 CJS）以 require() 消费。
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "module": "CommonJS",
+    "moduleResolution": "Node",
+    "outDir": "dist/cjs"
+  }
+}

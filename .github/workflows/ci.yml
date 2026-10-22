@@ -1,0 +1,65 @@
+name: CI
+
+# 通用校验流水线：在合并 / 部署前，确保三端（NestJS / Python 计算 / 前端）都能正常构建，
+# 并且 OpenTelemetry 插桩在「开启」状态下能正确初始化（捕获版本错配 / 导入失败类回归）。
+# 真正的部署走 .github/workflows/deploy-backend.yml（推 main 触发）。
+#
+# 设计要点：
+#   · otel 默认关闭（OTEL_ENABLED / VITE_OTEL_ENABLED 不设即为 no-op），生产构建零影响；
+#   · 这里额外在 CI 里「开启」跑一遍，确保开启态不会因依赖版本错配而崩。
+
+on:
+  push:
+    branches: ['*']
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-and-verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: pnpm
+
+      - name: Enable Corepack (pnpm)
+        run: corepack enable
+
+      - name: Install dependencies (frozen)
+        run: pnpm install --frozen-lockfile
+
+      # ---------- Backend (NestJS) ----------
+      - name: Build backend
+        run: pnpm --filter aeolus-workbench-backend build
+
+      # ---------- Web（前端）----------
+      # 默认构建：otel 关闭，会被 tree-shake 完全剔除（= 生产形态）
+      - name: Build web (otel disabled)
+        run: pnpm --filter aeolus-workbench-web build
+      # 开启构建：验证 otel Web SDK + Fetch 插桩能正常打包出独立 chunk
+      - name: Build web (otel enabled) smoke
+        run: VITE_OTEL_ENABLED=true VITE_OTEL_COLLECTOR=http://localhost:4318 pnpm --filter aeolus-workbench-web build
+
+      # ---------- Web 单元测试（Vitest，秒级反馈、CI 成本低，补 Playwright E2E 之外的空白）----------
+      - name: Web unit tests
+        run: pnpm --filter aeolus-workbench-web test
+
+      # ---------- Backend otel smoke：OTEL_ENABLED=true 下 instrumentation 能初始化 ----------
+      # instrumentation.js 在模块加载时即执行 sdk.start()；离线（无 Collector）也不应抛错。
+      - name: Node otel smoke
+        run: OTEL_ENABLED=true node -e "require('./apps/api/dist/src/instrumentation.js'); console.log('api otel OK'); process.exit(0);"
+
+      # ---------- Compute (Python) ----------
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Sync compute deps (incl. OpenTelemetry)
+        run: cd services/compute && uv sync --frozen --no-dev
+
+      - name: Python otel smoke
+        run: cd services/compute && OTEL_ENABLED=true OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317 uv run python -c "import compute_api.otel as o; o.setup_tracing(); import opentelemetry.trace as t; assert t.get_tracer_provider() is not None; print('compute otel OK')"

@@ -1,0 +1,5 @@
+{
+  "_note": "后端架构边界「棘轮基线」（apps/api）：下面是**存量**跨看板耦合，已登记所以不阻断检查；但**新增**任何一条都会让 apps/api/scripts/check-arch.mjs 失败。每清理一条，就从 allow 里删一条。",
+  "_howToRepay": "1) 先让被引用方下沉为共享层（backend/src/common/…），引用方只改 import 路径；2) 删除本文件对应条目；3) 跑 node apps/api/scripts/check-arch.mjs 确认通过。",
+  "allow": []
+}

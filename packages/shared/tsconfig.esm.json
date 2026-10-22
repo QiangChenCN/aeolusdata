@@ -1,0 +1,11 @@
+{
+  // ESM 产物：供 apps/web（Vite）以原生 import 消费。
+  // 原生 ESM 无需任何 CJS→ESM 互操作，因此 vite.config.js 里的
+  // optimizeDeps.include / commonjsOptions 兼容代码可以彻底移除。
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "outDir": "dist/esm"
+  }
+}

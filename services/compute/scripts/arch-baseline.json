@@ -1,0 +1,27 @@
+{
+  "_note": "Python 架构边界「棘轮基线」（services/compute）：下面是**存量**跨看板耦合，已登记所以不阻断检查；但**新增**任何一条都会让 services/compute/scripts/check-arch.mjs 失败。每清理一条，就从 allow 里删一条（脚本会提示已失效条目）。",
+  "_howToRepay": "1) 先让被引用方下沉为共享层（analytics/core/ 或 Nest 提供给各看板的历史指标接口），引用方只改 import 路径；2) 删除本文件对应条目；3) 跑 node services/compute/scripts/check-arch.mjs 确认通过。",
+  "allow": [
+    {
+      "rule": "R4",
+      "from": "services/compute/analytics/domains/delivery_timeout/timeout.py",
+      "import": "analytics.domains.assessment",
+      "reason": "配送超时复用考核看板的「复合超时时长」口径(compound)与「提前点送达」违规扣减(violations)。注意：这两项属于考核口径，一旦考核改口径，配送超时的对应指标会跟着变 —— 与「看板独立」原则冲突。",
+      "repay": "把 compound 的加权口径与违规扣减规则抽成各自的纯算法模块（放 core 或各自域内），两个看板各自显式声明自己用哪套参数；不要共享同一份「会变」的业务口径。"
+    },
+    {
+      "rule": "R4",
+      "from": "services/compute/analytics/domains/assessment/assessment_overview.py",
+      "import": "analytics.domains.standard",
+      "reason": "考核大屏复用标准达成的 achievement / rider_dimension / station_report 计算大屏卡片。",
+      "repay": "大屏应只消费各看板已算好的结果（apps/api/runtime/results/），而不是直接调它们的计算函数；或把大屏做成自己的域、从结果层取数。"
+    },
+    {
+      "rule": "R4",
+      "from": "services/compute/analytics/domains/assessment/assessment_overview.py",
+      "import": "analytics.domains.attend_period",
+      "reason": "考核大屏用 attend_period_source 的进程内数据集出「时段出勤」卡片（只读缓存、不主动取数）。",
+      "repay": "大屏应只消费各看板已落盘的结果（apps/api/runtime/results/），而不是直接读另一个域的数据集；或把大屏做成自己的域、从结果层取数。"
+    }
+  ]
+}

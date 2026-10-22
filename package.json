@@ -1,7 +1,22 @@
 {
   "name": "aeolusdata",
+  "version": "0.1.0",
   "private": true,
+  "packageManager": "pnpm@9.15.4",
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
-    "dev": "bash dev.sh"
+    "dev": "bash scripts/manage.sh start",
+    "build": "turbo run build",
+    "build:api": "pnpm --filter aeolus-workbench-backend build",
+    "build:web": "pnpm --filter aeolus-workbench-web build",
+    "lint": "turbo run lint",
+    "test": "turbo run test",
+    "check:arch": "node apps/api/scripts/check-arch.mjs && node apps/web/scripts/check-arch.mjs && node services/compute/scripts/check-arch.mjs",
+    "check:arch:strict": "node apps/api/scripts/check-arch.mjs --strict && node apps/web/scripts/check-arch.mjs --strict && node services/compute/scripts/check-arch.mjs --strict"
+  },
+  "devDependencies": {
+    "turbo": "^2.3.0"
   }
 }

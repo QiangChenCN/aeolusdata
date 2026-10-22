@@ -1,0 +1,36 @@
+[project]
+name = "aeolus-compute"
+version = "0.0.1"
+description = "Aeolus 工作台：Python 计算服务（FastAPI + gunicorn/uvicorn worker）"
+# 下限由 numpy==2.5.4 决定：它要求 Python>=3.12。
+# 部署机必须提供 3.12+ 解释器，否则 uv sync 会直接报错（而非静默装出一个跑不起来的环境）。
+requires-python = ">=3.12"
+dependencies = [
+  "fastapi==0.143.2",
+  "uvicorn==0.54.0",
+  "gunicorn==23.0.0",
+  # analytics/* 聚合计算的硬依赖。此前靠手动装进 venv、未入版本库，
+  # 导致全新部署后计算服务起不来；现由 uv.lock 锁定，uv sync 保证可复现。
+  "numpy==2.5.4",
+  "openpyxl==3.1.5",
+  # PostgreSQL 同步驱动（Python 计算侧读取端口，与 Nest PgService 同源）。
+  # [binary] 自带 libpq，无需系统装 postgresql-client。
+  "psycopg[binary]==3.2.13",
+  # ---- OpenTelemetry 可观测（默认关闭，需 OTEL_ENABLED=true；见 compute_api/otel.py）----
+  # 不锁版本：api/sdk 与插桩包必须版本对齐，交由 uv 解析一致集合。
+  "opentelemetry-api",
+  "opentelemetry-sdk",
+  "opentelemetry-exporter-otlp-proto-grpc",
+  "opentelemetry-instrumentation-fastapi",
+  "opentelemetry-instrumentation-requests",
+]
+
+[dependency-groups]
+# 开发期依赖（测试/质量工程），生产部署用 uv sync --frozen --no-dev 排除
+dev = [
+  "pytest==9.1.1",
+]
+
+[tool.uv]
+# 本目录是「服务」而非可分发的库：只用它管理依赖与虚拟环境，不打包安装自身。
+package = false
