@@ -64,6 +64,12 @@ jobs:
       - name: Install dependencies (frozen)
         run: pnpm install --frozen-lockfile
 
+      # ---------- 部署前校验（失败即中止，不进入部署步骤）----------
+      # main 推送只跑本 workflow（ci.yml 已改为不监听 main），安全网不能丢：
+      # 工具函数 / store / 组件渲染单测，秒级反馈。
+      - name: Web unit tests (Vitest)
+        run: pnpm --filter aeolus-workbench-web test
+
       # ---------- Backend ----------
       - name: Build & Deploy Backend
         env:

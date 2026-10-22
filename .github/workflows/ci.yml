@@ -4,13 +4,17 @@ name: CI
 # 并且 OpenTelemetry 插桩在「开启」状态下能正确初始化（捕获版本错配 / 导入失败类回归）。
 # 真正的部署走 .github/workflows/deploy-backend.yml（推 main 触发）。
 #
+# 触发分工（避免每次推送跑两遍）：
+#   · 推 main → 只跑 deploy-backend.yml（其内部已含 Vitest 等部署前校验）；
+#   · 推其他分支 / 开 PR → 只跑本 CI。
+#
 # 设计要点：
 #   · otel 默认关闭（OTEL_ENABLED / VITE_OTEL_ENABLED 不设即为 no-op），生产构建零影响；
 #   · 这里额外在 CI 里「开启」跑一遍，确保开启态不会因依赖版本错配而崩。
 
 on:
   push:
-    branches: ['*']
+    branches-ignore: [main]
   pull_request:
     branches: [main]
 
