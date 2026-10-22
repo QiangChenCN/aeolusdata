@@ -40,11 +40,25 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '24'
-          cache: pnpm
 
       # 用根 package.json 的 packageManager 字段锁定 pnpm 版本（corepack 据此启用对应版本）
+      # 注意：setup-node 不要带 cache: pnpm —— 它在本步内就要定位 pnpm 可执行文件算缓存 key，
+      # 而彼时 corepack shim 尚未创建（Enable Corepack 是下一个 step），会直接报
+      # "Unable to locate executable file: pnpm" 让整个 job 失败。store 缓存改由下面显式完成。
       - name: Enable Corepack (pnpm)
         run: corepack enable
+
+      - name: Get pnpm store directory
+        shell: bash
+        run: echo "STORE_PATH=$(pnpm store path --silent)" >> "$GITHUB_ENV"
+
+      - name: Cache pnpm store
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
 
       # 单一依赖安装入口：pnpm 工作区一次性装齐（api/web/shared），后续构建步骤直接复用
       - name: Install dependencies (frozen)
