@@ -881,7 +881,7 @@ function applyStationRows(resp, history) {
  * 故此时数据已是两路齐全的完整结果，无需再等「连续稳定」。
  * 期间 loading 由引用计数维持为真、lastUpdated 不变——绝不在真实数据就绪前收起动画或让时间先行变动。
  */
-function waitForFresh(beforeFa, sinceMs = 0) {
+function waitForFresh(beforeFa, sinceMs = 0, didRefresh = false) {
   refreshing = true;
   beginLoad();
   const ids = teamSel.value === '__all__'
@@ -915,6 +915,11 @@ function waitForFresh(beforeFa, sinceMs = 0) {
     // 全程没拿到过一次有效响应（网络/超时/5xx）：给常驻提示，而不是静默熄灭动画了事。
     if (!finalResp && !refreshNote.value) {
       refreshNote.value = '等待考核数据更新超时，请稍后重试或联系管理员排查计算服务';
+    } else if (didRefresh && !freshest && !refreshNote.value) {
+      // 前端取数成功（至少一路 ok）却 45s 内 fetched_at 始终没推进：说明落库 / 缓存失效 /
+      // 重算没有真正生效（区别于「数据本就没变」—— 成功写库必刷新 created_at，fetched_at 必推进）。
+      // 之前这里会静默收尾，表现即「点刷新不更新、也不报错」。
+      refreshNote.value = '已发起刷新，但考核计算结果 45s 内未更新：可能落库 / 缓存失效 / 计算服务异常，请检查服务器';
     }
   };
   return run().finally(() => {
@@ -991,7 +996,7 @@ async function load(silent = false, fetch = false, manual = false) {
     // 更新时间不变；只有读到 fetched_at 比刷新前新且稳定，才更新表格与更新时间并关闭动画，
     // 杜绝「动画消失后数据才刷新 / 时间变了数字没变」。
     if (manual && fetch && !history && didRefresh) {
-      await waitForFresh(lastUpdated.value || null);
+      await waitForFresh(lastUpdated.value || null, 0, didRefresh);
       return; // waitForFresh 自行收尾（循环结束后刷新 loading/updated）
     }
     // 非刷新等待场景（页面加载 / 历史 / 手动冷却未实际取数）：单次读盘即展示。

@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post, Sse } from '@nestjs/common';
+import { Body, Controller, Get, Logger, Post, Sse } from '@nestjs/common';
 import { MessageEvent } from '@nestjs/common';
 import { Observable } from 'rxjs';
 import { ConfigService } from '@nestjs/config';
@@ -23,6 +23,7 @@ import { AssessmentAutoRefreshService } from './assessment-auto-refresh.service'
  */
 @Controller('api/assessment-fetch')
 export class AssessmentController {
+  private readonly logger = new Logger(AssessmentController.name);
   constructor(
     private readonly violationSvc: AssessmentViolationFetchService,
     private readonly deliverySvc: AssessmentDeliveryFetchService,
@@ -50,18 +51,26 @@ export class AssessmentController {
    * 取数落盘后回调 Python 计算服务，失效考核看板（assessment_board）的进程内结果缓存。
    * 若 PYTHON_COMPUTE_URL 未配置或计算服务不可达，静默忽略——缓存只是性能优化，
    * 漏失效顶多下次读取晚一点重算，绝不让取数接口因此失败。
+   *
+   * teams 为空（teams.json 缺失/解析失败）时退化为整体清缓存（{all:true}）：否则会静默
+   * 不失效，表现即「刷新了但数字没变、也不报错」。Python 端点已支持 all。
    */
   private async notifyInvalidate(teams: string[], date: string): Promise<void> {
     const base = this.config.get<string>('PYTHON_COMPUTE_URL');
     if (!base) return;
+    const payload = teams && teams.length ? { teams, date } : { all: true, date };
     try {
-      await fetch(`${base}/api/cache/invalidate`, {
+      const r = await fetch(`${base}/api/cache/invalidate`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ teams, date }),
+        body: JSON.stringify(payload),
       });
-    } catch {
-      /* ignore */
+      if (!r.ok) {
+        this.logger.warn(`考核缓存失效回调异常 HTTP ${r.status} payload=${JSON.stringify(payload)}`);
+      }
+    } catch (e) {
+      // 计算服务不可达：缓存只是性能优化，漏失效顶多下次读取晚点重算。但记录以便排查。
+      this.logger.warn(`考核缓存失效回调失败（计算服务不可达？）: ${(e as Error).message}`);
     }
   }
 
@@ -177,18 +186,21 @@ export class AssessmentController {
     return this.auto.getConfig();
   }
 
-  /** 读取本地 teams.json 的全部站点 id（运单全站单文件失效缓存时用到）。 */
+  /** 读取本地 teams.json 的全部站点 id（运单全站单文件失效缓存时用到）。
+   *  ⚠️ 路径必须与 TeamsFetchService.persist() 的 teamsFilePath() 完全一致（process.cwd()/runtime/teams.json）：
+   *  二者不一致时本方法会读到空数组，导致 notifyInvalidate 拿不到 teams 而静默不失效缓存，
+   *  表现即「刷新了但看板数字没变、也不报错」。旧实现走 PROJECT_ROOT/apps/api/runtime，
+   *  在 Nest 工作目录恰为 apps/api 时撞巧一致，但属脆弱巧合，这里改为与落盘方同源。 */
   private allTeamIds(): string[] {
     try {
-      const root = this.config.get<string>('PROJECT_ROOT') || path.resolve(process.cwd(), '..');
-      const p = path.join(root, 'apps', 'api', 'runtime', 'teams.json');
+      const p = path.join(process.cwd(), 'runtime', 'teams.json');
       const d = JSON.parse(fs.readFileSync(p, 'utf-8'));
       const list = Array.isArray(d) ? d : d.teams;
       if (Array.isArray(list)) {
         return list.map((t: { id?: string | number }) => String(t.id)).filter(Boolean);
       }
     } catch {
-      /* teams.json 缺失时返回空，notifyInvalidate 会因缺 teams 被忽略（降级：下次读晚点重算） */
+      /* teams.json 缺失时返回空，notifyInvalidate 会退化为整体清缓存（见下） */
     }
     return [];
   }
