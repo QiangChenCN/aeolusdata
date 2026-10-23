@@ -258,6 +258,21 @@ export class FetchController {
   }
 
   /**
+   * 风神凭据验证（系统设置「风神设置」→ 验证）：用当前已保存的凭据跑一遍**完整 SSO 登录**，
+   * 并对拿到的 cookie 打 validToken 探针，确认「这套账号密码现在能取出可用 cookie」。
+   *
+   * body 可选传 `{account, password}` 做**试登验证**（不落盘，用于保存前先验）；不传则使用
+   * 已保存凭据，验证通过会把新 cookie 落盘并刷新进程内缓存，取数链无需再登一次。
+   */
+  @Post('settings/aeolus/test')
+  async aeolusCredsTest(@Body() b: { account?: unknown; password?: unknown }) {
+    return this.aeolusCookie.verify({
+      account: typeof b?.account === 'string' ? b.account.trim() : '',
+      password: typeof b?.password === 'string' ? b.password : '',
+    });
+  }
+
+  /**
    * 退出风神登录态（系统设置「账号设置」→ 退出登录）。只清除本地 SSO cookie 会话，
    * 不删除账号密码；下次取数会自动用已保存凭据重登。
    */

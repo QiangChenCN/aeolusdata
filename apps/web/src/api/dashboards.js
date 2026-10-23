@@ -253,3 +253,8 @@ export function saveAeolusCreds({ account, password } = {}) {
   return request('/fetch/settings/aeolus', j({ account, password }));
 }
 export function logoutAeolus() { return request('/fetch/settings/aeolus/logout', j({})); }
+// 凭据验证：跑一遍完整 SSO 登录并探活 cookie。不传参=用已保存凭据（通过则落盘 cookie）；
+// 传 {account,password} = 试登验证，不落盘。
+export function testAeolusCreds({ account, password } = {}) {
+  return request('/fetch/settings/aeolus/test', j({ account, password }));
+}

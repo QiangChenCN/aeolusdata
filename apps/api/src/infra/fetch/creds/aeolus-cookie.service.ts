@@ -27,6 +27,25 @@ import { AeolusLoginService } from './aeolus-login.service';
  * 跨进程锁（原 `aeolus_sdk/xlock.py`）已不需要：迁移后 writer 只有本进程（Python 侧不再有
  * 任何登录/写 cookie 的代码）。跨进程读由原子写（临时文件 + rename）保证不会读到半截。
  */
+/** 凭据验证结果（供「系统设置 → 风神设置」的验证入口展示）。 */
+export interface AeolusVerifyResult {
+  ok: boolean;
+  /** 失败原因（缺凭据 / 账号密码错误 / 网络异常 / 探针无效），直接给 UI 展示。 */
+  error?: string;
+  /** 拿到的 cookie 头长度。 */
+  cookie_len?: number;
+  /** cookie 里是否含 AEOLUS_MOZI_TOKEN（风神接口的必需票据）。 */
+  has_mozi_token?: boolean;
+  /** validToken 探针结果。 */
+  probe?: boolean;
+  /** 新 cookie 是否已落盘并更新进程内缓存（临时凭据试登时为 false）。 */
+  saved?: boolean;
+  /** 凭据来源：'file' = 已保存凭据，'input' = 本次传入的临时凭据。 */
+  source?: 'file' | 'input';
+  elapsed_ms?: number;
+  checked_at?: string;
+}
+
 @Injectable()
 export class AeolusCookieService {
   private readonly logger = new Logger(AeolusCookieService.name);
@@ -124,6 +143,81 @@ export class AeolusCookieService {
     });
     this.reloginInFlight = p;
     return p;
+  }
+
+  /**
+   * 凭据连通性验证（系统设置「风神设置」→ 验证）：跑**一遍完整 SSO 登录**并检查拿到的 cookie
+   * 能否通过 validToken 探针 —— 即「这套账号密码现在到底能不能取出 cookie」。
+   *
+   * 与另外两个入口的边界：
+   *  · `ensure()` —— 取数链路用，可能复用文件里已有的 cookie，登录与否不可控；
+   *  · `relogin()` —— 被 401 顶号后自愈用，不反馈「凭据本身对不对」；
+   *  · 本方法 —— 专供人工验证，一定真登一次，且把结果结构化返回（绝不抛错）。
+   *
+   * 两个语义约定：
+   *  1. 用**已保存凭据**（不传或只传部分）验证成功时，新 cookie 会落盘并更新进程内缓存 ——
+   *     验证通过就意味着这个会话可用，没必要让取数链再登一次；
+   *  2. 用**临时输入凭据**（account + password 都传）验证时只做试登与探针，**不落盘** ——
+   *     此时凭据尚未保存，写 cookie 会让文件里的会话与 credentials.json 不一致。
+   */
+  async verify(input?: { account?: string; password?: string }): Promise<AeolusVerifyResult> {
+    const override =
+      input?.account && input?.password
+        ? { account: input.account, password: input.password }
+        : undefined;
+    const t0 = Date.now();
+    try {
+      const res = await this.withLock(async () => {
+        const cookie = await this.sso.login(override);
+        if (!cookie) throw new Error('登录未返回 cookie（SSO 流程未拿到任何 ele.me 票据）');
+        const valid = await this.sso.checkLogin(cookie);
+        return {
+          cookie,
+          valid,
+          has_mozi_token: /AEOLUS_MOZI_TOKEN=/.test(cookie),
+          cookie_len: cookie.length,
+        };
+      });
+      if (!res.valid) {
+        return {
+          ok: false,
+          error: 'SSO 登录已通过，但 validToken 探针判定会话无效（HTTP 非 200）',
+          cookie_len: res.cookie_len,
+          has_mozi_token: res.has_mozi_token,
+          probe: false,
+          elapsed_ms: Date.now() - t0,
+        };
+      }
+      if (!override) {
+        // 与 loginLocked() 一致：落盘 + 更新缓存 + 记为刚探过（省掉取数链的一轮探针）。
+        this.saveCookie(res.cookie);
+        this.cached = res.cookie;
+        this.cachedProbedAt = Date.now();
+      }
+      this.logger.log(
+        `风神凭据验证通过（来源：${override ? '临时输入' : '已保存文件'}），cookie 长度 ${res.cookie_len}`,
+      );
+      return {
+        ok: true,
+        cookie_len: res.cookie_len,
+        has_mozi_token: res.has_mozi_token,
+        probe: true,
+        saved: !override,
+        source: override ? 'input' : 'file',
+        elapsed_ms: Date.now() - t0,
+        checked_at: new Date().toISOString(),
+      };
+    } catch (e) {
+      // 验证是人工交互动作，失败只报告、不冒泡成 500：错误信息直接给 UI 展示。
+      const err = e as Error;
+      this.logger.warn(`风神凭据验证失败：${err?.message || String(e)}`);
+      return {
+        ok: false,
+        error: err?.message || String(e),
+        source: override ? 'input' : 'file',
+        elapsed_ms: Date.now() - t0,
+      };
+    }
   }
 
   /**

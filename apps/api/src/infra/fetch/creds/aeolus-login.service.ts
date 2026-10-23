@@ -280,9 +280,18 @@ export class AeolusLoginService {
     );
   }
 
-  /** 完整 SSO 登录，返回 cookie 头字符串（如 `BucSsoJSESSIONID=...; AEOLUS_MOZI_TOKEN=...`）。 */
-  async login(): Promise<string> {
-    const { account, password } = this.credentials();
+  /**
+   * 完整 SSO 登录，返回 cookie 头字符串（如 `BucSsoJSESSIONID=...; AEOLUS_MOZI_TOKEN=...`）。
+   *
+   * `input` 是**临时凭据覆盖**，只有「系统设置 → 风神设置」的验证入口会用到：账号密码都传
+   * 则用它登录，否则仍走 `credentials()` 读已保存的凭据。这样验证不必先把试填的凭据落盘。
+   */
+  async login(input?: { account?: string; password?: string }): Promise<string> {
+    const override =
+      input?.account && input?.password
+        ? { account: input.account, password: input.password }
+        : undefined;
+    const { account, password } = override ?? this.credentials();
     const s = new SsoSession();
 
     // [1] 登录页（同一会话拿 rsaPublicKey + JSESSIONID）
@@ -356,7 +365,9 @@ export class AeolusLoginService {
         `登录完成但未拿到 AEOLUS_MOZI_TOKEN（cookie=${cookieStr.slice(0, 120)}）`,
       );
     }
-    this.logger.log(`SSO 登录成功，cookie 长度 ${cookieStr.length}`);
+    this.logger.log(
+      `SSO 登录成功（凭据来源：${override ? '临时输入' : '已保存文件'}），cookie 长度 ${cookieStr.length}`,
+    );
     return cookieStr;
   }
 

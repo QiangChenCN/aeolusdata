@@ -86,6 +86,8 @@ export const POST_ROUTE_PERMS: Record<string, string> = {
   '/api/fetch/settings/aeolus': 'admin:aeolus',
   // 风神退出登录：限管理员（精确匹配，避免落入默认 'view'）
   '/api/fetch/settings/aeolus/logout': 'admin:aeolus',
+  // 风神凭据验证（会真跑一次 SSO 登录）：限管理员，避免任何人拿它当撞库/顶号入口
+  '/api/fetch/settings/aeolus/test': 'admin:aeolus',
   // 钉钉授权发起（设备流）：限管理员，绕过 /api/ding/.*→machine 前缀
   '/api/ding/auth/device-login': 'admin:bot',
   // 钉钉退出登录（触发重新授权）：限管理员
