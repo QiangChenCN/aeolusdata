@@ -1,7 +1,7 @@
 name: Deploy (Backend + Web + Compute)
 
 # 主流部署方式：代码推到 main 后，由 GitHub Actions 负责全量部署
-#   · Backend (NestJS 8787)：pnpm install --frozen-lockfile + build → rsync dist/ → restart aeolusdata-backend
+#   · Backend (NestJS 8787)：pnpm install --frozen-lockfile + build → rsync dist/ + 仓库级 contracts/ → restart aeolusdata-backend
 #   · Web (前端静态)：pnpm install --frozen-lockfile + build → rsync apps/web/dist/（后端 main.ts 托管，无需重启）
 #   · Compute (Python 8900)：rsync 源码（保留服务器本地数据）→ pip 同步依赖 → restart aeolusdata-compute
 # 构建产物（dist/）与 .venv 不进 git 仓库，均在各自步骤现场产出 / 复用。
@@ -18,6 +18,7 @@ on:
     paths:
       - 'apps/api/**'
       - 'apps/web/**'
+      - 'contracts/**'
       - 'packages/**'
       - 'services/compute/**'
       - 'deploy/**'
@@ -84,6 +85,14 @@ jobs:
           eval "$(ssh-agent -s)"
           echo "$ECS_SSH_KEY" | tr -d '\r' | ssh-add -
           pnpm --filter aeolus-workbench-backend build
+          # 仓库级路径契约（contracts/paths.json）：后端 dist/config/paths.js 在启动时
+          # readFileSync 读取它，但它不属于任何 dist 产物 —— 不同步的话服务器会
+          # 「ENOENT contracts/paths.json → 启动即崩 → systemd 无限重启 → nginx 502」
+          # （2026-10-24 实际踩过）。任何新增的仓库级运行时文件都必须在这里显式同步。
+          rsync -az \
+            -e "ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null" \
+            contracts/ \
+            "$ECS_USER@$ECS_HOST:/opt/aeolusdata/contracts/"
           rsync -az --delete \
             -e "ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null" \
             apps/api/dist/ \
