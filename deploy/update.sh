@@ -34,6 +34,42 @@ echo "== 同步 systemd 单元并重启服务 =="
 # 不这么做正是历史故障的根因：单元改了而 systemd 仍按旧定义管理，
 # 旧进程脱管成孤儿占着端口，新实例 bind 失败被 Restart=always 无限重试。
 cp deploy/aeolusdata-backend.service deploy/aeolusdata-compute.service deploy/aeolusdata-worker.service /etc/systemd/system/
+
+echo "== 端口/孤儿预检：避免 squatting 导致新实例 EADDRINUSE =="
+# 历史故障根因：旧后端进程（手动 nohup 起、或改名前 aeolus-backend 单元起的）
+# 脱管成孤儿仍占着 8787，systemd 重启新实例时 bind 失败、被 Restart=always 无限重试。
+# 这里在重启前主动清理同项目的游离进程 + 改名遗留的旧单元，并确认端口最终空闲。
+BACKEND_PORT=8787
+# 1) 清理改名遗留的旧单元 aeolus-backend（已被 aeolusdata-backend 取代）
+if systemctl list-unit-files 2>/dev/null | grep -q '^aeolus-backend.service'; then
+  echo "发现失效旧单元 aeolus-backend.service（已被 aeolusdata-backend 取代），停用并移除"
+  systemctl disable --now aeolus-backend.service 2>/dev/null || true
+  rm -f /etc/systemd/system/aeolus-backend.service
+fi
+# 2) 清理 squatting 8787 的同项目孤儿进程（cmd 含 dist/src/main 但非 systemd 持有）
+SYSTEMD_PID=$(systemctl show -p MainPID --value aeolusdata-backend 2>/dev/null || true)
+for pid in $(ss -ltnp "sport = :$BACKEND_PORT" 2>/dev/null | grep -oP 'pid=\K[0-9]+' | sort -u || true); do
+  if [ -n "$SYSTEMD_PID" ] && [ "$pid" = "$SYSTEMD_PID" ]; then
+    continue
+  fi
+  cmd=$(tr '\0' ' ' < /proc/"$pid"/cmdline 2>/dev/null || true)
+  if echo "$cmd" | grep -q 'dist/src/main'; then
+    echo "清理 squatting $BACKEND_PORT 的游离后端进程 pid=$pid（cmd: $cmd）"
+    kill "$pid" 2>/dev/null || true
+    sleep 1
+    [ -d /proc/"$pid" ] && kill -9 "$pid" 2>/dev/null || true
+  else
+    echo "警告：端口 $BACKEND_PORT 被非本项目进程 pid=$pid 占用（cmd: $cmd），未自动处理，请人工排查"
+  fi
+done
+# 3) 确认端口最终空闲（新实例即将 bind）
+sleep 1
+if ss -ltn "sport = :$BACKEND_PORT" 2>/dev/null | grep -q .; then
+  echo "警告：预检后 $BACKEND_PORT 仍被占用，下面 restart 可能仍 EADDRINUSE；请先人工排查端口占用"
+else
+  echo "端口 $BACKEND_PORT 预检通过：无 squatting，可安全重启"
+fi
+
 systemctl daemon-reload
 systemctl restart aeolusdata-backend
 systemctl restart aeolusdata-compute
