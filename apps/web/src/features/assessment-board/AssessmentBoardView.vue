@@ -361,6 +361,13 @@ async function saveCfg() {
 }
 const rows = ref([]);          // 有数据的站点行（已过滤 need_refresh）
 const loading = ref(false);
+/* loading 改为「引用计数」：手动刷新（load）与等待新数据循环（waitForFresh，也可由 SSE 回读单独发起）
+   是两个互相独立、可能并发的生命期，各自 beginLoad/endLoad，计数归零才熄灭动画。
+   早先用单一的 refreshing 布尔量决定是否收尾，只要有一个无关的循环在跑，
+   load 的 finally 就会跳过复位，把动画永远留在屏幕上。 */
+let loaders = 0;
+function beginLoad() { loaders += 1; loading.value = true; }
+function endLoad() { loaders = Math.max(0, loaders - 1); if (loaders === 0) loading.value = false; }
 const loaded = ref(false);
 const attempted = ref(0);      // 本次实际请求的站点数
 const lastUpdated = ref('');   // 最近一次成功取数时间（YYYY-MM-DD HH:MM:SS，北京时间）
@@ -376,19 +383,41 @@ let tickTimer = null;          // 倒计时显示
 const sseConnected = ref(false);
 let es = null;                 // EventSource 实例
 let rbTimer = null;            // SSE「updated」防抖回读
+let rbPendingAt = 0;           // 待处理 updated 的服务端时戳（取其中最新的一条）
 let refreshing = false; // 刷新等待新数据循环进行中（手动刷新或 SSE 回读），期间 SSE 回读直接跳过
 
+/** 'YYYY-MM-DD HH:MM:SS'（北京时间）→ epoch ms；无法解析返回 NaN。
+    与服务端 Date.now()（真 epoch）同一时刻轴，可直接相减比较新旧。 */
+function beijingMs(s) {
+  if (typeof s !== 'string' || !s) return NaN;
+  const m = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2}):(\d{2})/.exec(s);
+  if (!m) return NaN;
+  return Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4] - 8, +m[5], +m[6]);
+}
+/* 事件时戳在「两路落库之后、推送之前」打点，而 fetched_at 记的是落库时刻，
+   两者相差一次入库事务 + 缓存失效回调的耗时（1400 条运单实测约 2~3 秒）。
+   两者都是服务端时钟，容差取 15s 足以吸收这段固定偏差与 SSE 传输延迟，
+   避免把「刚推来的就是最新数据」误判成陈旧而白等一轮。 */
+const FRESH_TOLERANCE_MS = 15000;
+
 /**
- * SSE「updated」到达：防抖后回读。若正在刷新（手动刷新或上一轮回读）则直接跳过——
- * 进行中的刷新循环本身每 3 秒轮询到 fetched_at 稳定，期间到达的 updated（含自动刷新取数）
- * 都会被下一轮轮询捕获，无需额外触发，避免重复读或抢先关闭加载动画 / 提前变动更新时间。
+ * SSE「updated」到达：防抖后回读，并把该事件的服务端时戳带给等待循环。
+ *
+ * 为什么必须带时戳：手动刷新自己也会「先取数 → 再等新数据」，它在收尾时已经把
+ * lastUpdated 推到了本次数据的 fetched_at。若回读仍按「等到比 lastUpdated 更新」为
+ * 唯一出口，就会在手动刷新刚结束的瞬间（防抖 600ms 后 refreshing 已复位）又拉起一个
+ * 永远等不到结果的循环，空转到 deadline —— 表现即「手动刷新一直卡在 loading」。
+ * 有了时戳，循环一旦发现手上数据已不比该事件旧，就立即收尾。
  */
-function scheduleReadback() {
+function scheduleReadback(at = 0) {
+  rbPendingAt = Math.max(rbPendingAt, Number(at) || 0);
   if (rbTimer) clearTimeout(rbTimer);
   rbTimer = setTimeout(() => {
     rbTimer = null;
+    const sinceMs = rbPendingAt;
+    rbPendingAt = 0;
     if (refreshing) return; // 进行中：交给当前循环，避免抢镜
-    void waitForFresh(lastUpdated.value || null);
+    void waitForFresh(lastUpdated.value || null, sinceMs);
   }, 600);
 }
 /** 订阅考核看板 SSE（/api/assessment-fetch/stream）：取数完成 → 服务端推 updated → 前端回读。 */
@@ -404,7 +433,7 @@ function initSse() {
     try { p = JSON.parse(ev.data); } catch { /* ignore */ }
     if (p && p.type === 'updated') {
       countdown.value = intervalSec.value; // 服务端刚取数，ETA 重新计满
-      scheduleReadback();
+      scheduleReadback(p.at);
     }
   };
 }
@@ -838,48 +867,65 @@ function applyStationRows(resp, history) {
 }
 
 /**
- * 「等待新数据就绪」循环：轮询 /api/assessment/station，一旦读到 fetched_at 比 beforeFa 新即视为就绪，
- * 把表格与「更新时间」一并更新并立即关闭加载动画。
- * 之所以首次读到新 fetched_at 即可收尾：后端在「两路（违规+运单）均落盘 + 缓存失效」后才发 updated
+ * 「等待新数据就绪」循环：轮询 /api/assessment/station，满足任一出口即收尾。
+ *
+ * 两个出口缺一不可：
+ *  1) 读到比 beforeFa 更新的 fetched_at（手动刷新场景：取数前记下的旧时间戳）；
+ *  2) 读到的数据已不比触发本循环的 SSE 事件（sinceMs）旧 —— 说明推来的这批数据
+ *     已经在手上，再等「比它更新」只会空转到 deadline。
+ *     缺了出口 2，手动刷新刚把 lastUpdated 推新，600ms 后 SSE 回读又会拉起一个
+ *     永远等不到结果的循环，把 loading 一直挂在屏幕上（本次修复的核心问题）。
+ *
+ * 之所以首次命中即可收尾：后端在「两路（违规+运单）均落盘 + 缓存失效」后才发 updated
  * （自动刷新 refreshAll 是 Promise.all 后单次 emit；手动刷新 load 也 await 两路完成才进循环），
- * 且 fetched_at 与 rows 同文件原子写入，故此时数据已是两路齐全的完整结果，无需再等「连续稳定」。
- * 期间 loading 始终为真、lastUpdated 不变——绝不在真实数据就绪前收起动画或让时间先行变动。
- * 刷新进行中到达的 SSE updated 由本循环每 3 秒轮询自动捕获，无需额外触发。
+ * 故此时数据已是两路齐全的完整结果，无需再等「连续稳定」。
+ * 期间 loading 由引用计数维持为真、lastUpdated 不变——绝不在真实数据就绪前收起动画或让时间先行变动。
  */
-function waitForFresh(beforeFa) {
+function waitForFresh(beforeFa, sinceMs = 0) {
   refreshing = true;
-  loading.value = true;
+  beginLoad();
   const ids = teamSel.value === '__all__'
     ? teamOptions.value.map((t) => t.id)
     : [teamSel.value];
   const start = rangeStart();
   const end = rangeEnd();
+  const beforeMs = beijingMs(beforeFa);
+  const targetMs = sinceMs > 0 ? sinceMs - FRESH_TOLERANCE_MS : 0;
   let finalResp = null;
-  const deadline = Date.now() + 120000;
+  let freshest = null;
+  const deadline = Date.now() + 45000;
   const run = async () => {
     while (Date.now() < deadline) {
       const r = await fetchAssessmentStation({ teams: ids, start, end }).catch(() => null);
       finalResp = r;
       if (r && r.ok) applyStationRows(r, false); // 渐进展示，但不在此更新更新时间
-      const fa = r && r.fetched_at;
-      const newer = fa != null && (beforeFa == null || fa > beforeFa);
-      if (newer) break; // 首次读到比刷新前新的数据即就绪，立即收尾（数据与动画/时间同步）
+      const faMs = beijingMs(r && r.fetched_at);
+      // 出口 2：数据已追上触发本循环的取数事件 → 本次推来的数据已在手上。
+      const caughtUp = targetMs > 0 && faMs >= targetMs;
+      // 出口 1：读到比刷新前更新的数据（无法解析时间戳时退化为「有值即可」）。
+      const newer = Number.isFinite(faMs) && !(Number.isFinite(beforeMs) && faMs <= beforeMs);
+      if (caughtUp || newer) {
+        freshest = r.fetched_at;
+        break; // 立即收尾（数据与动画/时间同步）
+      }
       if (Date.now() < deadline) await sleep(3000);
     }
-    // 仅在确认真实新数据（fetched_at 比刷新前新）时更新「更新时间」，杜绝时间先行变动。
-    if (finalResp && finalResp.ok && finalResp.fetched_at && (beforeFa == null || finalResp.fetched_at > beforeFa)) {
-      lastUpdated.value = finalResp.fetched_at;
+    // 仅在确认真实新数据（比刷新前新 / 已追上本次事件）时更新「更新时间」，杜绝时间先行变动。
+    if (freshest) lastUpdated.value = freshest;
+    // 全程没拿到过一次有效响应（网络/超时/5xx）：给常驻提示，而不是静默熄灭动画了事。
+    if (!finalResp && !refreshNote.value) {
+      refreshNote.value = '等待考核数据更新超时，请稍后重试或联系管理员排查计算服务';
     }
   };
   return run().finally(() => {
     refreshing = false;
     loaded.value = true;
-    loading.value = false;
+    endLoad();
   });
 }
 
 async function load(silent = false, fetch = false, manual = false) {
-  loading.value = true;
+  beginLoad();
   // 每次加载先清掉上一次的「未落盘 / 出错」态，避免旧提示残留。
   hasError.value = false;
   errorMsg.value = '';
@@ -915,8 +961,12 @@ async function load(silent = false, fetch = false, manual = false) {
       // 任一路失败都要常驻提示：否则成功那一路的新数据会和失败那一路的旧数据/空数据
       // 混在一起展示，用户无从判断哪些数字是本次的、哪些是历史的。
       // 冷却中（cooldown）不算失败 —— 那一路本次压根没发起取数，盘上数据就是最新有效数据。
-      const vFail = violationRes != null && violationRes.cooldown !== true && violationRes.ok !== true;
-      const dFail = deliveryRes != null && deliveryRes.cooldown !== true && deliveryRes.ok !== true;
+      // 请求本身抛错（超时/网络/5xx）时 catch 已把该路置为 null，同样算失败：
+      // 否则那一路的失败会被静默吞掉，看板一路刷新不出数却没有任何常驻提示。
+      const failed = (res) =>
+        res == null || (res.cooldown !== true && res.ok !== true);
+      const vFail = failed(violationRes);
+      const dFail = failed(deliveryRes);
       const vErr = (violationRes && violationRes.error) || '';
       const dErr = (deliveryRes && deliveryRes.error) || '';
       if (vFail && dFail) {
@@ -957,12 +1007,12 @@ async function load(silent = false, fetch = false, manual = false) {
     if (!silent) ElMessage.error(e.message || '加载失败');
     if (!silent) rows.value = [];
   } finally {
-    // 刷新等待循环（refreshing）会自行收尾；否则这里兜底关闭加载动画。
-    if (!refreshing) {
-      loaded.value = true;
-      loading.value = false;
-      if (autoRefresh.value) countdown.value = intervalSec.value;
-    }
+    // 动画按引用计数收尾：本函数自己 beginLoad 的那一份必定在这里归还，
+    // 与「是否有别的等待循环在跑」无关 —— 早先依赖 refreshing 判定，
+    // 一个无关的 SSE 回读循环就能让本次加载的动画永不熄灭。
+    loaded.value = true;
+    endLoad();
+    if (autoRefresh.value) countdown.value = intervalSec.value;
   }
 }
 
