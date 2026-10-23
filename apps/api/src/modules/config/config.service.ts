@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService as NestConfigService } from '@nestjs/config';
 import * as fs from 'fs';
 import * as path from 'path';
+import { dirs, ROOT } from '../../config/paths';
 import { TeamsFetchService, TeamRef, readKnownTeams } from '../../infra/fetch/sources/teams-fetch.service';
 import { RawCacheService } from '../../infra/fetch/storage/raw-cache.service';
 
@@ -110,11 +111,9 @@ export class ConfigService {
     private readonly teams: TeamsFetchService,
     private readonly rawCache: RawCacheService,
   ) {
-    this.root = path.resolve(
-      this.config.get<string>('PROJECT_ROOT') || path.resolve(process.cwd(), '..'),
-    );
+    this.root = ROOT;
     // 与 Python `dashboard/standard/*` 同目录 —— 计算侧仍按此路径读配置。
-    this.stdDir = path.join(this.root, 'services', 'compute', 'dashboard', 'standard');
+    this.stdDir = dirs.computeStandard();
   }
 
   // ------------------------------------------------------------------ 路径/IO
@@ -721,7 +720,7 @@ export class ConfigService {
   //     "<metric>": { "<date_type>": { "<weather>": { t0, t60, t100 } } } } } }
   private sqPath(): string {
     // 后端本地状态统一落 apps/api/runtime/（带点前缀，与 .users.json / cron.db 等同目录）
-    return path.join(this.root, 'apps', 'api', 'runtime', '.service_quality_targets.json');
+    return dirs.runtime('.service_quality_targets.json');
   }
   private sqLoadAll(): any {
     const d = this.readJson(this.sqPath());

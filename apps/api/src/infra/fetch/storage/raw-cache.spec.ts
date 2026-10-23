@@ -18,6 +18,9 @@ describe('RawCacheService（原始层唯一写入方）', () => {
 
   beforeEach(() => {
     root = fs.mkdtempSync(path.join(os.tmpdir(), 'rawcache-'));
+    // 统一契约（paths.ts）通过 env 取仓库根；测试与其共用同一临时根，
+    // 否则 production 的 dirs.runtime() 解析出的根与 spec 的 file() 不一致。
+    process.env.PROJECT_ROOT = root;
     const cfg = {
       get: (k: string) => (k === 'PROJECT_ROOT' ? root : undefined),
     } as unknown as ConfigService;
@@ -25,6 +28,7 @@ describe('RawCacheService（原始层唯一写入方）', () => {
   });
 
   afterEach(() => {
+    delete process.env.PROJECT_ROOT;
     fs.rmSync(root, { recursive: true, force: true });
   });
 

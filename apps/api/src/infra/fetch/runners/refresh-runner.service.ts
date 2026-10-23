@@ -8,6 +8,7 @@ import { ConfigService } from '@nestjs/config';
 import { Request } from 'express';
 import * as fs from 'fs';
 import * as path from 'path';
+import { dirs, ROOT } from '../../../config/paths';
 import { AuthService } from '../../../modules/auth/auth.service';
 import { DataPermService } from '../../../modules/auth/data-perm.service';
 import { ComputeService } from '../../../modules/compute/compute.service';
@@ -134,10 +135,8 @@ export class RefreshRunnerService {
     private readonly auth: AuthService,
     private readonly dataPerm: DataPermService,
   ) {
-    this.rootDir = path.resolve(
-      this.config.get<string>('PROJECT_ROOT') || path.resolve(process.cwd(), '..'),
-    );
-    this.logsDir = path.join(this.rootDir, 'apps', 'api', 'runtime', 'logs');
+    this.rootDir = ROOT;
+    this.logsDir = dirs.runtime('logs');
   }
 
   private freshState(): RefreshState {

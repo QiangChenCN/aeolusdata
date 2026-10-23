@@ -9,7 +9,7 @@
   · sources/* 共享同一个 AuthError 类型（否则调用方无法统一捕获）。
 
 注：原先还覆盖「refresh-all 的 x-scope 收敛」。该项已随全量刷新**编排**迁到 NestJS，
-用例随之迁到 `backend/src/modules/fetch/refresh-runner.spec.ts` —— 跨语言两层各测各的，
+用例随之迁到 `apps/api/src/modules/fetch/refresh-runner.spec.ts` —— 跨语言两层各测各的，
 比在 Python 里测一个已不存在的 handler 更准确。
 
 落盘侧（写）已整体迁到 NestJS（`RawCacheService`），Python 不再写原始层，
@@ -19,36 +19,7 @@
 import json
 import os
 
-# >>> python-home bootstrap (added by layout migration) >>>
-import os as _os
-import sys as _sys
-
-def _find_python_home():
-    d = _os.path.dirname(_os.path.abspath(__file__))
-    # 计算服务代码根：同时含 analytics/ 与 compute_api/ 子目录
-    while d and not (
-        _os.path.isdir(_os.path.join(d, "analytics"))
-        and _os.path.isdir(_os.path.join(d, "compute_api"))
-    ):
-        d = _os.path.dirname(d)
-    return d
-
-def _find_repo_root():
-    d = _os.path.dirname(_os.path.abspath(__file__))
-    # 仓库根：含 .git 或根 package.json
-    while d and d != _os.path.dirname(d) and not (
-        _os.path.exists(_os.path.join(d, ".git"))
-        or _os.path.exists(_os.path.join(d, "package.json"))
-    ):
-        d = _os.path.dirname(d)
-    return d
-
-PY_HOME = _find_python_home()
-ROOT = _find_repo_root()
-_ROOT = ROOT
-if PY_HOME and PY_HOME not in _sys.path:
-    _sys.path.insert(0, PY_HOME)
-# <<< python-home bootstrap <<<
+from analytics.core.paths import ROOT, PY_HOME, _ROOT  # noqa: E402,F401 <<<
 
 
 import sys

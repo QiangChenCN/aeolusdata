@@ -246,7 +246,7 @@ export class FetchController {
   /**
    * 风神登录凭据（系统设置「风神设置」维护）。GET 返回脱敏快照（账号脱敏 + 是否设密码），
    * 明文密码永不外泄；POST 保存（账号必填，密码留空 = 沿用原值）。落盘到
-   * `apps/api/aeolus_sdk/credentials.json`（与 AeolusLoginService 读取路径一致）。
+   * `apps/api/runtime/aeolus_sdk/credentials.json`（与 AeolusLoginService 读取路径一致）。
    */
   @Get('settings/aeolus')
   aeolusCredsGet() {

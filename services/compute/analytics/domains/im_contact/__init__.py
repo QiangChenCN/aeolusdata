@@ -1,7 +1,7 @@
 """IM 电联看板（独立看板，2026-10-17 新建）。
 
 数据源：Quark/Aeolus FBI 报表 473269「电联 & IM 回复」（透视表，行维度到骑手）。
-  · 取数 + 累计落库在 Nest `backend/src/modules/im-contact/`：默认取 T-1 所在月整月，
+  · 取数 + 累计落库在 Nest `apps/api/src/modules/im-contact/`：默认取 T-1 所在月整月，
     按 送达日期+骑手id 去重 upsert 到 SQLite `apps/api/runtime/db/im_contact.db`
     （跨月累计历史），同时每月导出可读备份 `apps/api/runtime/IM电联明细.YYYY-MM.json`；
     本包只读库计算，零 HTTP。

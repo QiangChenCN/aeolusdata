@@ -73,6 +73,10 @@ jobs:
       - name: Node otel smoke
         run: OTEL_ENABLED=true node -e "require('./apps/api/dist/src/instrumentation.js'); console.log('api otel OK'); process.exit(0);"
 
+      # ---------- Architecture guard（守护分层边界与统一契约，防止硬编码/跨包耦合回归）----------
+      - name: Architecture guard (api/web/compute boundaries)
+        run: pnpm check:arch
+
       # ---------- Compute (Python) ----------
       - name: Setup uv
         uses: astral-sh/setup-uv@v5

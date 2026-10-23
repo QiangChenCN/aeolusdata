@@ -1,4 +1,4 @@
-"""
+r"""
 AeolusData 独立计算服务（§6「Python 生态独占端点」的 FastAPI 落地）。
 
 设计要点：
@@ -21,36 +21,8 @@ AeolusData 独立计算服务（§6「Python 生态独占端点」的 FastAPI �
 """
 import os
 
-# >>> python-home bootstrap (added by layout migration) >>>
-import os as _os
-import sys as _sys
-
-def _find_python_home():
-    d = _os.path.dirname(_os.path.abspath(__file__))
-    # 计算服务代码根：同时含 analytics/ 与 compute_api/ 子目录
-    while d and not (
-        _os.path.isdir(_os.path.join(d, "analytics"))
-        and _os.path.isdir(_os.path.join(d, "compute_api"))
-    ):
-        d = _os.path.dirname(d)
-    return d
-
-def _find_repo_root():
-    d = _os.path.dirname(_os.path.abspath(__file__))
-    # 仓库根：含 .git 或根 package.json
-    while d and d != _os.path.dirname(d) and not (
-        _os.path.exists(_os.path.join(d, ".git"))
-        or _os.path.exists(_os.path.join(d, "package.json"))
-    ):
-        d = _os.path.dirname(d)
-    return d
-
-PY_HOME = _find_python_home()
-ROOT = _find_repo_root()
-_ROOT = ROOT
-if PY_HOME and PY_HOME not in _sys.path:
-    _sys.path.insert(0, PY_HOME)
-# <<< python-home bootstrap <<<
+# 统一路径契约：取代各模块重复的 bootstrap（见 analytics/core/paths.py）。
+from analytics.core.paths import ROOT, PY_HOME, _ROOT  # noqa: E402,F401
 
 
 import sys
@@ -114,7 +86,7 @@ def health():
 
 
 # 注：`/api/cookies/status` 与 `/api/teams` 已于 2026-09-23 迁为 NestJS 原生端点
-# （`backend/src/modules/status/` 与 `backend/src/modules/teams/`）—— 二者都是「取数 / 登录态」，
+# （`apps/api/src/modules/status/` 与 `apps/api/src/modules/teams/`）—— 二者都是「取数 / 登录态」，
 # 不属于大数据计算，按分工原则归 Nest。本服务不再提供这两个端点。
 
 
@@ -260,7 +232,7 @@ async def cache_invalidate(req: Request):
 # 全量刷新的「计算步」端点（供 NestJS 编排层调用）
 #
 # 分工（ADR：「Python 只做大数据计算」）：全量刷新的**编排**（阶段调度 / 状态机 / 日志 /
-# 频控 / 数据权限收敛 / 单飞）已迁 NestJS（`backend/src/modules/fetch/refresh-runner.service.ts`
+# 频控 / 数据权限收敛 / 单飞）已迁 NestJS（`apps/api/src/modules/fetch/refresh-runner.service.ts`
 # + `refresh.controller.ts`）。这里只保留**计算**本身 ——
 # 取数（`sources/*` 现为转发层）与落盘（`cache.save_raw` 转发 Nest）都不在这里。
 #

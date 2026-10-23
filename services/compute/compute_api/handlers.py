@@ -2,7 +2,7 @@
 
 背景：`server.py` 曾同时充当「工作台 HTTP 单体」与「计算 handler 库」两个角色。
 工作台职责（路由 / 鉴权 / RBAC / 任务队列 / 静态托管 / 产物 / SSE / 诊断）已全部迁到
-NestJS（`backend/`），HTTP 外壳（8917）也已移除；本文件只保留 compute_api 真正
+NestJS（`apps/api/`），HTTP 外壳（8917）也已移除；本文件只保留 compute_api 真正
 需要的计算侧，故从根目录 `server.py` 迁到 `compute_api/` 下。
 
 保留内容（由 AST 传递闭包精确确定，非手工增删）：
@@ -23,36 +23,7 @@ import json
 import logging
 import os
 
-# >>> python-home bootstrap (added by layout migration) >>>
-import os as _os
-import sys as _sys
-
-def _find_python_home():
-    d = _os.path.dirname(_os.path.abspath(__file__))
-    # 计算服务代码根：同时含 analytics/ 与 compute_api/ 子目录
-    while d and not (
-        _os.path.isdir(_os.path.join(d, "analytics"))
-        and _os.path.isdir(_os.path.join(d, "compute_api"))
-    ):
-        d = _os.path.dirname(d)
-    return d
-
-def _find_repo_root():
-    d = _os.path.dirname(_os.path.abspath(__file__))
-    # 仓库根：含 .git 或根 package.json
-    while d and d != _os.path.dirname(d) and not (
-        _os.path.exists(_os.path.join(d, ".git"))
-        or _os.path.exists(_os.path.join(d, "package.json"))
-    ):
-        d = _os.path.dirname(d)
-    return d
-
-PY_HOME = _find_python_home()
-ROOT = _find_repo_root()
-_ROOT = ROOT
-if PY_HOME and PY_HOME not in _sys.path:
-    _sys.path.insert(0, PY_HOME)
-# <<< python-home bootstrap <<<
+from analytics.core.paths import ROOT, PY_HOME, _ROOT  # noqa: E402,F401 <<<
 
 
 import sys
@@ -99,7 +70,7 @@ _USER_FP = "anon"
 RATE_LIMIT_SEC = 60                    # 标准达成 / 骑手 / 成就 通用窗口
 ATTEND_PERIOD_RATE_LIMIT_SEC = 5       # 时段出勤「时段有效 / 骑手明细」实时查询窗口（2026-09-12 用户要求改为 5s）
 # 注：原 `REFRESH_ALL_GLOBAL_GAP_SEC`（全量刷新的全局最小间隔）已随 refresh-all 迁到 Nest
-# —— 见 backend/src/modules/fetch/refresh-runner.service.ts。
+# —— 见 apps/api/src/modules/fetch/refresh-runner.service.ts。
 _RATE_STATE = {}                 # key -> 上次放行的服务端时间戳（秒）
 _RATE_LOCK = threading.Lock()
 
@@ -252,7 +223,7 @@ def _fetch_all_teams():
     """全部站点 [{id, name}]：取数已迁 NestJS —— 这里只转发 `GET /api/fetch/teams`。
 
     为什么不再自己打 xtop：站点目录属于「取数」，按分工归 Nest；且前端 `/api/teams`
-    （`backend/src/modules/teams/`）与本函数的两个消费者（`_teams_with_names` /
+    （`apps/api/src/modules/teams/`）与本函数的两个消费者（`_teams_with_names` /
     `_get_ap_teams`）必须共用**同一份**缓存，否则两侧各存 5 分钟 TTL、各打一次风神。
 
     保留一层本地 5 分钟缓存（TTL 与 Nest 侧一致）：Nest 短暂不可用时不必每次都打空。
@@ -290,8 +261,8 @@ def _fetch_all_teams():
 
 # 注：原 `check_cookie_status` / `_check_aeolus_cookie` / `_check_quark_cookie` 三个登录态
 # 探针函数已于 2026-09-23 迁为 NestJS 原生实现，供 `GET /api/cookies/status`：
-#   · 风神 validToken 探针 → `backend/src/modules/fetch/cookie-status.service.ts`
-#   · Quark DA 缓存 + 探针 → `backend/src/modules/fetch/quark-creds.service.ts`
+#   · 风神 validToken 探针 → `apps/api/src/modules/fetch/cookie-status.service.ts`
+#   · Quark DA 缓存 + 探针 → `apps/api/src/modules/fetch/quark-creds.service.ts`
 #     （`probeDetail` 用 curl 的 `%{http_code}` 区分「401/403 硬拒」与「HTML 登录页」，
 #       `cacheStatus` 区分「未兑换」与「缓存损坏」）
 # 计算进程不再持有登录态探针，也不读写任何凭证缓存 —— 登录态归 Nest。
@@ -549,7 +520,7 @@ def _get_std_station_report(self, qs):
 
 
 # 注：`/api/standard/refresh-all-status` 已于 2026-09-23 迁为 NestJS 原生端点
-# （`backend/src/modules/fetch/refresh.controller.ts` → `RefreshRunnerService.status()`）。
+# （`apps/api/src/modules/fetch/refresh.controller.ts` → `RefreshRunnerService.status()`）。
 # 全量刷新的**编排**（阶段调度 / 状态机 / 日志 / 单飞 / 频控 / 数据权限收敛）归 Nest；
 # **计算**留在本服务，见 compute_api/main.py 的 `/api/compute/{violations,rider-dimension,achievement}`。
 
@@ -559,7 +530,7 @@ def _get_std_station_report(self, qs):
 # 注：`POST /api/standard/refresh-all` 已于 2026-09-23 迁为 NestJS 原生端点。
 # 频控（60s/用户 + 15s 全局间隔）、数据权限收敛（收敛为空必须 403，绝不能把空列表交给
 # 编排器 —— 那会回落成全量参与站点，等于越权）、单飞接入，现全在
-# `backend/src/modules/fetch/refresh-runner.service.ts::startFromRequest`，
+# `apps/api/src/modules/fetch/refresh-runner.service.ts::startFromRequest`，
 # 并由 `tests/refresh-runner.spec.ts` 覆盖（原 `tests/test_data_scope.py` 的对应用例已随之移除）。
 
 

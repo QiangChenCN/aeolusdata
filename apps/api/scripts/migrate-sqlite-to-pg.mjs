@@ -1,6 +1,6 @@
 // 一次性迁移脚本：把现有 5 个 SQLite 库灌入 PostgreSQL（DATABASE_URL 必填）。
 //
-// 用法（在 backend/ 目录下）：
+// 用法（在 apps/api/ 目录下）：
 //   DATABASE_URL=postgresql://aeolus:密码@localhost:5432/aeolusdata \
 //     node scripts/migrate-sqlite-to-pg.mjs
 //

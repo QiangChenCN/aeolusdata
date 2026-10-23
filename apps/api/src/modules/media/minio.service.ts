@@ -32,14 +32,14 @@ export class MinioService {
     const root = path.resolve(
       this.config.get<string>('PROJECT_ROOT') || path.resolve(process.cwd(), '..'),
     );
-    this.cfgPath = path.join(root, 'apps', 'api', 'minio_config.json');
+    this.cfgPath = path.join(root, 'apps', 'api', 'config', 'minio_config.json');
   }
 
   private loadCfg(): MinioCfg {
     if (this.cfg) return this.cfg;
     if (!fs.existsSync(this.cfgPath)) {
       throw new Error(
-        '未找到 apps/api/minio_config.json，请先配置 MinIO 凭据（endpoint/access_key/secret_key/bucket/public_base）',
+        '未找到 apps/api/config/minio_config.json，请先配置 MinIO 凭据（endpoint/access_key/secret_key/bucket/public_base）',
       );
     }
     this.cfg = JSON.parse(fs.readFileSync(this.cfgPath, 'utf-8')) as MinioCfg;

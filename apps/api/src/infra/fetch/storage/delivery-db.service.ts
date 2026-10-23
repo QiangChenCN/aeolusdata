@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import * as fs from 'fs';
 import * as path from 'path';
 import { Client as PgClient } from 'pg';
+import { dirs } from '../../../config/paths';
 import { FIELD_ORDER } from './delivery-columns';
 import { TABLE, genPgDdl, loadProfile } from './delivery-schema';
 import { DeliveryRawService } from '../sources/delivery-raw.service';
@@ -30,11 +31,8 @@ export class DeliveryDbService {
     private readonly config: ConfigService,
     private readonly raw: DeliveryRawService,
   ) {
-    const root = path.resolve(
-      this.config.get<string>('PROJECT_ROOT') || path.resolve(process.cwd(), '..'),
-    );
-    this.deliveryDir = path.join(root, 'apps', 'api', 'runtime', 'jobs', 'delivery');
-    this.cfgPath = path.join(this.deliveryDir, 'db_config.json');
+    this.deliveryDir = dirs.runtime('jobs/delivery');
+    this.cfgPath = dirs.config('db_config.json');
   }
 
   /** 连接配置：默认 < db_config.json < 环境变量 < 显式覆盖。 */

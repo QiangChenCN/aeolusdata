@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as fs from 'fs';
 import * as path from 'path';
+import { dirs } from '../../../config/paths';
 import { QuarkCredsService } from '../creds/quark-creds.service';
 
 /**
@@ -62,10 +63,7 @@ export class CookieStatusService {
     private readonly config: ConfigService,
     private readonly quark: QuarkCredsService,
   ) {
-    const root = path.resolve(
-      this.config.get<string>('PROJECT_ROOT') || path.resolve(process.cwd(), '..'),
-    );
-    this.cookieFile = path.join(root, 'apps', 'api', 'aeolus_sdk', 'cookie.txt');
+    this.cookieFile = dirs.runtime('aeolus_sdk/cookie.txt');
   }
 
   /** 风神 + Quark 的合并状态（`GET /api/cookies/status` 的完整响应体）。 */
@@ -108,7 +106,7 @@ export class CookieStatusService {
   }
 
   /**
-   * 风神 `apps/api/aeolus_sdk/cookie.txt` 有效性（validToken 探针）。三态：valid / invalid / unknown。
+   * 风神 `apps/api/runtime/aeolus_sdk/cookie.txt` 有效性（validToken 探针）。三态：valid / invalid / unknown。
    *
    * 判定口径与 Python 的 `urllib.urlopen` 对齐：能拿到响应（2xx）→ valid；
    * 401 → invalid；其它 4xx/5xx → unknown（HTTP N）；网络异常 → unknown。
@@ -120,7 +118,7 @@ export class CookieStatusService {
       return {
         ok: true,
         status: 'unknown',
-        reason: 'apps/api/aeolus_sdk/cookie.txt 不存在',
+        reason: 'apps/api/runtime/aeolus_sdk/cookie.txt 不存在',
         checked_at: checkedAt,
       };
     }
@@ -132,7 +130,7 @@ export class CookieStatusService {
       return {
         ok: true,
         status: 'unknown',
-        reason: `读取 apps/api/aeolus_sdk/cookie.txt 失败: ${(e as Error).message}`,
+        reason: `读取 apps/api/runtime/aeolus_sdk/cookie.txt 失败: ${(e as Error).message}`,
         checked_at: checkedAt,
       };
     }
@@ -140,7 +138,7 @@ export class CookieStatusService {
       return {
         ok: true,
         status: 'unknown',
-        reason: 'apps/api/aeolus_sdk/cookie.txt 为空',
+        reason: 'apps/api/runtime/aeolus_sdk/cookie.txt 为空',
         checked_at: checkedAt,
       };
     }

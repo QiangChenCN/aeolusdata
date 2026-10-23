@@ -3,36 +3,7 @@
 """in-process 验证：按新口径（移除 isAbnormalReport 剔除）算伍政荣 8 单。"""
 import sys, os, json, datetime
 
-# >>> python-home bootstrap (added by layout migration) >>>
-import os as _os
-import sys as _sys
-
-def _find_python_home():
-    d = _os.path.dirname(_os.path.abspath(__file__))
-    # 计算服务代码根：同时含 analytics/ 与 compute_api/ 子目录
-    while d and not (
-        _os.path.isdir(_os.path.join(d, "analytics"))
-        and _os.path.isdir(_os.path.join(d, "compute_api"))
-    ):
-        d = _os.path.dirname(d)
-    return d
-
-def _find_repo_root():
-    d = _os.path.dirname(_os.path.abspath(__file__))
-    # 仓库根：含 .git 或根 package.json
-    while d and d != _os.path.dirname(d) and not (
-        _os.path.exists(_os.path.join(d, ".git"))
-        or _os.path.exists(_os.path.join(d, "package.json"))
-    ):
-        d = _os.path.dirname(d)
-    return d
-
-PY_HOME = _find_python_home()
-ROOT = _find_repo_root()
-_ROOT = ROOT
-if PY_HOME and PY_HOME not in _sys.path:
-    _sys.path.insert(0, PY_HOME)
-# <<< python-home bootstrap <<<
+from analytics.core.paths import ROOT, PY_HOME, _ROOT  # noqa: E402,F401 <<<
 
 # 移除写死的 WorkBuddy 外机路径；PY_HOME 沿用上方 bootstrap 推导的 python 根
 os.chdir(PY_HOME)

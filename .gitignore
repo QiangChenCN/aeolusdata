@@ -2,7 +2,6 @@
 minio_config.json
 cookie.txt
 cookie.txt.lock
-apps/api/aeolus_sdk/credentials.json
 # Quark 凭证缓存（NestJS 写入 apps/api/runtime/quark/：da_cache.json / da_cookies.txt / manual_cookie.txt）
 apps/api/runtime/quark/
 quark_pw_capture.json
@@ -102,7 +101,6 @@ apps/api/runtime/pace_state.json
 # 考核/看板结果缓存与运行期导出 JSON（刷新产物，各环境自行生成，不进版本控制）
 # 注：apps/api/runtime/*.json 仅忽略「非点开头」的导出文件；已跟踪的 org_tree.json 与 jobs/ 不受影响。
 apps/api/runtime/results/
-apps/api/runtime/assessment/
 apps/api/runtime/assessment-refresh-cooldown.json
 apps/api/runtime/*.json
 

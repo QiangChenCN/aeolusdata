@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import * as fs from 'fs';
 import * as path from 'path';
 import { ConfigService } from '@nestjs/config';
+import { dirs } from '../../../config/paths';
 
 /**
  * 反爬节奏层（移植自 dashboard/standard/orders_fetch.py）。
@@ -77,9 +78,7 @@ export class FetchPaceService {
   /** pace_state.json 与 Python 版共用同一份（放在 apps/api/runtime/ 目录下），
    *  两边学到的下限互通，避免各自从冷启动重新撞一轮。 */
   onModuleInitCompat() {
-    const root =
-      this.config.get<string>('PROJECT_ROOT') || path.resolve(process.cwd(), '..');
-    this.paceStateFile = path.join(root, 'apps', 'api', 'runtime', 'pace_state.json');
+    this.paceStateFile = dirs.runtime('pace_state.json');
   }
 
   private stateFile(): string {

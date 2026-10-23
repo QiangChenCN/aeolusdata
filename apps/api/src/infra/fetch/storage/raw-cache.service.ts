@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as fs from 'fs';
 import * as path from 'path';
+import { dirs } from '../../../config/paths';
 
 /**
  * 原始数据落盘的**唯一写入方**（原 Python `dashboard/standard/cache.py::save_raw`）。
@@ -80,11 +81,9 @@ export class RawCacheService {
   readonly cacheDir: string;
 
   constructor(private readonly config: ConfigService) {
-    const root = path.resolve(
-      this.config.get<string>('PROJECT_ROOT') || path.resolve(process.cwd(), '..'),
-    );
-    this.dataDir = path.join(root, 'apps', 'api', 'runtime', 'raw');
-    this.cacheDir = path.join(root, 'dashboard', 'standard', 'cache');
+    // 经统一路径契约（contracts/paths.json），与 services/compute 同口径、物理路径不变。
+    this.dataDir = dirs.runtime('raw');
+    this.cacheDir = dirs.sharedCache();
   }
 
   /** 原始层文件路径（供诊断）。 */

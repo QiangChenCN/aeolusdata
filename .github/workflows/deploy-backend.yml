@@ -70,6 +70,10 @@ jobs:
       - name: Web unit tests (Vitest)
         run: pnpm --filter aeolus-workbench-web test
 
+      # ---------- 架构守卫（守护分层与统一契约，防止回归；失败即中止部署）----------
+      - name: Architecture guard (api/web/compute boundaries)
+        run: pnpm check:arch
+
       # ---------- Backend ----------
       - name: Build & Deploy Backend
         env:

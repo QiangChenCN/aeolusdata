@@ -1,11 +1,11 @@
 # -*- coding: utf-8 -*-
 """Python 侧调用 NestJS 的共享 HTTP 客户端（两类用途）。
 
-一、钉钉协议（`backend/src/modules/dingtalk`）
+一、钉钉协议（`apps/api/src/modules/dingtalk`）
     官方 dws CLI、群解析、在线表读写、消息发送全部由 Nest 实现；Python 不 spawn dws、
     不拼命令行、不解析群 ID —— 需要群发 / 写表时把「群名 + 文本」交给 Nest。
 
-二、取数回调（`backend/src/modules/fetch`，ADR 修订 1）
+二、取数回调（`apps/api/src/modules/fetch`，ADR 修订 1）
     打风神接口的**取数**已整体迁到 Nest（分页 / 反爬节奏 / 限流退避 / 会话重登）。
     Python 的 `sources/*` 现在是转发层：用 `post_json` 把参数交给 Nest 的 `/api/fetch/*`，
     再把原始数据结构交回上层计算。`sources/_http.py` 在此之上加了「会话失效 → AuthError」
@@ -19,36 +19,7 @@
 import json
 import os
 
-# >>> python-home bootstrap (added by layout migration) >>>
-import os as _os
-import sys as _sys
-
-def _find_python_home():
-    d = _os.path.dirname(_os.path.abspath(__file__))
-    # 计算服务代码根：同时含 analytics/ 与 compute_api/ 子目录
-    while d and not (
-        _os.path.isdir(_os.path.join(d, "analytics"))
-        and _os.path.isdir(_os.path.join(d, "compute_api"))
-    ):
-        d = _os.path.dirname(d)
-    return d
-
-def _find_repo_root():
-    d = _os.path.dirname(_os.path.abspath(__file__))
-    # 仓库根：含 .git 或根 package.json
-    while d and d != _os.path.dirname(d) and not (
-        _os.path.exists(_os.path.join(d, ".git"))
-        or _os.path.exists(_os.path.join(d, "package.json"))
-    ):
-        d = _os.path.dirname(d)
-    return d
-
-PY_HOME = _find_python_home()
-ROOT = _find_repo_root()
-_ROOT = ROOT
-if PY_HOME and PY_HOME not in _sys.path:
-    _sys.path.insert(0, PY_HOME)
-# <<< python-home bootstrap <<<
+from analytics.core.paths import ROOT, PY_HOME, _ROOT  # noqa: E402,F401 <<<
 
 
 import urllib.error

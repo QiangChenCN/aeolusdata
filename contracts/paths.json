@@ -1,0 +1,12 @@
+{
+  "repoRootEnv": "AEOLUS_REPO_ROOT",
+  "note": "跨语言路径契约：apps/api(NestJS) 与 services/compute(Python) 共享。业务代码禁止再硬编码子目录位置；所有子目录均相对仓库根。",
+  "dirs": {
+    "appsApiRuntime": "apps/api/runtime",
+    "appsApiConfig": "apps/api/config",
+    "appsWebDist": "apps/web/dist",
+    "computeStandard": "services/compute/dashboard/standard",
+    "sharedCache": "dashboard/standard/cache",
+    "computeHome": "services/compute"
+  }
+}

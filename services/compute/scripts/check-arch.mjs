@@ -49,6 +49,10 @@ const SHARED_MODULES = new Set([
   'analytics.domains.standard.station_report',
   'analytics.domains.standard.site_orders',
   'analytics.domains.assessment.service_quality',
+  // P1 路径收敛产物：统一路径契约（dirs 命名空间），被多看板引用属正常共享层
+  'analytics.core.paths',
+  // 公共工具包，被多看板引用属正常共享层
+  'common',
 ]);
 
 const SKIP_DIRS = new Set([

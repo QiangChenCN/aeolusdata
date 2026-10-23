@@ -9,6 +9,7 @@ import { AppModule } from './app.module';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { loadAppConfig } from './config/configuration';
 import { injectMachineToken, resolveIndexHtml } from './common/serve-html.util';
+import { dirs } from './config/paths';
 import { AEOLUS_MONOREPO_NAME } from '@aeolus/shared';
 
 // 跨应用共享包（workspace 依赖）冒烟：确认 @aeolus/shared 在 api 侧可被解析与打包
@@ -53,7 +54,7 @@ async function bootstrap(): Promise<void> {
   // 导致「标准达成刷新」等所有写接口在网关层即 404，永远不出结果。
   // 这里手动挂载 express.static，但凡命中 `/api`（含任意子路径）一律 next() 交给 Nest 路由，
   // 其余路径（前端构建产物）按文件服务，找不到则 fallthrough 到 ServeController（入口页 token 注入）。
-  const distDir = path.resolve(process.cwd(), '..', '..', 'apps', 'web', 'dist');
+  const distDir = dirs.appsWebDist();
   if (existsSync(distDir)) {
     app.use((req: express.Request, res: express.Response, next: express.NextFunction) => {
       // /api 一律交给 Nest 路由（含 POST 写接口）；入口页 / 与 /index.html 交给

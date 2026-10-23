@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as fs from 'fs';
 import * as path from 'path';
+import { dirs } from '../../../config/paths';
 
 /**
  * 风神（Aeolus）SSO 登录协议 —— 原 Python `aeolus_sdk/login.py` 的 Nest 移植。
@@ -256,17 +257,15 @@ export class AeolusLoginService {
   private readonly credFile: string;
 
   constructor(private readonly config: ConfigService) {
-    const root = path.resolve(
-      this.config.get<string>('PROJECT_ROOT') || path.resolve(process.cwd(), '..'),
-    );
-    this.credFile = path.join(root, 'apps', 'api', 'aeolus_sdk', 'credentials.json');
+    this.credFile = dirs.runtime('aeolus_sdk/credentials.json');
   }
 
-  /** 登录凭据：环境变量优先，其次 `apps/api/aeolus_sdk/credentials.json`（该文件已被 gitignore）。 */
+  /**
+   * 登录凭据：仅由「系统设置 → 风神设置」UI 维护到
+   * `apps/api/runtime/aeolus_sdk/credentials.json`（已被 .gitignore 排除）。
+   * 不读取任何环境变量 —— 风神账号密码只存在该文件，不落 .env。
+   */
   credentials(): { account: string; password: string } {
-    const acc = process.env.AEOLUS_ACCOUNT;
-    const pwd = process.env.AEOLUS_PASSWORD;
-    if (acc && pwd) return { account: acc, password: pwd };
     try {
       const d = JSON.parse(fs.readFileSync(this.credFile, 'utf-8'));
       if (d?.account && d?.password) {
@@ -276,8 +275,8 @@ export class AeolusLoginService {
       /* 落到下面的统一报错 */
     }
     throw new Error(
-      '未找到风神登录凭据。请设置环境变量 AEOLUS_ACCOUNT / AEOLUS_PASSWORD，' +
-        '或在 apps/api/aeolus_sdk/credentials.json 中配置 account/password（该文件已被 .gitignore 排除）。',
+      '未找到风神登录凭据。请在「系统设置 → 风神设置」中保存账号密码（落盘到 ' +
+        'apps/api/runtime/aeolus_sdk/credentials.json，已被 .gitignore 排除）。',
     );
   }
 

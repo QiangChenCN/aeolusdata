@@ -12,7 +12,9 @@
     "start:worker:dev": "nest start --entry-file main-worker",
     "lint": "eslint \"src/**/*.ts\" --fix",
     "test": "jest",
-    "test:e2e": "jest --config ./test/jest-e2e.json"
+    "test:e2e": "jest --config ./test/jest-e2e.json",
+    "arch:check": "node scripts/check-arch.mjs",
+    "db:migrate": "node scripts/migrate-sqlite-to-pg.mjs"
   },
   "dependencies": {
     "@aeolus/shared": "workspace:*",

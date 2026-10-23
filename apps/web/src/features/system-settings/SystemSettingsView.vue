@@ -13,7 +13,7 @@
       <RouterLink to="/settings/aeolus" class="card">
         <div>
           <div class="card-t">风神设置</div>
-          <div class="card-d">风神（Aeolus）登录账号与密码，原手写于后端 credentials.json</div>
+          <div class="card-d">风神（Aeolus）登录账号与密码，由「风神设置」页写入后端 credentials.json（无需在 .env 中存储）</div>
         </div>
         <el-icon class="card-arw"><ArrowRight /></el-icon>
       </RouterLink>

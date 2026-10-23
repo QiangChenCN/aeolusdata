@@ -29,7 +29,7 @@ export interface TaskRunContext {
 
 /** 原生任务处理器。实现类需在构造时把自己注册进 TaskHandlersService。 */
 export interface TaskHandler {
-  /** 必须与 backend/tasks.json 的任务 id 一致。 */
+  /** 必须与任务注册表 tasks.json（WORKBENCH_DIR 下）的任务 id 一致。 */
   readonly id: string;
   /** 节点声明（供区间校验与前端步进条）；缺省表示「不可分段」。 */
   readonly stages?: TaskStage[];

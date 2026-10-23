@@ -283,7 +283,7 @@ const router = useRouter();
 
 /* 违规运单下钻：点击考核看板某站点的违规计数，跳转到「违规处罚」看板（实时 tab）并按
    站点 + 违规分类/类型 + 成立状态 筛选逐单明细。
-   映射以 python/analytics/assessment/violations.py 的计数口径为准：
+   映射以 services/compute/analytics/domains/assessment/violations.py 的计数口径为准：
      · 投诉/差评/索赔/物流责取消 → 违规分类 精确相等（COMPLAIN/BAD_REVIEW/CLAIM/CANCEL）
      · 提前点送达 → 违规类型 1039（提前点送达（索赔））
      · 虚假报备商户出餐慢取消 → 违规类型 1004（违规取消，含虚假报备，看板可按违规原因手筛）

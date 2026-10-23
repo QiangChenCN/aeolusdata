@@ -11,8 +11,8 @@ import { envValidationSchema } from './configuration';
  * ConfigService 失败（Nest DI "lookupComponentInParentModules" 错），进程起不来。
  *
  * 单一配置来源 = 仓库根 .env（如 /opt/aeolusdata/.env）。systemd 的 EnvironmentFile
- * 注入同一份；这里显式读取它，不再读 backend/.env，避免两份漂移。数组第二项是
- * 本地开发的优雅回退（若根 .env 缺席、仍有 backend/.env 时可用）。
+ * 注入同一份；这里显式读取它，不再读 apps/api/.env，避免两份漂移。数组第二项是
+ * 本地开发的优雅回退（若根 .env 缺席、仍有 apps/api/.env 时可用）。
  *
  * 注意：不要在 .env 里设 `PROJECT_ROOT=..` 这类相对值 —— 后端现位于 apps/api，
  * 旧布局的相对值会把它解析错一层（如 apps/apps/api）。不设该变量时，

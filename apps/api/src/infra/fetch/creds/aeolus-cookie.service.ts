@@ -47,8 +47,9 @@ export class AeolusCookieService {
     );
     this.cookieFile =
       (process.env.AEOLUS_COOKIE_FILE || '').trim() ||
-      // 2026-10-21：backend/ 已迁移为 apps/api/，凭据/cookie 归位到 apps/api/aeolus_sdk。
-      path.join(root, 'apps', 'api', 'aeolus_sdk', 'cookie.txt');
+      // 运行时凭据/cookie 统一归到 runtime/ 下（与 teams.json / results / db 等运行时产物一致），
+      // 不再散落在 apps/api/aeolus_sdk/。
+      path.join(root, 'apps', 'api', 'runtime', 'aeolus_sdk', 'cookie.txt');
   }
 
   /** 读取本地 cookie 头字符串；不存在/为空返回 null（同步，供只读调用方）。 */

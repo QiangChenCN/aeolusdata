@@ -1,33 +1,4 @@
-# >>> python-home bootstrap (added by layout migration) >>>
-import os as _os
-import sys as _sys
-
-def _find_python_home():
-    d = _os.path.dirname(_os.path.abspath(__file__))
-    # 计算服务代码根：同时含 analytics/ 与 compute_api/ 子目录
-    while d and not (
-        _os.path.isdir(_os.path.join(d, "analytics"))
-        and _os.path.isdir(_os.path.join(d, "compute_api"))
-    ):
-        d = _os.path.dirname(d)
-    return d
-
-def _find_repo_root():
-    d = _os.path.dirname(_os.path.abspath(__file__))
-    # 仓库根：含 .git 或根 package.json
-    while d and d != _os.path.dirname(d) and not (
-        _os.path.exists(_os.path.join(d, ".git"))
-        or _os.path.exists(_os.path.join(d, "package.json"))
-    ):
-        d = _os.path.dirname(d)
-    return d
-
-PY_HOME = _find_python_home()
-ROOT = _find_repo_root()
-_ROOT = ROOT
-if PY_HOME and PY_HOME not in _sys.path:
-    _sys.path.insert(0, PY_HOME)
-# <<< python-home bootstrap <<<
+from analytics.core.paths import ROOT, PY_HOME, _ROOT  # noqa: E402,F401 <<<
 
 
 #!/usr/bin/env python3
@@ -51,7 +22,7 @@ if PY_HOME and PY_HOME not in _sys.path:
 - build_body(team_id, start_date, end_date)   组装请求体（现由 Nest 侧组装，此函数保留作对照）
 - AuthError                                   会话失效异常（由上层作为失败上报）
 
-上游接口地址与请求头**只保留在 Nest 侧**（`backend/src/modules/fetch/schedule-fetch.service.ts`）：
+上游接口地址与请求头**只保留在 Nest 侧**（`apps/api/src/modules/fetch/schedule-fetch.service.ts`）：
 本模块不再持有任何风神 URL / headers 常量（2026-09-24 清理）。
 """
 import datetime

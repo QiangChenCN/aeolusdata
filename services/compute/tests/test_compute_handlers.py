@@ -13,36 +13,7 @@
 """
 import os
 
-# >>> python-home bootstrap (added by layout migration) >>>
-import os as _os
-import sys as _sys
-
-def _find_python_home():
-    d = _os.path.dirname(_os.path.abspath(__file__))
-    # 计算服务代码根：同时含 analytics/ 与 compute_api/ 子目录
-    while d and not (
-        _os.path.isdir(_os.path.join(d, "analytics"))
-        and _os.path.isdir(_os.path.join(d, "compute_api"))
-    ):
-        d = _os.path.dirname(d)
-    return d
-
-def _find_repo_root():
-    d = _os.path.dirname(_os.path.abspath(__file__))
-    # 仓库根：含 .git 或根 package.json
-    while d and d != _os.path.dirname(d) and not (
-        _os.path.exists(_os.path.join(d, ".git"))
-        or _os.path.exists(_os.path.join(d, "package.json"))
-    ):
-        d = _os.path.dirname(d)
-    return d
-
-PY_HOME = _find_python_home()
-ROOT = _find_repo_root()
-_ROOT = ROOT
-if PY_HOME and PY_HOME not in _sys.path:
-    _sys.path.insert(0, PY_HOME)
-# <<< python-home bootstrap <<<
+from analytics.core.paths import ROOT, PY_HOME, _ROOT  # noqa: E402,F401 <<<
 
 
 import sys
@@ -156,7 +127,7 @@ def test_cookie_probes_migrated_to_nest():
     """登录态探针已迁 NestJS（`GET /api/cookies/status`），Python 侧不得再持有。
 
     一旦回流就会出现「两套探针、两套状态判定」——线上表现是顶部胶囊时好时坏且难定位。
-    探针现由 `backend/src/modules/fetch/cookie-status.service.ts`（风神 validToken）与
+    探针现由 `apps/api/src/modules/fetch/cookie-status.service.ts`（风神 validToken）与
     `quark-creds.service.ts`（DA 缓存 + 探针）独家提供。
     """
     for fn in ("check_cookie_status", "_check_aeolus_cookie", "_check_quark_cookie"):

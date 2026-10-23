@@ -30,36 +30,7 @@ Python 计算侧按此路径读取，与看板、机器人同源）：
   site_threshold_cap(month, team)  → (门槛%, 封顶%)；任一为 None 表示未设置
 """
 
-# >>> python-home bootstrap (added by layout migration) >>>
-import os as _os
-import sys as _sys
-
-def _find_python_home():
-    d = _os.path.dirname(_os.path.abspath(__file__))
-    # 计算服务代码根：同时含 analytics/ 与 compute_api/ 子目录
-    while d and not (
-        _os.path.isdir(_os.path.join(d, "analytics"))
-        and _os.path.isdir(_os.path.join(d, "compute_api"))
-    ):
-        d = _os.path.dirname(d)
-    return d
-
-def _find_repo_root():
-    d = _os.path.dirname(_os.path.abspath(__file__))
-    # 仓库根：含 .git 或根 package.json
-    while d and d != _os.path.dirname(d) and not (
-        _os.path.exists(_os.path.join(d, ".git"))
-        or _os.path.exists(_os.path.join(d, "package.json"))
-    ):
-        d = _os.path.dirname(d)
-    return d
-
-PY_HOME = _find_python_home()
-ROOT = _find_repo_root()
-_ROOT = ROOT
-if PY_HOME and PY_HOME not in _sys.path:
-    _sys.path.insert(0, PY_HOME)
-# <<< python-home bootstrap <<<
+from analytics.core.paths import ROOT, PY_HOME, _ROOT, dirs# noqa: E402,F401 <<<
 
 
 import os
@@ -67,7 +38,7 @@ import json
 import datetime as _dt
 
 # 与 Nest ConfigService.stdDir 对齐：配置实际落盘于 <python>/dashboard/standard/
-_GLOBAL_PATH = os.path.join(PY_HOME, "dashboard", "standard", "standard_grade_settings.json")
+_GLOBAL_PATH = dirs.computeStandard("standard_grade_settings.json")
 
 # 默认模板（首运行 / 新站点沿用），与「运力达成查询」机器人口径一致。
 DEFAULT_LEVELS = [

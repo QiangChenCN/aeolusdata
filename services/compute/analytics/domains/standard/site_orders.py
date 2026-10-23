@@ -36,36 +36,7 @@ apps/api/runtime/raw/orders_<teamId>_<date>.json —— 等价于 cache.load_raw
 """
 import os
 
-# >>> python-home bootstrap (added by layout migration) >>>
-import os as _os
-import sys as _sys
-
-def _find_python_home():
-    d = _os.path.dirname(_os.path.abspath(__file__))
-    # 计算服务代码根：同时含 analytics/ 与 compute_api/ 子目录
-    while d and not (
-        _os.path.isdir(_os.path.join(d, "analytics"))
-        and _os.path.isdir(_os.path.join(d, "compute_api"))
-    ):
-        d = _os.path.dirname(d)
-    return d
-
-def _find_repo_root():
-    d = _os.path.dirname(_os.path.abspath(__file__))
-    # 仓库根：含 .git 或根 package.json
-    while d and d != _os.path.dirname(d) and not (
-        _os.path.exists(_os.path.join(d, ".git"))
-        or _os.path.exists(_os.path.join(d, "package.json"))
-    ):
-        d = _os.path.dirname(d)
-    return d
-
-PY_HOME = _find_python_home()
-ROOT = _find_repo_root()
-_ROOT = ROOT
-if PY_HOME and PY_HOME not in _sys.path:
-    _sys.path.insert(0, PY_HOME)
-# <<< python-home bootstrap <<<
+from analytics.core.paths import ROOT, PY_HOME, _ROOT, dirs# noqa: E402,F401 <<<
 
 
 import re
@@ -81,7 +52,7 @@ _RAW_KIND = "orders"
 # 项目根下的共享原始数据目录 —— 必须与 Nest RawCacheService 的写入端一致
 # （见 analytics/cache.py 的 _DATA_DIR）。
 # 2026-09-23 修正：原为 PY_HOME/dashboard/data（python 代码目录内），读不到 Nest 刷新的数据。
-_DATA_DIR = os.path.join(ROOT, "apps", "api", "runtime", "raw")
+_DATA_DIR = dirs.runtime("raw")
 _FNAME_RE = re.compile(r"^orders_(?P<team>[^_]+)_(?P<date>\d{4}-\d{2}-\d{2})\.json$")
 NAME_KEYS = ("teamName", "团队/站点名称", "团队名称")
 # 原用途：缓存按生成时间抓时，「接单日在 D」的单生成时间可能落在 D-1，需回读一天。

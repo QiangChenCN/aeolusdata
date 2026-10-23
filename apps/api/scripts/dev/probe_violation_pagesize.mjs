@@ -7,7 +7,7 @@
 // 绝不主动重登（重登会顶掉共享同一账号的其他会话，包括生产）。
 //
 // 用法：
-//   node backend/scripts/probe_violation_pagesize.mjs [--days 30] [--force-login] [--sizes 10,50,100,200,500,1000,2000,5000]
+//   node apps/api/scripts/probe_violation_pagesize.mjs [--days 30] [--force-login] [--sizes 10,50,100,200,500,1000,2000,5000]
 import * as fs from 'fs';
 import * as path from 'path';
 

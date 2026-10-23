@@ -10,10 +10,7 @@
       <!-- 当前配置账号信息 -->
       <div class="status" :class="statusClass">
         <span class="st-dot"></span>
-        <span v-if="masked.source === 'env'">
-          凭据由环境变量 <code>AEOLUS_ACCOUNT</code> / <code>AEOLUS_PASSWORD</code> 提供，此处保存的文件不生效。
-        </span>
-        <span v-else-if="masked.hasAccount && masked.hasPassword">
+        <span v-if="masked.hasAccount && masked.hasPassword">
           已设置账号：{{ masked.account }}
         </span>
         <span v-else-if="masked.hasAccount">
@@ -21,15 +18,6 @@
         </span>
         <span v-else> 尚未配置账号，取数前请先填写并保存。 </span>
       </div>
-
-      <el-alert
-        v-if="masked.source === 'env'"
-        type="warning"
-        :closable="false"
-        class="tip"
-        title="检测到环境变量覆盖"
-        description="当前登录凭据来自环境变量，本页保存的文件仅在移除环境变量后生效。如需改为界面管理，请清除后端 AEOLUS_ACCOUNT / AEOLUS_PASSWORD 环境变量。"
-      />
 
       <!-- 退出登录 / 切换账号 -->
       <div class="actions">
@@ -85,7 +73,6 @@ const loggingOut = ref(false);
 const editing = ref(false);
 
 const statusClass = computed(() => {
-  if (masked.source === 'env') return 'status--env';
   if (masked.hasAccount && masked.hasPassword) return 'status--ok';
   return 'status--warn';
 });

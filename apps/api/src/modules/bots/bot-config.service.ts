@@ -9,7 +9,7 @@ import * as path from 'path';
  * 现升级为多「凭据分组」：管理员可在前端「机器人配置 → 凭据分组」直接维护多组
  * 钉钉应用凭据（clientId/secret），每个 bot 实例通过 `credentialsRef` 绑定其中一组，
  * 运行时按分组各自建立独立的 Stream 长连接（多连接网关）。落盘到
- * `<PROJECT_ROOT>/apps/api/runtime/bot_config.json`（不进 git，便于部署覆盖）。
+ * `<PROJECT_ROOT>/apps/api/config/bot_config.json`（不进 git，便于部署覆盖）。
  *
  *  - 读取：`listGroups()` 脱敏列表（secret 永不外泄，仅给 hasSecret 标记）；
  *    `getGroup(id)` 供运行时取真实凭据；老的单组字段（dingClientId/secret）自动迁移为
@@ -49,7 +49,7 @@ export class BotConfigService {
     const root = path.resolve(
       this.nest.get<string>('PROJECT_ROOT') || path.resolve(process.cwd(), '..'),
     );
-    this.file = path.join(root, 'apps', 'api', 'runtime', 'bot_config.json');
+    this.file = path.join(root, 'apps', 'api', 'config', 'bot_config.json');
   }
 
   private readFile(): BotConfigFile {

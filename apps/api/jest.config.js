@@ -10,4 +10,10 @@ module.exports = {
   rootDir: 'src',
   testRegex: '.*\\.spec\\.ts$',
   moduleFileExtensions: ['ts', 'js', 'json'],
+  // ts-jest 默认做全量类型检查；项目未挂 @types/jest 全局类型，会导致所有
+  // *.spec.ts 在编译期就报 describe/it/expect 未定义而跑不起来。单测只转译不
+  // 检查类型（生产代码仍由 tsc 把关），故开启 isolatedModules。
+  transform: {
+    '^.+\\.ts$': ['ts-jest', { isolatedModules: true }],
+  },
 };

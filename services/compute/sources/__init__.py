@@ -1,33 +1,4 @@
-# >>> python-home bootstrap (added by layout migration) >>>
-import os as _os
-import sys as _sys
-
-def _find_python_home():
-    d = _os.path.dirname(_os.path.abspath(__file__))
-    # 计算服务代码根：同时含 analytics/ 与 compute_api/ 子目录
-    while d and not (
-        _os.path.isdir(_os.path.join(d, "analytics"))
-        and _os.path.isdir(_os.path.join(d, "compute_api"))
-    ):
-        d = _os.path.dirname(d)
-    return d
-
-def _find_repo_root():
-    d = _os.path.dirname(_os.path.abspath(__file__))
-    # 仓库根：含 .git 或根 package.json
-    while d and d != _os.path.dirname(d) and not (
-        _os.path.exists(_os.path.join(d, ".git"))
-        or _os.path.exists(_os.path.join(d, "package.json"))
-    ):
-        d = _os.path.dirname(d)
-    return d
-
-PY_HOME = _find_python_home()
-ROOT = _find_repo_root()
-_ROOT = ROOT
-if PY_HOME and PY_HOME not in _sys.path:
-    _sys.path.insert(0, PY_HOME)
-# <<< python-home bootstrap <<<
+from analytics.core.paths import ROOT, PY_HOME, _ROOT  # noqa: E402,F401 <<<
 
 
 """sources —— 风神数据的**取数转发层**（单一来源）。
@@ -85,7 +56,7 @@ __all__ = [
 #
 # 登录态（读盘 / 失效重登）由 NestJS 独占：本包转发到 `/api/fetch/*` 时一律**不传** cookie，
 # Nest 侧走 `cookie || await this.cookies.ensure()` 自行补齐、失效时自动重登
-# （见 backend/src/modules/fetch/attendance-fetch.service.ts 与 schedule-fetch.service.ts）。
+# （见 apps/api/src/modules/fetch/attendance-fetch.service.ts 与 schedule-fetch.service.ts）。
 #
 # 这样凭证只在一个进程里被打开 —— 「谁持有 cookie」不再有两个答案，
 # 也避免了 Python 读到一个正在被 Nest 原子重写的半截文件。

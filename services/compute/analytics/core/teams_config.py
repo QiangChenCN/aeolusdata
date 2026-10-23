@@ -14,42 +14,14 @@ import os
 import time
 import json
 
-# >>> python-home bootstrap (added by layout migration) >>>
-import os as _os
-import sys as _sys
-
-def _find_python_home():
-    d = _os.path.dirname(_os.path.abspath(__file__))
-    # 计算服务代码根：同时含 analytics/ 与 compute_api/ 子目录
-    while d and not (
-        _os.path.isdir(_os.path.join(d, "analytics"))
-        and _os.path.isdir(_os.path.join(d, "compute_api"))
-    ):
-        d = _os.path.dirname(d)
-    return d
-
-def _find_repo_root():
-    d = _os.path.dirname(_os.path.abspath(__file__))
-    # 仓库根：含 .git 或根 package.json
-    while d and d != _os.path.dirname(d) and not (
-        _os.path.exists(_os.path.join(d, ".git"))
-        or _os.path.exists(_os.path.join(d, "package.json"))
-    ):
-        d = _os.path.dirname(d)
-    return d
-
-PY_HOME = _find_python_home()
-ROOT = _find_repo_root()
-_ROOT = ROOT
-if PY_HOME and PY_HOME not in _sys.path:
-    _sys.path.insert(0, PY_HOME)
-# <<< python-home bootstrap <<<
+# 统一路径契约：取代各模块重复的 bootstrap（见 analytics/core/paths.py）。
+from analytics.core.paths import ROOT, PY_HOME, _ROOT, dirs# noqa: E402,F401
 
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _PATH = os.path.join(_HERE, "teams_config.json")
 # 站点目录落盘文件：Nest 每次从风神拉取站点目录成功后写入（与订单落盘同根 apps/api/runtime）。
-_TEAMS_FILE = os.path.join(ROOT, "apps", "api", "runtime", "teams.json")
+_TEAMS_FILE = dirs.runtime("teams.json")
 
 _TN_CACHE = {"data": None, "ts": 0}
 _TN_TTL = 60  # 秒；Nest 每 5 分钟刷新一次落盘文件，这里缓存 60s 足够

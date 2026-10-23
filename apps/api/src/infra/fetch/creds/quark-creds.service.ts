@@ -9,7 +9,7 @@ import { AeolusCookieService } from './aeolus-cookie.service';
  * Quark 报表凭证链（**原生 NestJS 实现**，替代原 Python `quark_sdk/` + `tools/quark_creds_dump.py`）。
  *
  * 鉴权链路（2026-08-19 实测确认）：
- *   1. Aeolus SSO cookie（读 apps/api/aeolus_sdk/cookie.txt；失效时由 AeolusCookieService 触发重登）
+ *   1. Aeolus SSO cookie（读 apps/api/runtime/aeolus_sdk/cookie.txt；失效时由 AeolusCookieService 触发重登）
  *   2. GET app2-edu.ele.me/kunkka-svr/fs/fbi/getReport?reportId=860325 → 带 QUARK_PARAMS 的 iframe URL
  *   3. GET report.htm?...（**必须走 curl**：urllib/Node fetch 的 ClientHello 指纹会被网关 403）
  *      → 302 到 daLogin.htm?DA_SESSION=...

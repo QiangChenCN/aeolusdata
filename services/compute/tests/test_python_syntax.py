@@ -15,10 +15,11 @@ import sys
 
 
 def _python_home():
+    # tests/ 位于 <python_home>/tests/，故 python_home 即本文件上两级的 services/compute 目录。
+    # 早期版本按目录名 'python' 向上查找；迁移到 services/compute 后该目录已不存在，
+    # 会在 '/' 处陷入死循环。改为直接按相对位置定位，不再依赖目录名。
     d = os.path.dirname(os.path.abspath(__file__))
-    while d and os.path.basename(d) != 'python':
-        d = os.path.dirname(d)
-    return d
+    return os.path.dirname(d)
 
 
 def test_all_python_files_compile():

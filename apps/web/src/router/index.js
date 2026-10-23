@@ -95,7 +95,7 @@ const routes = [
 // History 模式（无 #）：深链接需服务端回退到 index.html。
 //   · 开发环境：Vite(appType='spa') 自带 history 回退，且会把 index.html 里的相对资源
 //     重写为绝对路径，嵌套路由（/bot/global）也不会取错资源。
-//   · 生产环境：由 Nest 的 SPA 回退中间件负责（backend/src/main.ts）。
+//   · 生产环境：由 Nest 的 SPA 回退中间件负责（apps/api/src/main.ts）。
 //     缺少该回退时，刷新 /tasks 这类深层路由会 404。
 const router = createRouter({
   history: createWebHistory(),
