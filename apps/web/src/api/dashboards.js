@@ -178,12 +178,12 @@ export function saveAssessmentTeams(teams) {
 
 /* 注：配送超时看板的接口已迁到 api/delivery-timeout.js（2026-10-21，看板独立）。 */
 
-/* 考核看板自有刷新：独立拉取违规处罚明细落盘（与标准达成取数解耦，见 Nest AssessmentViolationFetchService） */
+/* 考核看板自有刷新：独立拉取违规处罚明细入库（与标准达成取数解耦，见 Nest AssessmentViolationFetchService） */
 export function refreshAssessment({ teams = [], date, manual = false } = {}) {
   return request('/assessment-fetch/violation', j({ teams, date, manual }));
 }
-/* 考核看板刷新时一并拉取运单明细（看板主指标推配送/完成/T8 依赖 apps/api/runtime/运单明细-实时.json，
-   由 Nest AssessmentDeliveryFetchService 落盘；与标准达成共享同一文件）。 */
+/* 考核看板刷新时一并拉取运单明细（看板主指标推配送/完成/T8 依赖 PG 表 delivery_realtime，
+   由 Nest AssessmentDeliveryFetchService 入库）。 */
 export function refreshAssessmentDelivery(body = {}) {
   // 风神导出运单较慢，放宽超时到 120s，避免默认 15s 被中断误报「运单数据拉取失败」
   return request('/assessment-fetch/delivery', { ...j(Object.assign({ manual: true }, body)), timeout: 120000 });

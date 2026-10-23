@@ -3,12 +3,13 @@
 """考核看板 —— 违规处罚明细（投诉 / 差评 / 索赔口径数据源）。
 
 ⚠️ 取数已迁 Nest（2026-10-13 剥离）：考核看板的违规取数由 Nest
-`AssessmentViolationFetchService` 独立完成（打风神接口 → 解析 → 合并落盘到
-`apps/api/runtime/违规处罚明细-实时.json`，全站当天一份、覆盖写），
-与标准达成 / 服务质量的取数代码、落盘命名空间**完全解耦**。
+`AssessmentViolationFetchService` 独立完成（打风神接口 → 解析 → 入库），
+与标准达成 / 服务质量的取数代码完全解耦。
 
-本模块只负责**读**自有命名空间的落盘数据 + 按口径统计（零 HTTP、零共享取数）。
-数据源：Nest 落盘的考核看板违规明细。
+落盘 → 入库（2026-10-23）：明细不再写 `apps/api/runtime/违规处罚明细-实时.json`，
+改为写入 PG 表 `violation_realtime`（当天快照）与 `violation`（历史）；
+本模块经 Nest 内部端点
+`GET /api/assessment-internal/violations` 读取，只负责按口径统计。
 
 指标口径（考核看板）：
   · 投诉单       = 违规分类=投诉   且 违规状态=成立的记录数
@@ -20,14 +21,12 @@
   · 物流妥投率   = 完成单量 / (完成单量 + 物流责取消单 + 提前点送达单*2)（百分比）
 
 说明：
-  · 站点归属按落盘明细「团队ID」，与 orders 的 teamId 是同一套站点 id。
+  · 站点归属按明细行「团队ID」，与 orders 的 teamId 是同一套站点 id。
   · 「违规状态」只有「成立 / 不成立」两种，只计「成立」。
   · 前四项看「违规分类」（精确相等）；「提前点送达单」看「违规类型」（子串包含）。
   · 两个比率的分母口径由调用方传入（推配送单量 / 完成单量）。
 
-落盘文件：`apps/api/runtime/违规处罚明细-实时.json`（全站当天合并为一份，覆盖写），
-包装格式 { date, fetched_at, fetch_ok, fetch_error, rows }；
-读侧 load_team_raw 按团队ID过滤出本站点行（load_team / count_violations 不变）。
+读侧 load_team_raw 从全站行里按「团队ID」过滤出本站点行（load_team / count_violations 不变）。
 """
 import os
 
@@ -66,14 +65,14 @@ if PY_HOME and PY_HOME not in _sys.path:
 import json
 import datetime
 
+from common import nest_client
 from analytics.core import order_rules as OR
 
 BJ = datetime.timezone(datetime.timedelta(hours=8))
 
-# 考核看板自有取数落盘目录：apps/api/runtime（与「运单明细-实时.json」同级）。
-# 全天违规合并为一份当天文件「违规处罚明细-实时.json」（覆盖写），读侧按团队ID过滤。
-ASSESS_RAW_DIR = os.path.join(ROOT, "apps", "api", "runtime")
-RAW_FILE = "违规处罚明细-实时.json"
+# 考核看板自有违规明细：PG 表 `violation_realtime`（当天快照），
+# 经 Nest 内部端点读取（端点按天返回全站行，本模块不再解析全站文件）。
+VIOLATIONS_PATH = "/api/assessment-internal/violations"
 
 # 指标键 ← CSV「违规分类」原始名（精确相等）。
 CATEGORIES = {
@@ -222,7 +221,7 @@ def group_by_team(rows):
 def build_waybill_highvalue_map(delivery_orders):
     """运单标识 → 是否高比单(bool)，供违规明细按「运单号」JOIN 判定高比单。
 
-    仅用运单侧数据（运单明细-实时.json）；键取 WAYBILL_JOIN_KEYS（运单id /
+    仅用运单侧数据（表 `delivery_realtime`，经内部端点读取）；键取 WAYBILL_JOIN_KEYS（运单id /
     trackingId / 订单号 多键兜底），值用 order_rules.is_high_value_order（与
     高比单T8超时 gaobi_order 同一「是否高比单」判定口径，保证两张高比单卡片一致）。
     """
@@ -257,54 +256,53 @@ def count_gaobi_cancel_liable(rows, team_id, hv_map):
     return cnt
 
 
-# ───────────────────────── 读侧：仅读考核看板自有命名空间 ─────────────────────────
-def _own_path(date):
-    return os.path.join(ASSESS_RAW_DIR, RAW_FILE)
+# ───────────────────────── 读侧：读考核看板自有 PG 数据 ─────────────────────────
+def _fetch_day_payload(date):
+    """经 Nest 内部端点读某天**全站**违规明细；不可用（Nest 不可达 / PG 未启用）返回 None。"""
+    try:
+        j = nest_client.get_json(VIOLATIONS_PATH, {"date": str(date)}, timeout=60)
+    except Exception:
+        return None
+    return j if isinstance(j, dict) else None
 
 
 def load_team_raw(team_id, date):
-    """读站点违规明细的原始落盘 dict（含 fetch_ok / fetch_error / fetched_at）；未落盘返回 None。
+    """读站点违规明细的原始包装 dict（含 fetched_at / rows）；不可用返回 None。
 
-    落盘为全站一份（apps/api/runtime/违规处罚明细-实时.json），此处按团队ID过滤出本站点行，
-    重建与单站点等价的包装，使 load_team / board 的调用方无需感知「全站合并」这一落盘形态。
+    数据源为 PG 表 `violation_realtime`（全站当天一份，与旧「全站单文件」同形态）：
+    该表没有 team_id 列，明细行自带「团队ID」，故在此按团队ID过滤出本站点行，
+    重建与单站点等价的包装，使 load_team / board 的调用方无需感知底层是表还是文件。
     """
-    p = _own_path(date)
-    if not os.path.exists(p):
+    j = _fetch_day_payload(date)
+    if not j or j.get("ok") is not True:
         return None
-    try:
-        with open(p, "r", encoding="utf-8") as f:
-            raw = json.load(f)
-    except Exception:
-        return None
-    if not isinstance(raw, dict):
-        return None
-    all_rows = raw.get("rows")
+    all_rows = j.get("rows")
     if not isinstance(all_rows, list):
         return None
     team_rows = [r for r in all_rows if _pick(r, TEAM_ID_KEYS) == str(team_id)]
     return {
-        "date": raw.get("date"),
+        "date": j.get("date") or date,
         "team_id": str(team_id),
-        "fetched_at": raw.get("fetched_at"),
-        "fetch_ok": raw.get("fetch_ok"),
-        "fetch_error": raw.get("fetch_error"),
+        "fetched_at": j.get("fetched_at"),
+        "fetch_ok": True,
+        "fetch_error": None,
         "rows": team_rows,
     }
 
 
 def load_team(team_id, date):
-    """读站点违规明细 list[dict]；「未刷新」或「本次拉取失败」都返回 None（与「已刷新但 0 条」区分）。"""
+    """读站点违规明细 list[dict]；「未入库 / 读不到」返回 None（与「已入库但 0 条」区分）。"""
     raw = load_team_raw(team_id, date)
     if raw is None:
         return None
     if raw.get("fetch_ok") is False:
-        return None   # 拉取失败：不把盘上的旧数据当成本次有效数据
+        return None
     rows = raw.get("rows")
     return rows if isinstance(rows, list) else None
 
 
 __all__ = [
-    "BJ", "ASSESS_RAW_DIR", "RAW_FILE", "CATEGORIES", "TYPE_CONTAINS",
+    "BJ", "VIOLATIONS_PATH", "CATEGORIES", "TYPE_CONTAINS",
     "STATUS_ESTABLISHED", "METRIC_KEYS", "WAYBILL_JOIN_KEYS",
     "day_range", "parse_csv", "count_violations", "unsat_rate", "fulfillment_rate",
     "group_by_team", "build_waybill_highvalue_map", "count_gaobi_cancel_liable",

@@ -94,6 +94,8 @@ async function main() {
       }
       await sleep(GAP);
     }
+    // 注（2026-10-23）：违规历史表 violation_history 已删除，违规回填没有落盘目标，
+    // 此分支现在的实际效果是「取数成功但不落盘」（writeOk 在 historyOnly 下直接返回）。
     if (needV) {
       process.stdout.write(`[backfill] ${date} 违规... `);
       try {

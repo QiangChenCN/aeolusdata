@@ -8,7 +8,7 @@
   同一份落盘文件，谁改抓取/清洗口径都会同时影响对方。
 
   现在改成本看板**自有的实时运单明细**：由 Nest `DeliveryTimeoutRefreshService`
-  抓全站运单写入 PG 表 `delivery_timeout_orders`，本模块经内部端点
+  抓全站运单写入 PG 表 `delivery_realtime`，本模块经内部端点
   `GET /api/delivery-timeout-internal/orders`（机器令牌）读取。
   Python 侧零文件读取：没有 mtime/FileExists 之类的隐式状态，缺失与否由接口显式告知。
 

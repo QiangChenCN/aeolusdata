@@ -23,7 +23,7 @@ export class DeliveryTimeoutController {
   /**
    * 原始层通用写端点（手动回填 / 外部触发用）。
    *
-   * 注（2026-10-21）：本看板的计算源已改为自有 PG 表 `delivery_timeout_orders`
+   * 注（2026-10-21）：本看板的计算源已改为自有 PG 表 `delivery_realtime`
    * （见 `DeliveryTimeoutRefreshService` + `DeliveryTimeoutOrdersStoreService`），
    * 正常刷新**不再写** `apps/api/runtime/raw/orders_*`。这里保留该入口仅为诊断回填。
    */

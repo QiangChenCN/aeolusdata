@@ -4,25 +4,20 @@ import { PgService } from '../pg/pg.service';
 /**
  * 考核看板 —— 历史明细落盘（PostgreSQL only，不再保留 SQLite）。
  *
- * 三张表（DDL 见 PG_DDL）：
- *   · delivery_history(order_id, team_id, date, payload)
- *   · violation_history(vid, team_id, date, payload)
+ * 两张表（DDL 见 PG_DDL；原违规历史表 violation_history 已于 2026-10-23 删除）：
+ *   · delivery(order_id, team_id, date, payload)
  *   · visit_history(main_task_id, team_id, date, visited, total, payload)
  * 未配置 DATABASE_URL 时 onModuleInit 建表会抛错 → 启动失败（不再静默回退 SQLite）。
  */
 const PG_DDL = `
-CREATE TABLE IF NOT EXISTS delivery_history (
+CREATE TABLE IF NOT EXISTS delivery (
   order_id TEXT NOT NULL, team_id TEXT NOT NULL, date TEXT NOT NULL, payload TEXT NOT NULL,
   PRIMARY KEY (order_id, date));
-CREATE TABLE IF NOT EXISTS violation_history (
-  vid TEXT NOT NULL, team_id TEXT NOT NULL, date TEXT NOT NULL, payload TEXT NOT NULL,
-  PRIMARY KEY (vid, date));
 CREATE TABLE IF NOT EXISTS visit_history (
   main_task_id TEXT NOT NULL, team_id TEXT NOT NULL, date TEXT NOT NULL,
   visited TEXT, total TEXT, payload TEXT NOT NULL,
   PRIMARY KEY (main_task_id, team_id, date));
-CREATE INDEX IF NOT EXISTS idx_delivery_team_date  ON delivery_history (team_id, date);
-CREATE INDEX IF NOT EXISTS idx_violation_team_date ON violation_history (team_id, date);
+CREATE INDEX IF NOT EXISTS idx_delivery_team_date  ON delivery (team_id, date);
 CREATE INDEX IF NOT EXISTS idx_visit_date         ON visit_history (date);
 `;
 
@@ -44,22 +39,8 @@ export class AssessmentHistoryStoreService implements OnModuleInit {
     if (!rows.length) return;
     for (const r of rows) {
       await this.pg.query(
-        'INSERT INTO delivery_history (order_id, team_id, date, payload) VALUES ($1,$2,$3,$4) ' +
+        'INSERT INTO delivery (order_id, team_id, date, payload) VALUES ($1,$2,$3,$4) ' +
           'ON CONFLICT(order_id, date) DO UPDATE SET team_id=excluded.team_id, payload=excluded.payload',
-        [r.id, r.teamId, r.date, JSON.stringify(r.payload)],
-      );
-    }
-  }
-
-  /** 批量 UPSERT 违规历史（幂等：同 vid+date 覆盖写）。 */
-  async upsertViolations(
-    rows: { id: string; teamId: string; date: string; payload: unknown }[],
-  ): Promise<void> {
-    if (!rows.length) return;
-    for (const r of rows) {
-      await this.pg.query(
-        'INSERT INTO violation_history (vid, team_id, date, payload) VALUES ($1,$2,$3,$4) ' +
-          'ON CONFLICT(vid, date) DO UPDATE SET team_id=excluded.team_id, payload=excluded.payload',
         [r.id, r.teamId, r.date, JSON.stringify(r.payload)],
       );
     }

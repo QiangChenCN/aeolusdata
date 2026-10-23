@@ -359,7 +359,7 @@ journalctl -u aeolusdata-backend -n 80 --no-pager | grep -iE "PG 连接池|PG �
 # 库里自动建出的表
 psql "$DATABASE_URL" -c "\dt"
 # 各表行数
-psql "$DATABASE_URL" -c "SELECT 'realtime' AS tbl, count(*) FROM realtime_records UNION ALL SELECT 'violation', count(*) FROM violation_records UNION ALL SELECT 'im_contact', count(*) FROM im_contact_records UNION ALL SELECT 'cron', count(*) FROM cron_list UNION ALL SELECT 'unsat', count(*) FROM unsat_orders;"
+psql "$DATABASE_URL" -c "SELECT 'delivery_realtime' AS tbl, count(*) FROM delivery_realtime UNION ALL SELECT 'delivery', count(*) FROM delivery UNION ALL SELECT 'violation_realtime', count(*) FROM violation_realtime UNION ALL SELECT 'violation', count(*) FROM violation UNION ALL SELECT 'im_contact', count(*) FROM im_contact_records UNION ALL SELECT 'cron', count(*) FROM cron_list UNION ALL SELECT 'unsat', count(*) FROM unsat_orders;"
 ```
 
 ### 9.6 历史数据迁移（旧 SQLite → PG）

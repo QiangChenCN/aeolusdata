@@ -8,6 +8,8 @@
     "start": "nest start",
     "start:dev": "nest start --watch",
     "start:prod": "node dist/src/main",
+    "start:worker": "node dist/src/main-worker",
+    "start:worker:dev": "nest start --entry-file main-worker",
     "lint": "eslint \"src/**/*.ts\" --fix",
     "test": "jest",
     "test:e2e": "jest --config ./test/jest-e2e.json"

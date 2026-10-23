@@ -42,7 +42,7 @@ DEFAULT_EXTRA_WEIGHT = 5  # 三项各 5 分，合计 15，与实时 +15 假设�
 def _read_history_rows(table: str, team_id: str, date: str):
     """读某队某日的历史明细（payload 已解析为 dict 列表）。未配置/无记录返回 None。
 
-    表名来自固定白名单（delivery_history / violation_history），非用户输入，可安全内插。
+    表名来自固定白名单（delivery），非用户输入，可安全内插。
     """
     con = connect()
     if con is None:
@@ -59,6 +59,27 @@ def _read_history_rows(table: str, team_id: str, date: str):
         return None
     finally:
         con.close()
+
+
+def _read_violation_history_rows(team_id: str, date: str):
+    """读某队某日的历史违规明细（表 `violation`）；无/不可用返回 None。
+
+    与 `_read_history_rows` 的差异：历史违规表列名是 `stat_date` + `raw_json`
+    （历史运单表是 `date` + `payload`），且没有 team_id 列 —— 明细行自带「团队ID」，
+    按站点过滤在此解析行内容完成（与实时明细同口径）。
+    """
+    con = connect()
+    if con is None:
+        return None
+    try:
+        with con.cursor() as cur:
+            cur.execute("SELECT raw_json FROM violation WHERE stat_date = %s", (date,))
+            rows = [json.loads(r[0]) for r in cur.fetchall()]
+    except Exception:
+        return None
+    finally:
+        con.close()
+    return [r for r in rows if RV._pick(r, RV.TEAM_ID_KEYS) == str(team_id)]
 
 
 def _date_iter(start: str, end: str):
@@ -205,12 +226,15 @@ def build_period(team_id: str, start: str, end: str) -> dict:
     # 按单元格池化
     cells: dict[tuple, dict] = {}
     for d in _date_iter(start, end):
-        delivery_rows = _read_history_rows("delivery_history", team_id, d)
+        delivery_rows = _read_history_rows("delivery", team_id, d)
         if delivery_rows is None:
             delivery_rows = DS.load_delivery_orders(team_id) if d == today else []
-        violation_rows = _read_history_rows("violation_history", team_id, d)
+        # 历史违规处罚明细：PG 表 `violation`（由考核违规取数按天写入）。
+        violation_rows = _read_violation_history_rows(team_id, d)
         if violation_rows is None:
             violation_rows = RV.load_team(team_id, d) if d == today else []
+        if violation_rows is None:
+            violation_rows = []
 
         if not delivery_rows and not violation_rows:
             continue

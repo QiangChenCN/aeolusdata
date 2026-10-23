@@ -432,31 +432,25 @@ def _violation_note(team_id, date):
 
 
 def latest_assessment_data_time(date=None):
-    """考核看板数据最近一次取数/落盘时间（北京时间，YYYY-MM-DD HH:MM:SS）。
+    """考核看板数据最近一次入库时间（北京时间，YYYY-MM-DD HH:MM:SS）。
 
-    取违规明细与运单明细两份全站单文件的最新落盘时间（max），作为前端「更新时间」来源，
-    使页面刷新（仅读盘重算、未真正取数）不再跳动，只在真正重新取数、底层数据文件被覆盖写后才更新。
+    取运单明细（delivery_realtime）与违规明细（violation_realtime）两路的最近入库时间
+    （max），作为前端「更新时间」来源：页面刷新（仅读表重算、未真正取数）不再跳动，
+    只在真正重新取数、表被覆盖写后才更新。
 
-    取数失败的那一路也会重写文件（fetch_ok=false），mtime 同样变新；若算进来，
-    「更新时间」会跳到现在、像刚取过数一样，误导用户。因此只统计 fetch_ok 不为 false 的文件。
+    取数失败不再写表（保留上一版数据），因此不存在「失败却刷新时间」的误导。
     """
-    candidates = []
-    for fn in ("违规处罚明细-实时.json", "运单明细-实时.json"):
-        p = os.path.join(ROOT, "apps", "api", "runtime", fn)
-        if not os.path.exists(p):
-            continue
-        try:
-            with open(p, "r", encoding="utf-8") as f:
-                head = json.load(f)
-            if isinstance(head, dict) and head.get("fetch_ok") is False:
-                continue
-            mt = os.path.getmtime(p)
-            candidates.append(datetime.datetime.fromtimestamp(mt, BJ).replace(microsecond=0))
-        except Exception:
-            pass
+    st = DS.detail_status(date)
+    if not st:
+        return None
+    candidates = [
+        str(v)
+        for v in (st.get("delivery_fetched_at"), st.get("violation_fetched_at"))
+        if v
+    ]
     if not candidates:
         return None
-    return max(candidates).strftime("%Y-%m-%d %H:%M:%S")
+    return max(candidates)
 
 
 def build_one(team_id, date=None):

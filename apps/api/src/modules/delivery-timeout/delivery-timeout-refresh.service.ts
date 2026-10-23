@@ -8,7 +8,7 @@ import { DeliveryTimeoutOrdersStoreService } from './delivery-timeout-orders-sto
  *
  * 与标准达成共享的只剩**底层取数**：`OrdersFetchService.fetchOrders`（风神运单，一次拉全站）。
  * 落盘却在 2026-10-21 彻底分家 —— 结果写本看板自己的 PG 表
- * `delivery_timeout_orders`（实时运单明细），**不再写**
+ * `delivery_realtime`（实时运单明细），**不再写**
  * `apps/api/runtime/raw/orders_{team}_{date}.json`，也不再依赖考核看板的
  * `apps/api/runtime/运单明细-实时.json`。
  *

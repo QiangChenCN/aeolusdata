@@ -6,7 +6,6 @@ import { TaskHandler, TaskRunContext, TaskStage, TaskStop } from '../task-handle
 import { Pipeline } from '../pipeline';
 import { TaskHandlersService } from '../task-handlers.service';
 import { ViolationFetchService } from '../../../infra/fetch/sources/violation-fetch.service';
-import { UnsatStoreService } from '../../../infra/fetch/storage/unsat-store.service';
 import { DingtalkService } from '../../dingtalk/dingtalk.service';
 import {
   PRODUCTION_GROUP_NAME,
@@ -64,17 +63,17 @@ export class UnsatRunPipeline implements TaskHandler {
   readonly id = 'unsat_run';
   readonly stages: TaskStage[] = [
     { id: 'fetch', name: '拉取不满意单' },
-    { id: 'store', name: '落库去重' },
     { id: 'sheet', name: '填在线表' },
     { id: 'send', name: '渲染并发群' },
   ];
   private readonly dataDir: string;
   private readonly lastUrlFile: string;
+  private readonly csvPath: string;
+  private readonly imgPath: string;
 
   constructor(
     private readonly handlers: TaskHandlersService,
     private readonly violation: ViolationFetchService,
-    private readonly store: UnsatStoreService,
     private readonly dingtalk: DingtalkService,
     private readonly config: ConfigService,
   ) {
@@ -84,6 +83,8 @@ export class UnsatRunPipeline implements TaskHandler {
     );
     this.dataDir = path.join(root, 'apps', 'api', 'runtime', 'jobs', 'unsat', 'out', 'unsat_data');
     this.lastUrlFile = path.join(this.dataDir, 'last_sheet_url.txt');
+    this.csvPath = path.join(this.dataDir, 'violations.csv');
+    this.imgPath = path.join(this.dataDir, 'unsat_detail.png');
   }
 
   /** 在线表地址：--sheet-url > .env > 上次记住 > 内置兜底（并记住本次填写的）。 */
@@ -275,18 +276,13 @@ export class UnsatRunPipeline implements TaskHandler {
       const { startMs, endMs, dateStr } = dayRange(dateArg);
       const { text, fileUrl } = await this.violation.downloadCsv(startMs, endMs);
       fs.mkdirSync(this.dataDir, { recursive: true });
-      fs.writeFileSync(this.store.csvPath, '\uFEFF' + text, 'utf-8');
+      fs.writeFileSync(this.csvPath, '\uFEFF' + text, 'utf-8');
       const rows = this.filterRows(text, (s) => ctx.log(s));
       ctx.log(`日期 ${dateStr} 命中（非超时 & 非不成立）: ${rows.length} 条`);
       if (!rows.length) throw new TaskStop('无符合条件的明细，结束。');
       state.rows = rows;
       state.dateStr = dateStr;
       state.fileUrl = fileUrl;
-    });
-
-    p.stage('store', '落库去重', async () => {
-      const [added, all] = await this.store.upsertOrders(state.rows!, state.dateStr!);
-      ctx.log(`落库：新增 ${added} 条，当日共 ${all.length} 条`);
     });
 
     p.stage('sheet', '填在线表', async () => {
@@ -340,18 +336,13 @@ export class UnsatRunPipeline implements TaskHandler {
         values: matrix,
       });
       ctx.log(`已写入明细 ${matrix.length} 行 → D${emptyRow}:R${endRow}`);
-      // 4) 回填 sheet_row
-      for (let i = 0; i < rows.length; i++) {
-        await this.store.setSheetRow(rows[i]['违规编号'] || '', emptyRow + i);
-      }
-      ctx.log(`已回填 ${rows.length} 条运单的表格行号`);
       state.matrix = matrix;
     });
 
     p.stage('send', '渲染并发群', async () => {
       let img: string | null = null;
       try {
-        img = this.render(state.rows!, state.dateStr!, this.store.imgPath);
+        img = this.render(state.rows!, state.dateStr!, this.imgPath);
         ctx.log(`图片已生成: ${img}`);
       } catch (e) {
         ctx.log(`[warn] 图片渲染失败，降级为文字: ${(e as Error).message}`);

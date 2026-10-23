@@ -62,79 +62,70 @@ from analytics.domains.assessment import violations as RV
 
 @pytest.fixture
 def tmp_data(monkeypatch, tmp_path):
-    """把原始层目录指到临时目录，避免污染 apps/api/runtime/raw 与 apps/api/runtime/assessment。"""
+    """把原始层目录指到临时目录，避免污染 apps/api/runtime/raw。"""
     monkeypatch.setattr(CACHE, "_DATA_DIR", str(tmp_path))
-    monkeypatch.setattr(RV, "ASSESS_RAW_DIR", str(tmp_path))
     return tmp_path
 
 
-def _seed_violation(team, date, rows, ok=True, error=None):
-    """直接落盘一份违规明细文件（形状为「跨语言契约」）。
+def _stub_violation_endpoint(monkeypatch, rows, ok=True, error=None):
+    """桩掉「考核违规明细」内部端点（生产由 Nest 读 PG 表 violation_realtime 提供）。
 
-    生产写入方现为 Nest 的 `AssessmentViolationFetchService`，全天违规合并为一份当天文件
-    `apps/api/runtime/违规处罚明细-实时.json`（覆盖写）；本文件只钉读侧行为。
-    rows 中每条记录需自带「团队ID」字段，读侧按团队ID过滤出本站点行。
+    端点返回**全站**当天的行；rows 中每条记录需自带「团队ID」字段，
+    读侧在此按团队ID过滤出本站点行（与原先读全站单文件同口径）。
     """
-    payload = {
-        "date": date,
-        "fetched_at": "2026-09-21 20:45:15",
-        "fetch_ok": bool(ok),
-        "fetch_error": (None if ok else (str(error or "")[:300] or None)),
-        "rows": rows or [],
-    }
-    with open(RV._own_path(date), "w", encoding="utf-8") as f:
-        json.dump(payload, f, ensure_ascii=False)
+    def fake(date):
+        if not ok:
+            return {"ok": False, "error": error or "模拟失败", "rows": [], "total": 0}
+        return {
+            "ok": True,
+            "date": date,
+            "rows": rows or [],
+            "total": len(rows or []),
+            "fetched_at": "2026-09-21 20:45:15",
+        }
+    monkeypatch.setattr(RV, "_fetch_day_payload", fake)
 
 
-def test_no_data_returns_none(tmp_data):
-    """从未落盘：load_team / load_team_raw 都是 None。"""
+def test_no_data_returns_none(monkeypatch):
+    """端点不可用（PG 未启用 / Nest 不可达）：load_team / load_team_raw 都是 None。"""
+    monkeypatch.setattr(RV, "_fetch_day_payload", lambda date: None)
     assert RV.load_team("917521136", "2026-09-21") is None
     assert RV.load_team_raw("917521136", "2026-09-21") is None
 
 
-def test_fetched_zero_rows_is_empty_list_not_none(tmp_data):
-    """已刷新但当天 0 条：返回空列表，与「不可用」(None) 必须可区分。"""
-    _seed_violation("917521136", "2026-09-21", [])
+def test_fetched_zero_rows_is_empty_list_not_none(tmp_data, monkeypatch):
+    """已入库但当天 0 条：返回空列表，与「不可用」(None) 必须可区分。"""
+    _stub_violation_endpoint(monkeypatch, [])
     got = RV.load_team("917521136", "2026-09-21")
     assert got == [], "0 条应返回 [] 而不是 None"
     assert RV.load_team_raw("917521136", "2026-09-21")["fetch_ok"] is True
 
 
-def test_failed_fetch_hides_stale_rows(tmp_data):
-    """本次拉取失败：不得把盘上遗留的上一次成功数据当成当次有效数据。"""
+def test_endpoint_failure_is_none(tmp_data, monkeypatch):
+    """端点返回 ok=false（PG 未启用 / 读表失败）：必须视为不可用，而不是 0 条。"""
     tid, date = "917521136", "2026-09-21"
-    rows = [{"团队ID": tid, "违规分类": "投诉", "违规状态": "成立"}]
-    _seed_violation(tid, date, rows)
-    assert RV.load_team(tid, date) is not None, "前置：成功落盘后应能读到"
-
-    _seed_violation(tid, date, rows, ok=False,
-                    error="模拟：违规明细接口返回空 result（code=401 未登录）")
-
-    assert RV.load_team(tid, date) is None, "失败后必须视为不可用，不能继续显示旧数据"
-    raw = RV.load_team_raw(tid, date)
-    assert raw["fetch_ok"] is False
-    assert "401" in (raw["fetch_error"] or ""), "失败原因要能读出来供前端/刷新状态显示"
-    assert raw["rows"], "旧 rows 应保留，便于事后回查"
+    _stub_violation_endpoint(monkeypatch, [{"团队ID": tid}], ok=False, error="PG 未启用")
+    assert RV.load_team(tid, date) is None
+    assert RV.load_team_raw(tid, date) is None
 
 
-def test_recovered_fetch_restores_rows(tmp_data):
-    """后续一次成功刷新应能覆盖失败标记，重新可用（不必人工清数据）。"""
+def test_recovered_fetch_restores_rows(tmp_data, monkeypatch):
+    """后续一次成功入库应重新可读（端点恢复到 ok=true 即可，不必人工清数据）。"""
     tid, date = "917521136", "2026-09-21"
-    _seed_violation(tid, date, [{"团队ID": tid}])
-    _seed_violation(tid, date, [{"团队ID": tid}], ok=False, error="模拟失败")
+    _stub_violation_endpoint(monkeypatch, [{"团队ID": tid}], ok=False, error="模拟失败")
     assert RV.load_team(tid, date) is None
 
-    _seed_violation(tid, date, [{"团队ID": tid}])
+    _stub_violation_endpoint(monkeypatch, [{"团队ID": tid}])
     assert RV.load_team(tid, date) is not None
     assert RV.load_team_raw(tid, date)["fetch_ok"] is True
 
 
 # ---------------- 读侧行为 ----------------
 
-def test_load_team_reads_own_namespace_and_ignores_shared_raw(tmp_data):
-    """考核看板违规读侧只认自有单文件 违规处罚明细-实时.json；
+def test_load_team_ignores_shared_raw(tmp_data, monkeypatch):
+    """考核看板违规读侧只认自己的表（violation_realtime，source='assessment'）；
 
-    旧的共享 raw/violation_* 即使存在也读不到 —— 与标准达成 / 服务质量彻底解耦，不串数据。
+    旧的共享 raw/violation_* 即使落盘存在也读不到 —— 与标准达成 / 服务质量彻底解耦，不串数据。
     """
     tid, date = "917521136", "2026-09-21"
     # 旧共享命名空间落一份数据 —— 读侧必须无视
@@ -142,10 +133,11 @@ def test_load_team_reads_own_namespace_and_ignores_shared_raw(tmp_data):
         json.dump({"date": date, "team_id": tid, "fetched_at": "x",
                    "fetch_ok": True, "fetch_error": None,
                    "rows": [{"团队ID": tid}]}, f, ensure_ascii=False)
+    monkeypatch.setattr(RV, "_fetch_day_payload", lambda d: None)
     assert RV.load_team(tid, date) is None, "不得读旧的共享 raw/violation_*"
 
-    # 自有命名空间落同样数据 —— 读侧认
-    _seed_violation(tid, date, [{"团队ID": tid}])
+    # 自有表（端点）有数据 —— 读侧认
+    _stub_violation_endpoint(monkeypatch, [{"团队ID": tid}])
     assert RV.load_team(tid, date) is not None
 
 

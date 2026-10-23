@@ -16,10 +16,13 @@ import { PgService } from '../pg/pg.service';
  * 这样页面上「配送超时刷新」与 Standard 链路彻底解耦，与其他看板零共享面。
  *
  * 语义：一天一份「实时快照」（同 date 整表覆盖），行=一条运单原始行，整体 JSON 存 raw_json。
+ *
+ * 表名 `delivery_realtime`（2026-10-23 由 `delivery_timeout_orders` 更名，统一「运单明细」命名；
+ * 写入方仍是本看板的 DeliveryTimeoutRefreshService）。
  * 表发现 deploy/DEPLOY.md 第 9 节：DATABASE_URL 就绪即自动建表，无需手工 DDL。
  */
 const PG_DDL = `
-CREATE TABLE IF NOT EXISTS delivery_timeout_orders (
+CREATE TABLE IF NOT EXISTS delivery_realtime (
   id          SERIAL PRIMARY KEY,
   stat_date   TEXT NOT NULL,
   team_id     TEXT NOT NULL,
@@ -27,7 +30,7 @@ CREATE TABLE IF NOT EXISTS delivery_timeout_orders (
   raw_json    TEXT NOT NULL,
   created_at  TEXT,
   UNIQUE(stat_date, order_no));
-CREATE INDEX IF NOT EXISTS idx_dto_date_team ON delivery_timeout_orders(stat_date, team_id);
+CREATE INDEX IF NOT EXISTS idx_delivery_realtime_date_team ON delivery_realtime(stat_date, team_id);
 `;
 
 /** 运单号取值键（风神导出字段）：用于行去重键 `UNIQUE(stat_date, order_no)`。 */
@@ -84,7 +87,7 @@ export class DeliveryTimeoutOrdersStoreService implements OnModuleInit {
     const now = this.nowStr();
     const cols = 5;
     return this.pg.tx(async (c) => {
-      await c.query('DELETE FROM delivery_timeout_orders WHERE stat_date = $1', [date]);
+      await c.query('DELETE FROM delivery_realtime WHERE stat_date = $1', [date]);
       let n = 0;
       const chunk: Record<string, unknown>[] = [];
       const flush = async () => {
@@ -103,7 +106,7 @@ export class DeliveryTimeoutOrdersStoreService implements OnModuleInit {
           );
         });
         await c.query(
-          'INSERT INTO delivery_timeout_orders (stat_date, team_id, order_no, raw_json, created_at) ' +
+          'INSERT INTO delivery_realtime (stat_date, team_id, order_no, raw_json, created_at) ' +
             `VALUES ${ph.join(',')} ON CONFLICT (stat_date, order_no) DO NOTHING`,
           vals,
         );
@@ -122,7 +125,7 @@ export class DeliveryTimeoutOrdersStoreService implements OnModuleInit {
   /** 取某站点某天的运单明细原始行；无数据返回 []。 */
   async getTeam(date: string, team: string): Promise<Record<string, unknown>[]> {
     const rows = await this.pg.query<{ raw_json: string }>(
-      'SELECT raw_json FROM delivery_timeout_orders WHERE stat_date = $1 AND team_id = $2 ORDER BY id',
+      'SELECT raw_json FROM delivery_realtime WHERE stat_date = $1 AND team_id = $2 ORDER BY id',
       [date, String(team)],
     );
     return rows.map((r) => JSON.parse(r.raw_json));
@@ -131,7 +134,7 @@ export class DeliveryTimeoutOrdersStoreService implements OnModuleInit {
   /** 该天的行数（全站）。用于诊断「某天拉到多少条」。 */
   async countDay(date: string): Promise<number> {
     const r = await this.pg.queryOne<{ c: string }>(
-      'SELECT COUNT(*)::bigint AS c FROM delivery_timeout_orders WHERE stat_date = $1',
+      'SELECT COUNT(*)::bigint AS c FROM delivery_realtime WHERE stat_date = $1',
       [date],
     );
     return Number(r?.c ?? 0);
@@ -141,11 +144,11 @@ export class DeliveryTimeoutOrdersStoreService implements OnModuleInit {
   async lastFetchedAt(date: string, team?: string): Promise<string> {
     const r = team
       ? await this.pg.queryOne<{ t?: string }>(
-          'SELECT MAX(created_at) AS t FROM delivery_timeout_orders WHERE stat_date = $1 AND team_id = $2',
+          'SELECT MAX(created_at) AS t FROM delivery_realtime WHERE stat_date = $1 AND team_id = $2',
           [date, String(team)],
         )
       : await this.pg.queryOne<{ t?: string }>(
-          'SELECT MAX(created_at) AS t FROM delivery_timeout_orders WHERE stat_date = $1',
+          'SELECT MAX(created_at) AS t FROM delivery_realtime WHERE stat_date = $1',
           [date],
         );
     return r?.t || '';

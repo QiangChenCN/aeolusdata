@@ -4,18 +4,20 @@ import { PgService } from '../../../modules/pg/pg.service';
 /**
  * 实时看板（违规处罚明细）持久层 —— PostgreSQL only，不再保留 SQLite。
  *
+ * 表名 `violation_realtime`（2026-10-23 由 `realtime_records` 更名，与历史表 `violation` 配对）。
+ *
  * 每行原始 JSON 整体落库（raw_json），按 (stat_date, violation_no) 去重覆盖。
  * 注意：PG 为异步驱动，本服务所有方法均为 async（调用方需 await）。
  */
 const PG_DDL = `
-CREATE TABLE IF NOT EXISTS realtime_records (
+CREATE TABLE IF NOT EXISTS violation_realtime (
   id            SERIAL PRIMARY KEY,
   stat_date     TEXT NOT NULL,
   violation_no  TEXT NOT NULL,
   raw_json      TEXT NOT NULL,
   created_at    TEXT,
   UNIQUE(stat_date, violation_no));
-CREATE INDEX IF NOT EXISTS idx_rt_date ON realtime_records(stat_date);
+CREATE INDEX IF NOT EXISTS idx_violation_realtime_date ON violation_realtime(stat_date);
 `;
 
 @Injectable()
@@ -45,7 +47,7 @@ export class RealtimeStoreService {
       const no = String(r['violationOrderId'] ?? '');
       if (!no) continue;
       await this.pg.query(
-        'INSERT INTO realtime_records (stat_date, violation_no, raw_json, created_at) ' +
+        'INSERT INTO violation_realtime (stat_date, violation_no, raw_json, created_at) ' +
           'VALUES ($1,$2,$3,$4) ' +
           'ON CONFLICT(stat_date, violation_no) DO UPDATE SET raw_json=excluded.raw_json, created_at=excluded.created_at',
         [dateStr, no, JSON.stringify(r), now],
@@ -73,7 +75,7 @@ export class RealtimeStoreService {
   /** 该区间最近一次落盘时间（取数时间），无数据返回空串。 */
   async lastFetchedAt(start: string, end: string): Promise<string> {
     const rows = await this.pg.query<{ t?: string }>(
-      'SELECT MAX(created_at) AS t FROM realtime_records WHERE stat_date >= $1 AND stat_date <= $2',
+      'SELECT MAX(created_at) AS t FROM violation_realtime WHERE stat_date >= $1 AND stat_date <= $2',
       [start, end],
     );
     return rows[0]?.t || '';
@@ -82,7 +84,7 @@ export class RealtimeStoreService {
   /** 取某日期区间 [start, end]（YYYY-MM-DD，含端点）全部记录原始行。 */
   async getRange(start: string, end: string): Promise<Record<string, any>[]> {
     const rows = await this.pg.query<{ raw_json: string }>(
-      'SELECT raw_json FROM realtime_records WHERE stat_date >= $1 AND stat_date <= $2 ORDER BY stat_date, id',
+      'SELECT raw_json FROM violation_realtime WHERE stat_date >= $1 AND stat_date <= $2 ORDER BY stat_date, id',
       [start, end],
     );
     return rows.map((r) => JSON.parse(r.raw_json));

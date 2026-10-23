@@ -105,6 +105,8 @@ const GET_PREFIX_PERMS: [RegExp, string][] = [
   // 配送超时看板的「实时运单明细」读端点（PG → Python 计算的内部接缝）：
   // 仅内部服务（机器令牌）可调，登录用户不能直接枚举全站运单明细。
   [/^\/api\/delivery-timeout-internal\/.*$/, 'machine'],
+  // 考核看板的「明细读端点」（PG → Python 计算的内部接缝）：同样仅内部服务可调。
+  [/^\/api\/assessment-internal\/.*$/, 'machine'],
   [/^\/api\/std\/.*$/, 'view'],
   [/^\/api\/ov\/.*$/, 'view'],
   [/^\/api\/ap\/.*$/, 'view'],

@@ -35,7 +35,7 @@ if PY_HOME and PY_HOME not in _sys.path:
 """考核看板 —— 后端计算与配置（独立看板，取数 / 计算代码自管，不与其他看板共用）。
 
 计算层全部集中到本包；取数层在 Nest（`backend/src/modules/assessment/`，违规处罚明细
-自有取数，全站合并落盘到 apps/api/runtime/违规处罚明细-实时.json（覆盖写））。基础库 cache / order_rules / teams_config 保留共用。
+自有取数，入库 PG 表 delivery_realtime / violation_realtime / violation）。基础库 cache / order_rules / teams_config 保留共用。
 
 子模块（即本包的**公开面**，见下面 `__all__`）：
   · board.py        站点概览指标计算（推配送单量 / 配送完成单 / T8超时单 / T8准时率 + 违规派生）

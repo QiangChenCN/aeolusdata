@@ -6,8 +6,10 @@ import { AssessmentCooldownService } from './assessment-cooldown.service';
 import { AssessmentEventsService } from './assessment-events.service';
 import { AssessmentAutoRefreshService } from './assessment-auto-refresh.service';
 import { AssessmentHistoryStoreService } from './assessment-history-store.service';
+import { AssessmentDetailStoreService } from './assessment-detail-store.service';
 import { VisitFetchService } from './visit-fetch.service';
 import { AssessmentController } from './assessment.controller';
+import { AssessmentInternalController } from './assessment-internal.controller';
 
 /**
  * 考核看板模块（独立看板：取数 / 计算代码自管，不与其他看板共用）。
@@ -21,7 +23,7 @@ import { AssessmentController } from './assessment.controller';
  */
 @Module({
   imports: [FetchModule],
-  controllers: [AssessmentController],
+  controllers: [AssessmentInternalController, AssessmentController],
   providers: [
     AssessmentViolationFetchService,
     AssessmentDeliveryFetchService,
@@ -29,6 +31,7 @@ import { AssessmentController } from './assessment.controller';
     AssessmentEventsService,
     AssessmentAutoRefreshService,
     AssessmentHistoryStoreService,
+    AssessmentDetailStoreService,
     VisitFetchService,
   ],
   exports: [
@@ -38,6 +41,7 @@ import { AssessmentController } from './assessment.controller';
     AssessmentEventsService,
     AssessmentAutoRefreshService,
     AssessmentHistoryStoreService,
+    AssessmentDetailStoreService,
     VisitFetchService,
   ],
 })

@@ -28,14 +28,9 @@ const pool = new pg.Pool({ connectionString: DATABASE_URL });
 // col 顺序对应 SELECT 的列；占位符用 $1..
 const JOBS = [
   {
-    file: 'assessment_history.db', table: 'delivery_history', pg: 'delivery_history',
+    file: 'assessment_history.db', table: 'delivery_history', pg: 'delivery',
     cols: ['order_id', 'team_id', 'date', 'payload'],
     conflict: 'ON CONFLICT(order_id, date) DO UPDATE SET team_id=excluded.team_id, payload=excluded.payload',
-  },
-  {
-    file: 'assessment_history.db', table: 'violation_history', pg: 'violation_history',
-    cols: ['vid', 'team_id', 'date', 'payload'],
-    conflict: 'ON CONFLICT(vid, date) DO UPDATE SET team_id=excluded.team_id, payload=excluded.payload',
   },
   {
     file: 'assessment_history.db', table: 'visit_history', pg: 'visit_history',
@@ -43,12 +38,12 @@ const JOBS = [
     conflict: 'ON CONFLICT(main_task_id, team_id, date) DO UPDATE SET visited=excluded.visited, total=excluded.total, payload=excluded.payload',
   },
   {
-    file: 'violation.db', table: 'violation_records', pg: 'violation_records',
+    file: 'violation.db', table: 'violation_records', pg: 'violation',
     cols: ['stat_date', 'violation_no', 'raw_json', 'created_at'],
     conflict: 'ON CONFLICT(stat_date, violation_no) DO NOTHING',
   },
   {
-    file: 'realtime.db', table: 'realtime_records', pg: 'realtime_records',
+    file: 'realtime.db', table: 'realtime_records', pg: 'violation_realtime',
     cols: ['stat_date', 'violation_no', 'raw_json', 'created_at'],
     conflict: 'ON CONFLICT(stat_date, violation_no) DO NOTHING',
   },
@@ -83,29 +78,6 @@ const JOBS = [
   {
     file: '../cron.db', table: 'cron_kv', pg: 'cron_kv',
     cols: ['key', 'value'], conflict: 'ON CONFLICT(key) DO NOTHING',
-  },
-  // ---- 不满意单状态层（unsat.db，位于 data/jobs/unsat/out/unsat_data/）----
-  {
-    file: '../jobs/unsat/out/unsat_data/unsat.db', table: 'orders', pg: 'unsat_orders',
-    cols: ['id', 'stat_date', 'violation_no', 'tracking_no', 'rider_name', 'team_name',
-      'station', 'sheet_row', 'status', 'created_at', 'updated_at'],
-    conflict: 'ON CONFLICT(stat_date, violation_no) DO UPDATE SET ' +
-      'tracking_no=excluded.tracking_no, rider_name=excluded.rider_name, team_name=excluded.team_name, ' +
-      'station=excluded.station, sheet_row=excluded.sheet_row, status=excluded.status, updated_at=excluded.updated_at',
-    setvalSeq: true,
-  },
-  {
-    // feedbacks 无业务唯一键：仅在目标表为空时灌入，保证幂等（重跑不重复）。
-    file: '../jobs/unsat/out/unsat_data/unsat.db', table: 'feedbacks', pg: 'unsat_feedbacks',
-    cols: ['id', 'order_id', 'sender', 'reason', 'action', 'media_json', 'raw_text',
-      'judged', 'pass_flag', 'missing_json', 'llm_reason', 'created_at'],
-    conflict: '', skipIfNonEmpty: true, setvalSeq: true,
-  },
-  {
-    file: '../jobs/unsat/out/unsat_data/unsat.db', table: 'reminders', pg: 'unsat_reminders',
-    cols: ['id', 'stat_date', 'station', 'remind_hour', 'created_at'],
-    conflict: 'ON CONFLICT(stat_date, station, remind_hour) DO NOTHING',
-    setvalSeq: true,
   },
 ];
 

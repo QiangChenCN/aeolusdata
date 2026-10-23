@@ -1,90 +1,76 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""考核看板运单原始数据读取：读自身落盘的 apps/api/runtime/运单明细-实时.json。
+"""考核看板运单原始数据读取：读 PG 表 `delivery_realtime`（经 Nest 内部端点）。
 
-替代标准达成的 CACHE.load_raw("orders", ...)。考核看板运单由 Nest 端
-AssessmentDeliveryFetchService 落盘（全站单文件、覆盖写、实时=截至当前当日），
-本模块按 teamId 过滤后供 board / timeout 计算复用，零 HTTP 请求。
+2026-10-23 改源：不再读落盘文件 `apps/api/runtime/运单明细-实时.json` ——
+考核看板的运单由 Nest `AssessmentDeliveryFetchService` 直接入库 `delivery_realtime`
+（全站当天快照、覆盖写），本模块经内部端点
+`GET /api/assessment-internal/orders`（机器令牌）读取，零文件、零 mtime 隐式状态。
+
+失败语义**不变**：取不到（PG 未启用 / Nest 不可达 / 该站当天没入库）返回 None，
+由调用方判 need_refresh，绝不当「0 单」静默算成 full-zero 指标；
+「已入库但某站 0 单」返回空 list（继续计算，指标为 0）。
 """
-import os
-import json
+from common import nest_client
 
-from analytics.core import order_rules as OR
-
-DELIVERY_FILE = "运单明细-实时.json"
-TEAM_KEYS = ("teamId", "站点id", "teamID")
+ORDERS_PATH = "/api/assessment-internal/orders"
+STATUS_PATH = "/api/assessment-internal/status"
 
 
-def _project_root():
-    d = os.path.dirname(os.path.abspath(__file__))
-    # 仓库根：含 .git 或根 package.json（目录名无关）
-    while d and d != os.path.dirname(d) and not (
-        os.path.exists(os.path.join(d, ".git"))
-        or os.path.exists(os.path.join(d, "package.json"))
-    ):
-        d = os.path.dirname(d)
-    return d
-
-
-def _file_path():
-    return os.path.join(_project_root(), "apps", "api", "runtime", DELIVERY_FILE)
-
-
-def _team_of(o):
-    v = OR.order_val(o, TEAM_KEYS)
-    return str(v).strip() if v not in (None, "") else None
-
-
-def load_delivery_orders(team_id):
-    """读考核看板自有运单落盘，按 team 过滤返回 list；不可用返回 None（调用方判 no_data）。
-
-    「不可用」包含三种情况，都与违规明细读侧（violations.load_team）保持一致：
-      · 文件缺失 / 损坏；
-      · `fetch_ok` 为 False —— 本次取数失败（Nest 落盘时整份写 fetch_ok=false）。
-        历史上此处不检查 fetch_ok，失败时文件被写成 `rows: []`，读侧返回空 list，
-        订单类指标（推配送/完成/T8超时/高比单…）全部按 0 计算且 data_status 仍是 ok，
-        与另一路刚拉成功的违规指标混算，表现为「站点消失 / 订单指标全 0」。
-      · rows 不是 list（结构异常）。
-    文件存在且 fetch_ok 为真、某站点 0 单时返回空 list（继续计算，指标为 0）。
-    """
-    team_id = str(team_id)
-    p = _file_path()
-    if not os.path.exists(p):
-        return None
+def _get(path, params, timeout=60):
+    """调用 Nest 内部端点；任何异常都转成 None（由上层按 need_refresh 处理）。"""
     try:
-        with open(p, "r", encoding="utf-8") as f:
-            payload = json.load(f)
+        j = nest_client.get_json(path, params, timeout=timeout)
     except Exception:
         return None
-    if not isinstance(payload, dict):
+    return j if isinstance(j, dict) else None
+
+
+def load_delivery_orders(team_id, date=None):
+    """读考核看板自有运单明细（表 `delivery_realtime`，端点已按 team + date 过滤）。
+
+    返回 list（可能为空 list：该站当天确实 0 单，继续参加计算）；
+    不可用返回 None —— 调用方据此判 no_data / need_refresh。
+    """
+    params = {"team": str(team_id)}
+    if date:
+        params["date"] = str(date)
+    j = _get(ORDERS_PATH, params)
+    if not j or j.get("ok") is not True:
         return None
-    if payload.get("fetch_ok") is False:
-        return None
-    rows = payload.get("rows")
+    rows = j.get("rows")
     if not isinstance(rows, list):
         return None
-    return [o for o in rows if _team_of(o) == team_id]
+    return rows
 
 
-def fetch_status():
-    """运单明细落盘文件的取数状态；文件缺失 / 损坏返回 None。
+def fetch_status(date=None):
+    """运单明细入库状态 `{fetch_ok, fetch_error, fetched_at, date, total}`；不可用返回 None。
 
-    返回 {fetch_ok, fetch_error, fetched_at, date}，供看板区分「从未拉取」与
-    「本次拉取失败」并给出对应提示（后者必须明说，不能静默按无数据处理）。
+    现在失败时不再写「fetch_ok=false」标记（保留上一版数据），故这里只要能读到
+    状态就一定是 ok —— 真正的「本次失败」由刷新接口返回给前端提示。
     """
-    p = _file_path()
-    if not os.path.exists(p):
-        return None
-    try:
-        with open(p, "r", encoding="utf-8") as f:
-            payload = json.load(f)
-    except Exception:
-        return None
-    if not isinstance(payload, dict):
+    params = {"date": str(date)} if date else None
+    j = _get(STATUS_PATH, params)
+    if not j or j.get("ok") is not True:
         return None
     return {
-        "fetch_ok": payload.get("fetch_ok"),
-        "fetch_error": payload.get("fetch_error"),
-        "fetched_at": payload.get("fetched_at"),
-        "date": payload.get("date"),
+        "fetch_ok": True,
+        "fetch_error": None,
+        "fetched_at": j.get("delivery_fetched_at") or None,
+        "date": j.get("date"),
+        "total": j.get("delivery_total"),
     }
+
+
+def detail_status(date=None):
+    """两路明细（运单 + 违规）的完整入库状态；不可用返回 None。
+
+    供看板「更新时间」使用：只在真正重新取数、表被覆盖写后才变化，
+    页面刷新（仅重算）不再跳动。
+    """
+    params = {"date": str(date)} if date else None
+    j = _get(STATUS_PATH, params)
+    if not j or j.get("ok") is not True:
+        return None
+    return j

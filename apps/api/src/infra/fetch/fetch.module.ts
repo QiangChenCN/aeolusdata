@@ -27,7 +27,6 @@ import { AttendanceFetchService } from './sources/attendance-fetch.service';
 import { QuarkCredsService } from './creds/quark-creds.service';
 import { EquipmentFetchService } from './sources/equipment-fetch.service';
 import { ContactImFetchService } from './sources/contact-im-fetch.service';
-import { UnsatStoreService } from './storage/unsat-store.service';
 import { TeamsFetchService } from './sources/teams-fetch.service';
 import { CookieStatusService } from './runners/cookie-status.service';
 import { ScheduleFetchService } from './sources/schedule-fetch.service';
@@ -79,7 +78,6 @@ import { RawCacheService } from './storage/raw-cache.service';
     QuarkCredsService,
     EquipmentFetchService,
     ContactImFetchService,
-    UnsatStoreService,
     TeamsFetchService,
     CookieStatusService,
     ScheduleFetchService,
@@ -111,7 +109,6 @@ import { RawCacheService } from './storage/raw-cache.service';
     QuarkCredsService,
     EquipmentFetchService,
     ContactImFetchService,
-    UnsatStoreService,
     TeamsFetchService,
     CookieStatusService,
     ScheduleFetchService,
