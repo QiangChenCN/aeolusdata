@@ -7,7 +7,7 @@ import { StreamingService } from './streaming.service';
 export class StreamingController {
   constructor(private readonly streaming: StreamingService) {}
 
-  /** SSE 端点：前端 EventSource('/api/events?token=...') 订阅全量事件流。 */
+  /** SSE 端点：前端 EventSource('/api/events?token=...') 订阅全量事件流（含 15s 心跳）。 */
   @Sse('events')
   events(): Observable<MessageEvent> {
     return this.streaming.subscribe();

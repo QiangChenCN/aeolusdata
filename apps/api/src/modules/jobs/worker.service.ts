@@ -2,6 +2,7 @@ import { Injectable, OnModuleInit, OnModuleDestroy, Logger } from '@nestjs/commo
 import * as os from 'os';
 import { JobQueueService } from './job-queue.service';
 import { TaskExecutorService } from './task-executor.service';
+import { WorkerHeartbeatService, WORKER_BEAT_MS } from './worker-heartbeat.service';
 
 /**
  * 任务执行 worker（独立进程）。
@@ -19,17 +20,22 @@ export class WorkerService implements OnModuleInit, OnModuleDestroy {
   private stopFlag = false;
   private tickTimer: NodeJS.Timeout | undefined;
   private recoverTimer: NodeJS.Timeout | undefined;
+  private beatTimer: NodeJS.Timeout | undefined;
   private busy = false;
 
   constructor(
     private readonly jobQueue: JobQueueService,
     private readonly executor: TaskExecutorService,
+    private readonly heartbeat: WorkerHeartbeatService,
   ) {}
 
   onModuleInit(): void {
     this.logger.log(`worker 启动（id=${this.workerId}），开始抢占任务`);
     this.scheduleTick();
     this.recoverTimer = setInterval(() => void this.recover(), this.recoverMs);
+    // 进程心跳：不抢任务也要报活，否则「worker 是否在线」无从判断（空闲 = 不可见）。
+    this.beatTimer = setInterval(() => void this.beat(), WORKER_BEAT_MS);
+    void this.beat();
     void this.recover();
   }
 
@@ -37,7 +43,17 @@ export class WorkerService implements OnModuleInit, OnModuleDestroy {
     this.stopFlag = true;
     if (this.tickTimer) clearTimeout(this.tickTimer);
     if (this.recoverTimer) clearInterval(this.recoverTimer);
+    if (this.beatTimer) clearInterval(this.beatTimer);
+    void this.heartbeat.release(this.workerId); // 抹掉自己的在线记录
     this.logger.log('worker 正在停止（不再抢占新任务，进行中的任务将由其自行结束）');
+  }
+
+  private async beat(): Promise<void> {
+    try {
+      await this.heartbeat.beat(this.workerId);
+    } catch (e) {
+      this.logger.error(`心跳写入失败：${(e as Error).message}`);
+    }
   }
 
   private scheduleTick(): void {

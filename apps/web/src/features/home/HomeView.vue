@@ -56,7 +56,7 @@
       <el-card class="panel" shadow="never">
         <template #header><span class="panel-h">服务状态</span></template>
         <div class="svc">
-          <div class="svc-row"><span>后端连接</span><StatusCapsule :dot="connDot" :text="connText" /></div>
+          <div class="svc-row"><span>后端连接</span><StatusCapsule :dot="connDot" :text="connText" :title="connTitle" /></div>
           <div class="svc-row"><span>风神 Cookie</span><StatusCapsule :dot="cookieDot" :text="cookieText" /></div>
           <div class="svc-row"><span>Quark DA</span><StatusCapsule :dot="quarkDot" :text="quarkText" /></div>
         </div>
@@ -92,8 +92,9 @@ function statusTag(s) {
     : s === 'running' ? 'warning' : s === 'stopped' ? 'info' : s === 'queued' ? 'warning' : 'info';
 }
 
-const connDot = computed(() => (app.connected === true ? 'ok' : app.connected === false ? 'err' : 'muted'));
-const connText = computed(() => (app.connected === true ? '已连接' : app.connected === false ? '已断开' : '连接中'));
+const connDot = computed(() => app.connDot);
+const connText = computed(() => app.connText);
+const connTitle = computed(() => app.connTitle);
 const cookie = computed(() => app.cookie);
 const cookieDot = computed(() => {
   const c = cookie.value; if (!c) return 'muted';

@@ -42,6 +42,9 @@ const EXEMPT_MACHINE = new Set([
   '/api/auth/dingtalk/bind',
   '/api/auth/dingtalk/config',
   '/health',
+  // 前端「服务」胶囊的探测端点：必须无凭证可调（未登录 / 登录页也要能判断后端是否活着），
+  // 且它只返回时间戳与 uptime，不含任何业务数据。
+  '/api/health',
 ]);
 
 @Injectable()

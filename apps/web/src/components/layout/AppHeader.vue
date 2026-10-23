@@ -26,10 +26,11 @@ defineEmits(['toggle-nav']);
 
 const app = useAppStore();
 
-const connDot = computed(() => (app.connected === true ? 'ok' : app.connected === false ? 'err' : 'muted'));
-const connText = computed(() => (app.connected === true ? '已连接' : app.connected === false ? '已断开' : '连接中'));
-const connTitle = computed(() =>
-  '本地工作台服务（Nest 后端）。' + (app.connected === false ? '已与事件流断开，正在自动重连。' : ''));
+// 配色（见 store getters）：后端 + Python 全绿=绿点，都挂=红点，任一挂=黄点（部分可用）；
+// tooltip 逐项列出后端 / Python / Worker，worker 不参与配色。
+const connDot = computed(() => app.connDot);
+const connText = computed(() => app.connText);
+const connTitle = computed(() => app.connTitle);
 
 const cookie = computed(() => app.cookie);
 const cookieDot = computed(() => {
