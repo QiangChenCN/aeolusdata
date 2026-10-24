@@ -1,52 +1,111 @@
 <template>
   <div class="tc">
-    <!-- 工具条 -->
+    <!-- 顶部工具条：分类胶囊 + 搜索 + 排序 + 视图切换 -->
     <div class="tc-bar">
-      <el-input v-model="q" class="tc-search" placeholder="搜索任务名…" clearable>
-        <template #prefix><el-icon><Search /></el-icon></template>
-      </el-input>
-      <el-select v-model="sortBy" class="tc-sel" style="width: 140px">
-        <el-option label="排序：最近运行" value="last" />
-        <el-option label="排序：名称" value="name" />
-      </el-select>
-      <span class="sp" />
+      <div class="tc-cats">
+        <el-check-tag
+          v-for="g in groupTabs"
+          :key="g.id"
+          class="cat"
+          :checked="activeGroup === g.id"
+          @change="activeGroup = g.id"
+        >
+          {{ g.name }}<span class="cat-n">{{ g.count }}</span>
+        </el-check-tag>
+      </div>
+      <div class="tc-tools">
+        <el-input v-model="q" class="tc-search" placeholder="搜索任务名称或描述…" clearable>
+          <template #prefix><el-icon><Search /></el-icon></template>
+        </el-input>
+        <el-select v-model="sortBy" class="tc-sel">
+          <el-option label="排序：最近运行" value="recent" />
+          <el-option label="排序：名称" value="name" />
+          <el-option label="排序：状态优先" value="status" />
+        </el-select>
+        <el-radio-group v-model="viewMode" size="small" class="tc-view">
+          <el-radio-button value="grid"><el-icon><Grid /></el-icon></el-radio-button>
+          <el-radio-button value="list"><el-icon><List /></el-icon></el-radio-button>
+        </el-radio-group>
+      </div>
     </div>
 
-    <!-- 主体：撑满剩余高度 -->
-    <div class="tc-body">
-      <!-- 状态：加载 / 空 -->
-      <div v-if="!tasks.loaded" class="tc-state">
-        <el-icon class="tc-state-ic"><Loading /></el-icon>
-        <span>加载中…</span>
-      </div>
-      <div v-else-if="!filtered.length" class="tc-state">
-        <el-icon class="tc-state-ic"><Box /></el-icon>
-        <span>没有匹配的任务</span>
-      </div>
-
-      <!-- 卡片视图 -->
-      <div v-else class="tc-grid">
-        <div v-for="t in filtered" :key="t.id" class="tc-card">
-          <div class="tc-card-title">
-            <span class="t-name">{{ t.name }}</span>
-            <span v-if="isRunning(t)" class="t-running"><el-icon class="t-spin"><Loading /></el-icon>运行中</span>
+    <!-- 卡片网格（全宽自适应列数） -->
+    <div v-if="filtered.length" class="tc-grid" :class="{ 'is-list': viewMode === 'list' }">
+      <el-card
+        v-for="t in filtered"
+        :key="t.id"
+        class="tc-card"
+        shadow="hover"
+      >
+        <div class="card-main">
+          <div class="tile" :style="icStyle(t)">
+            <el-icon :size="20"><component :is="icName(t)" /></el-icon>
           </div>
-          <div v-if="t.desc" class="t-desc">{{ t.desc }}</div>
-          <div class="t-acts">
-            <div class="tc-card-meta">
-              <el-icon><Clock /></el-icon>
-              <span v-if="lastTextOf(t)">{{ lastTextOf(t) }}</span>
-              <el-tag size="small" :type="statusTagType(lastStatus(t))">{{ lastStatusLabel(t) }}</el-tag>
+          <div class="card-text">
+            <div class="title-row">
+              <span class="t-title" :title="t.name">{{ t.name }}</span>
+              <el-tag size="small" :type="state(t).type" effect="light" class="t-chip">
+                <span v-if="state(t).dot" class="dot" />{{ state(t).txt }}
+              </el-tag>
             </div>
-            <el-button type="primary" size="large" class="t-run" :loading="isRunning(t)" @click="onRun(t)"><el-icon><VideoPlay /></el-icon>运行</el-button>
-            <div class="t-acts-sub">
-              <el-button @click="openConfig(t.id)"><el-icon><Setting /></el-icon>配置</el-button>
-              <el-button @click="onArtifacts(t)"><el-icon><Files /></el-icon>查看产物</el-button>
+            <div class="desc">{{ t.desc || '—' }}</div>
+            <div class="meta">
+              <span class="meta-item"><el-icon><Collection /></el-icon>{{ groupName(t) }}</span>
+              <span class="meta-item"><el-icon><Clock /></el-icon>{{ lastTextOf(t) || '尚无运行记录' }}</span>
             </div>
           </div>
         </div>
-      </div>
+
+        <div class="card-actions">
+          <el-button
+            :type="runBtnPrimary(t) ? 'primary' : 'default'"
+            :plain="!runBtnPrimary(t)"
+            class="run-btn"
+            :loading="isRunning(t)"
+            @click="onRun(t)"
+          >
+            <el-icon v-if="!isRunning(t)"><VideoPlay /></el-icon>运行
+          </el-button>
+          <div class="foot-links">
+            <el-button text @click="openConfig(t.id)"><el-icon><Setting /></el-icon>配置</el-button>
+            <el-button text @click="onArtifacts(t)"><el-icon><Files /></el-icon>产物</el-button>
+          </div>
+        </div>
+      </el-card>
     </div>
+
+    <el-empty v-else description="没有匹配的任务" class="tc-empty" />
+
+    <!-- 最近运行 -->
+    <section class="panel">
+      <div class="panel-head">
+        <span class="panel-title">最近运行</span>
+        <span class="panel-count">{{ recentRuns.length }}</span>
+        <el-button text class="panel-more" @click="$router.push('/history')">全部记录<el-icon><ArrowRight /></el-icon></el-button>
+      </div>
+      <el-table :data="recentRuns" class="run-table" empty-text="暂无运行记录">
+        <el-table-column label="任务" prop="name" min-width="160" />
+        <el-table-column label="触发">
+          <template #default="{ row }">{{ row.trigger }}</template>
+        </el-table-column>
+        <el-table-column label="开始时间" prop="start" />
+        <el-table-column label="耗时">
+          <template #default="{ row }">{{ row.duration != null ? row.duration + 's' : '—' }}</template>
+        </el-table-column>
+        <el-table-column label="结果">
+          <template #default="{ row }">
+            <el-tag :type="row.etype" size="small" effect="light">
+              <span v-if="row.etype === 'success'" class="dot" />{{ row.result }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="操作">
+          <template #default="{ row }">
+            <el-button text size="small" @click="onOpenRun(row)">查看</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+    </section>
 
     <TaskConfigDialog ref="cfgRef" />
   </div>
@@ -54,51 +113,113 @@
 
 <script setup>
 import { ref, computed } from 'vue';
+import { ArrowRight } from '@element-plus/icons-vue';
 import TaskConfigDialog from '../../components/tasks/TaskConfigDialog.vue';
 import { useTasksStore } from '../../stores/tasks.js';
 import { useRunsStore } from '../../stores/runs.js';
-
 import { useArtifactStore } from '../../stores/artifact.js';
-import { STATUS_TXT } from '../../utils/tokens.js';
+import { STATUS_TXT, GROUP_ICONS } from '../../utils/tokens.js';
 
 const tasks = useTasksStore();
 const runs = useRunsStore();
-
 const artifact = useArtifactStore();
 
 const q = ref('');
-const sortBy = ref('last');
+const sortBy = ref('recent');
+const activeGroup = ref('all');
+const viewMode = ref('grid');
 const cfgRef = ref(null);
 
-// 卡片所需的行级辅助
+// 分类胶囊：全部 + 各业务分组（带任务数）
+const groupTabs = computed(() => [
+  { id: 'all', name: '全部', count: tasks.countInGroup('all') },
+  ...tasks.groups.map((g) => ({ id: g.id, name: g.name, count: tasks.countInGroup(g.id) })),
+]);
+
 function isRunning(t) { return runs.runningTaskId === t.id; }
+function lastRecord(t) { return (runs.history || []).find((x) => x.task_id === t.id); }
 function lastTextOf(t) {
-  const h = runs.history.find((x) => x.task_id === t.id);
+  const h = lastRecord(t);
   if (!h) return '';
-  return (h.start || '') + ' · ' + (h.duration || 0) + 's';
+  return (h.start || '') + (h.duration ? ' · ' + h.duration + 's' : '');
 }
 function lastStatus(t) {
-  const h = runs.history.find((x) => x.task_id === t.id);
+  const h = lastRecord(t);
   return h ? (h.error_kind || h.status || '') : 'none';
 }
-const STATUS_TAG_TYPE = { success: 'success', failed: 'danger', running: 'warning', stopped: 'info', queued: 'warning', none: 'info' };
-function statusTagType(s) { return STATUS_TAG_TYPE[s] || 'info'; }
-function lastStatusLabel(t) {
+// 卡片右上角状态
+function state(t) {
+  if (isRunning(t)) return { txt: '执行中', type: 'warning', dot: true };
   const s = lastStatus(t);
-  return STATUS_TXT[s] || (s === 'none' ? '未运行' : s);
+  if (s === 'success') return { txt: '已启用', type: 'success', dot: true };
+  if (s === 'failed') return { txt: '上次失败', type: 'danger' };
+  if (s === 'stopped') return { txt: '已暂停', type: 'info' };
+  if (s === 'none') return { txt: '未运行', type: 'info' };
+  return { txt: STATUS_TXT[s] || s, type: 'info' };
+}
+// 运行按钮：已启用 / 执行中 → 实心 primary；其余 → 浅色 plain
+function runBtnPrimary(t) { return isRunning(t) || state(t).type === 'success'; }
+
+function groupOf(t) { return tasks.groupById(t.group) || {}; }
+function groupName(t) { return groupOf(t).name || t.group || ''; }
+function icName(t) { return GROUP_ICONS[t.group] || 'Grid'; }
+function icStyle(t) {
+  const c = groupOf(t).color || '#409eff';
+  return { color: c, background: hexA(c, 0.1) };
+}
+function hexA(hex, a) {
+  let h = String(hex).replace('#', '');
+  if (h.length === 3) h = h.split('').map((x) => x + x).join('');
+  const r = parseInt(h.slice(0, 2), 16);
+  const g = parseInt(h.slice(2, 4), 16);
+  const b = parseInt(h.slice(4, 6), 16);
+  return `rgba(${r}, ${g}, ${b}, ${a})`;
 }
 
-const filtered = computed(() => tasks.visibleTasks({
-  q: q.value,
-  filter: sortBy.value === 'status' ? 'status' : sortBy.value === 'name' ? 'name' : null,
-  sortDir: 'asc',
-}));
+const filtered = computed(() => {
+  let list = tasks.visibleTasks({
+    q: q.value,
+    group: activeGroup.value,
+    filter: sortBy.value === 'status' ? 'status' : null,
+    sortDir: 'asc',
+  }).slice();
+  if (sortBy.value === 'name') {
+    list.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'zh'));
+  } else if (sortBy.value === 'recent') {
+    const st = (t) => lastRecord(t)?.start || '';
+    list.sort((a, b) => st(b).localeCompare(st(a)));
+  }
+  return list;
+});
+
+// 最近运行表格
+const recentRuns = computed(() =>
+  (runs.history || []).slice(0, 8).map((h) => {
+    const t = tasks.taskById(h.task_id);
+    const st = h.error_kind || h.status || '';
+    let result = '—', etype = 'info';
+    if (st === 'success') { result = '成功'; etype = 'success'; }
+    else if (st === 'failed') { result = '失败'; etype = 'danger'; }
+    else if (st === 'running') { result = '执行中'; etype = 'warning'; }
+    else if (st === 'stopped') { result = '已停止'; etype = 'info'; }
+    else if (st === 'queued') { result = '排队中'; etype = 'warning'; }
+    return {
+      run_id: h.run_id,
+      name: t ? t.name : (h.name || h.task_id),
+      trigger: h.trigger || '—',
+      start: h.start || '—',
+      duration: h.duration,
+      result,
+      etype,
+    };
+  }),
+);
+function onOpenRun(row) { if (row.run_id) runs.openLog(row.run_id); }
 
 function openConfig(id) { cfgRef.value?.open(id); }
 async function onRun(task) {
   try {
     await runs.run(task.id, tasks.args[task.id] || {});
-    // 任务配置仅在本次运行中有效：运行一次后清空持久化参数，回到默认
     tasks.resetArgs(task.id);
     ElMessage.success('已提交运行：' + task.name + '（配置已恢复默认）');
   } catch (e) {
@@ -109,63 +230,103 @@ function onArtifacts(task) { artifact.open(task.id); }
 </script>
 
 <style scoped>
-.tc { height: 100%; display: flex; flex-direction: column; padding: var(--sp-20); box-sizing: border-box; }
+.tc { width: 100%; max-width: none; min-height: 100%; box-sizing: border-box; padding: 20px 24px 40px; }
 
-/* ── 工具条（sticky 常驻）─────────────────────────────── */
+/* ── 顶部工具条 ───────────────────────────────────── */
 .tc-bar {
-  flex: none;
-  display: flex; align-items: center; gap: var(--sp-10); margin-bottom: var(--sp-18); flex-wrap: wrap;
-  padding: var(--sp-10) var(--sp-12);
-  background: var(--el-bg-color); border: 1px solid var(--el-border-color); border-radius: var(--el-border-radius-base);
-  box-shadow: var(--el-box-shadow-light);
-  position: sticky; top: 0; z-index: 5;
+  display: flex; align-items: center; gap: 12px;
+  margin-bottom: 16px; flex-wrap: wrap;
 }
-.tc-search { flex: 1 1 240px; min-width: 180px; max-width: 360px; }
-.tc-search :deep(.el-input) { width: 100%; }
-.tc-sel { flex: none; }
-.tc-bar .sp { flex: 1 1 auto; }
+.tc-cats { flex: 1 1 auto; display: flex; flex-wrap: wrap; gap: 8px; }
+.tc-cats .cat { font-weight: 600; font-size: 13px; padding: 5px 14px; border-radius: 999px; }
+.cat-n { margin-left: 6px; font-size: 12px; opacity: .7; }
+.tc-tools { flex: none; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.tc-search { width: 240px; }
+.tc-sel { width: 150px; }
 
-/* ── 主体：撑满剩余高度 ──────────────────────────────── */
-.tc-body { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
-.tc-state { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--sp-12); padding: var(--sp-40); text-align: center; color: var(--el-text-color-secondary); }
-.tc-state-ic { font-size: 40px; opacity: .4; }
-.tc-state .tc-state-ic :deep(.el-icon) { font-size: 40px; }
-
-/* ── 卡片视图 ────────────────────────────────────────── */
+/* ── 卡片网格（全宽自适应列数）────────────────────── */
 .tc-grid {
-  flex: 1 1 auto; min-height: 0; overflow-y: auto;
-  display: grid; gap: var(--sp-14);
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  align-content: start; padding: var(--sp-2);
+  display: grid; gap: 14px;
+  grid-template-columns: repeat(auto-fill, minmax(min(300px, 100%), 1fr));
+  align-items: stretch;
 }
 .tc-card {
-  display: flex; flex-direction: column; gap: var(--sp-12);
-  padding: var(--sp-16);
-  background: var(--el-bg-color); border: 1px solid var(--el-border-color);
-  border-radius: var(--el-border-radius-base); box-shadow: var(--el-box-shadow-light);
-  transition: border-color .15s ease, box-shadow .15s ease, transform .15s ease;
+  border-radius: 12px; border: 1px solid var(--el-border-color);
+  transition: border-color .15s ease, transform .15s ease;
 }
-.tc-card:hover { border-color: var(--brand, var(--el-color-primary)); transform: translateY(-2px); }
-.tc-card-title { display: flex; align-items: center; gap: var(--sp-8); flex-wrap: wrap; min-width: 0; }
-.t-name { font-weight: var(--fw-semibold); color: var(--el-text-color-primary); font-size: 15px; }
-.t-running { display: inline-flex; align-items: center; gap: var(--sp-4); font-size: var(--el-font-size-extra-small); font-weight: var(--fw-semibold); color: var(--el-color-warning); white-space: nowrap; }
-.t-spin { animation: tc-spin 1s linear infinite; }
-@keyframes tc-spin { from { transform: rotate(0); } to { transform: rotate(360deg); } }
-.t-desc { color: var(--el-text-color-secondary); font-size: var(--el-font-size-extra-small); line-height: 1.5; }
-.tc-card-meta { display: flex; align-items: center; gap: var(--sp-6); color: var(--el-text-color-secondary); font-size: var(--el-font-size-extra-small); }
-.tc-card-meta :deep(.el-icon) { font-size: 14px; }
-.t-acts { display: flex; flex-direction: column; gap: var(--sp-8); margin-top: auto; }
-.t-acts-sub { display: flex; gap: var(--sp-8); }
-.t-acts :deep(.el-button) { display: inline-flex; align-items: center; gap: var(--sp-4); flex: 1 1 auto; justify-content: center; }
+.tc-card:hover { border-color: var(--el-color-primary); transform: translateY(-2px); }
+.tc-card :deep(.el-card__body) {
+  display: flex; flex-direction: column; gap: 13px; padding: 16px !important;
+}
 
-/* ── 响应式 ──────────────────────────────────────────── */
-@media (max-width: 768px) {
-  .tc-bar { gap: var(--sp-8); padding: var(--sp-10); }
-  .tc-search { flex: 1 1 100%; max-width: none; order: -1; }
-  .tc-bar .sp { display: none; }
-  .tc-grid { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: var(--sp-10); }
+.card-main { display: flex; gap: 12px; min-width: 0; }
+.tile {
+  width: 40px; height: 40px; border-radius: 11px; flex: none;
+  display: flex; align-items: center; justify-content: center;
 }
-@media (max-width: 620px) {
-  .tc { padding: var(--sp-12); }
+.card-text { min-width: 0; flex: 1; }
+.title-row { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.t-title {
+  font-size: 15px; font-weight: 600; color: var(--el-text-color-primary);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.t-chip { flex: none; }
+.dot {
+  display: inline-block; width: 6px; height: 6px; border-radius: 50%;
+  background: currentColor; margin-right: 5px; vertical-align: middle;
+}
+
+.desc {
+  margin-top: 7px;
+  color: var(--el-text-color-secondary); font-size: 12.5px; line-height: 1.6;
+  min-height: 40px;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.meta {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 4px 11px;
+  margin-top: 9px; color: var(--el-text-color-secondary); font-size: 12px;
+}
+.meta-item { display: inline-flex; align-items: center; gap: 4px; min-width: 0; }
+.meta-item :deep(.el-icon) { font-size: 13px; }
+
+.card-actions {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  margin-top: 13px; padding-top: 11px; border-top: 1px solid var(--el-border-color-lighter);
+}
+.run-btn { flex: none; min-width: 96px; font-weight: 600; }
+.foot-links { display: flex; gap: 2px; }
+
+/* 列表视图 */
+.tc-grid.is-list { grid-template-columns: 1fr; }
+.tc-grid.is-list .tc-card :deep(.el-card__body) { flex-direction: row; align-items: center; gap: 18px; }
+.tc-grid.is-list .card-main { flex: 1; align-items: center; }
+.tc-grid.is-list .desc { -webkit-line-clamp: 1; min-height: 0; margin-top: 5px; }
+.tc-grid.is-list .card-actions { margin-top: 0; padding-top: 0; border-top: 0; flex: none; }
+
+/* ── 空状态 / 最近运行 ─────────────────────────────── */
+.tc-empty { padding: 48px 0; }
+.panel {
+  margin-top: 24px;
+  background: var(--el-bg-color); border: 1px solid var(--el-border-color);
+  border-radius: 12px; overflow: hidden;
+}
+.panel-head {
+  display: flex; align-items: center; gap: 10px;
+  padding: 13px 18px; border-bottom: 1px solid var(--el-border-color-lighter);
+}
+.panel-title { font-size: 14px; font-weight: 600; }
+.panel-count {
+  font-size: 11.5px; color: var(--el-text-color-secondary);
+  background: var(--el-fill-color-light); padding: 2px 7px; border-radius: 5px;
+  font-variant-numeric: tabular-nums;
+}
+.panel-more { margin-left: auto; }
+.run-table { font-size: 13px; }
+
+/* ── 响应式 ───────────────────────────────────────── */
+@media (max-width: 768px) {
+  .tc { padding: 16px 16px 32px; }
+  .tc-search { width: 100%; }
+  .tc-tools { flex: 1 1 100%; }
 }
 </style>
