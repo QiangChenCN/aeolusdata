@@ -59,6 +59,8 @@ export const POST_ROUTE_PERMS: Record<string, string> = {
   '/api/cancel': 'task:run',
   '/api/standard/refresh-all': 'data:refresh',
   '/api/delivery-timeout/refresh': 'data:refresh',
+  // 运单明细看板刷新：拉全站运单入库，与配送超时刷新同性质，限 data:refresh
+  '/api/order-detail/refresh': 'data:refresh',
   '/api/im-contact-fetch/refresh': 'data:refresh',
   '/api/attend-period/config': 'config:write',
   '/api/attend-period/teams': 'config:write',
@@ -115,6 +117,8 @@ const GET_PREFIX_PERMS: [RegExp, string][] = [
   [/^\/api\/standard\/.*$/, 'view'],
   [/^\/api\/attend-period\/.*$/, 'view'],
   [/^\/api\/delivery-timeout\/.*$/, 'view'],
+  // 运单明细看板：明细查询是只读展示，登录即可看（'view'）
+  [/^\/api\/order-detail\/.*$/, 'view'],
   [/^\/api\/im-contact\/.*$/, 'view'],
   [/^\/api\/todo\/.*$/, 'view'],
   [/^\/api\/groups\/.*$/, 'view'],
@@ -132,6 +136,7 @@ const POST_PREFIX_PERMS: [RegExp, string][] = [
   [/^\/api\/attend-period\/(config|teams)$/, 'config:write'],
   [/^\/api\/attend-period\/.*$/, 'view'],
   [/^\/api\/delivery-timeout\/.*$/, 'view'],
+  [/^\/api\/order-detail\/.*$/, 'view'],
   [/^\/api\/im-contact\/.*$/, 'view'],
   [/^\/api\/todo\/.*$/, 'cron:write'],
   [/^\/api\/groups\/.*$/, 'groups:write'],

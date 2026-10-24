@@ -14,6 +14,7 @@ import AttendPeriodView from '../features/attend-period/AttendPeriodView.vue';
 import OverviewView from '../features/overview/OverviewView.vue';
 import AssessmentBoardView from '../features/assessment-board/AssessmentBoardView.vue';
 import DeliveryTimeoutView from '../features/delivery-timeout/DeliveryTimeoutView.vue';
+import OrderDetailView from '../features/order-detail/OrderDetailView.vue';
 import ImContactView from '../features/im-contact/ImContactView.vue';
 import UnsatisfiedView from '../features/unsatisfied/UnsatisfiedView.vue';
 import GroupsView from '../features/groups/GroupsView.vue';
@@ -55,6 +56,7 @@ const routes = [
       { path: 'attend-period', name: 'attend-period', component: AttendPeriodView, meta: { title: '时段出勤', kind: 'attendPeriod', id: '' } },
       { path: 'overview', name: 'overview', component: OverviewView, meta: { title: '总览' } },
       { path: 'assessment', name: 'assessment', component: AssessmentBoardView, meta: { title: '考核看板', kind: 'assessment', id: '' } },
+      { path: 'order-detail', name: 'order-detail', component: OrderDetailView, meta: { title: '运单明细', kind: 'orderDetail', id: '' } },
       { path: 'timeout', name: 'timeout', component: DeliveryTimeoutView, meta: { title: '配送超时', kind: 'timeout', id: '' } },
       { path: 'im-contact', name: 'im-contact', component: ImContactView, meta: { title: 'IM 电联', kind: 'imContact', id: '' } },
       { path: 'unsatisfied', name: 'unsatisfied', component: UnsatisfiedView, meta: { title: '违规处罚', kind: 'unsatisfied', id: '' } },
