@@ -5,6 +5,7 @@ import { AuthController } from './auth.controller';
 import { AccountController } from './account.controller';
 import { AdminController } from './admin.controller';
 import { DingtalkSsoService } from './dingtalk-sso.service';
+import { AuthStoreService } from './auth-store.service';
 import { ComputeModule } from '../compute/compute.module';
 
 @Module({
@@ -12,7 +13,8 @@ import { ComputeModule } from '../compute/compute.module';
   // 因此经 ComputePort 复用 /api/teams 的取数结果。
   imports: [ComputeModule],
   controllers: [AuthController, AccountController, AdminController],
-  providers: [AuthService, DataPermService, DingtalkSsoService],
-  exports: [AuthService, DataPermService, DingtalkSsoService],
+  // AuthStoreService：RBAC 五份状态（账号/角色/策略/会话/审计）的持久层，已迁往 PostgreSQL
+  providers: [AuthService, AuthStoreService, DataPermService, DingtalkSsoService],
+  exports: [AuthService, AuthStoreService, DataPermService, DingtalkSsoService],
 })
 export class AuthModule {}

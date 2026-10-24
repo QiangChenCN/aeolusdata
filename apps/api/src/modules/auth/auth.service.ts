@@ -6,21 +6,28 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import * as fs from 'fs';
-import * as path from 'path';
 import { randomBytes, scryptSync, timingSafeEqual, createHash } from 'crypto';
 import { ALL_PERMS } from './permissions';
+import { AuthStoreService } from './auth-store.service';
 
 /**
  * RBAC 核心服务（端口自 core/auth.py，纯标准库实现，零第三方依赖）；
- * 原 Python 实现已删除，本服务是唯一入口（用户库仍为同一份 .users.json）。
- * 状态文件统一落在 apps/api/runtime/（.users.json / .roles.json / .pwpolicy.json / .audit.jsonl），
- * 与 apps/api/runtime/quark/ 同属后端私有本地状态，全部 gitignore、不在仓库。
- * 职责：用户库 .users.json / 会话（内存表 + 落盘 .sessions.json，滑动 TTL）/ 角色（.roles.json，
- * 支持继承+环检测）/ 密码策略（.pwpolicy.json，NIST 800-63B）/ 路由→权限 / 审计 .audit.jsonl。
+ * 原 Python 实现已删除，本服务是唯一入口。
+ * 职责：用户库 / 会话（内存表 + 持久化，滑动 TTL）/ 角色（支持继承+环检测）/
+ * 密码策略（NIST 800-63B）/ 路由→权限 / 审计。
+ *
+ * 持久层：账号、角色、密码策略、会话、审计五份状态已迁到 PostgreSQL（见 AuthStoreService，
+ * 表 rbac_users / rbac_roles / rbac_policy / rbac_sessions / rbac_audit）。此前它们落在
+ * apps/api/runtime/ 的隐藏文件里（.users.json 等），gitignore 且无法随库备份。
+ * DATABASE_URL 未配置时 AuthStoreService 会自动回落到文件，行为与迁移前一致。
+ *
+ * 为什么对外仍保持同步 API：getSession / hasPerm / effectivePerms 是每请求热路径，被
+ * 全局 AccessGuard 同步调用，改成异步会波及所有守卫与控制器。因此这里沿用「内存态 +
+ * 异步落盘」：启动时全量载入内存，写操作先改内存再异步落盘，读操作纯内存——语义与迁移前
+ * 的「内存 + 文件快照」完全等价，只是把快照介质换成了 PG。
  *
  * 关键兼容：口令哈希沿用 Python scrypt(n=16384,r=8,p=1,dklen=64) 同一套参数，
- * 存储格式 `saltHex$keyHex`，与既有 .users.json 互通（切换后端零迁移）。
+ * 存储格式 `saltHex$keyHex`，迁移时整条记录原样搬进 PG，登录校验逻辑无需改动。
  */
 
 export interface UserRecord {
@@ -144,24 +151,23 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(AuthService.name);
   private readonly sessions = new Map<string, Session>();
   private sweepTimer: ReturnType<typeof setInterval> | null = null;
-  private usersFile = '';
-  private rolesFile = '';
-  private policyFile = '';
-  private auditFile = '';
-  private sessionsFile = '';
+  /** 内存态：启动时全量载入，读写都走这里（同步 API 需要），写操作再异步落盘。 */
+  private users: UserRecord[] = [];
+  private roles: Record<string, RoleRecord> | null = null;
+  private policy: Policy | null = null;
 
-  constructor(private readonly config: ConfigService) {}
+  constructor(
+    private readonly config: ConfigService,
+    private readonly store: AuthStoreService,
+  ) {}
 
-  onModuleInit(): void {
-    const dataDir = path.join(process.cwd(), 'runtime');
-    this.usersFile = path.join(dataDir, '.users.json');
-    this.rolesFile = path.join(dataDir, '.roles.json');
-    this.policyFile = path.join(dataDir, '.pwpolicy.json');
-    this.auditFile = path.join(dataDir, '.audit.jsonl');
-    this.sessionsFile = path.join(dataDir, '.sessions.json');
-    this.ensureBootstrap();
+  async onModuleInit(): Promise<void> {
+    // 建表必须先于任何读写（AuthStoreService.onModuleInit 也会调，这里再兜一次底，
+    // 保证本服务读到数据时 rbac_* 表一定存在）。
+    await this.store.ensureSchema();
+    await this.ensureBootstrap();
     // 恢复上次运行遗留的会话：否则每次发版重启都会让所有已登录用户（含「记住我」）重新登录
-    this.loadSessions();
+    await this.loadSessions();
 
     // 过期会话定期清理：会话只在被访问时惰性删除（getSession），长期不再访问的会话
     // 会永久滞留在 Map 里。「记住我」把生命周期拉长到 7~30 天后，这个累积更明显。
@@ -176,7 +182,7 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
       this.sweepTimer = null;
     }
     // 优雅停机落盘：让会话跨重启存活（systemd stop/restart 会走到这里）
-    this.persistSessions();
+    void this.persistSessions();
   }
 
   private sweepSessions(): void {
@@ -191,55 +197,39 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     if (removed > 0) {
       this.logger.debug(`清理过期会话 ${removed} 个，剩余 ${this.sessions.size} 个`);
     }
-    // 周期性快照：滑动续期只改内存里的 exp，靠这里把最新值写回磁盘。
-    // 不做每次请求都写盘 —— 那样 QPS 一高就是持续 IO。
-    this.persistSessions();
+    // 周期性快照：滑动续期只改内存里的 exp，靠这里把最新值写回持久层。
+    // 不做每次请求都写 —— 那样 QPS 一高就是持续 IO。
+    void this.persistSessions();
+    // 顺带清掉持久层里已失效的行（内存删了但库里还在的那些）
+    void this.store.purgeExpiredSessions(now);
   }
 
   // ---------------- 会话持久化 ----------------
   /**
-   * 会话是「活跃凭证」，落盘让后端重启不清空登录态。取舍说明：
-   *  - 文件权限 0600 + 落在 gitignore 的 apps/api/runtime/，与 .users.json 同口径；
+   * 会话是「活跃凭证」，持久化让后端重启不清空登录态。取舍说明：
+   *  - PG 模式落 rbac_sessions（随库备份），未配置 DATABASE_URL 时回落到隐藏文件；
    *  - 滑动续期只更新内存 exp，由 sweep 周期写回，最差丢失一个周期的续期时长；
    *  - 停机期间已超时的会话在加载时直接丢弃，不会「复活」。
    */
-  private loadSessions(): void {
-    if (!this.sessionsFile || !fs.existsSync(this.sessionsFile)) return;
-    try {
-      const raw = JSON.parse(fs.readFileSync(this.sessionsFile, 'utf-8')) as Record<string, unknown>;
-      const now = Date.now() / 1000;
-      let loaded = 0;
-      for (const [token, val] of Object.entries(raw || {})) {
-        const rec = val as Partial<Session>;
-        // 缺关键字段的记录不认（旧结构 / 半坏数据），避免加载出不可用的会话
-        if (!rec || typeof rec.exp !== 'number' || typeof rec.max_exp !== 'number') continue;
-        if (rec.exp < now || rec.max_exp <= now) continue; // 停机期间已过期
-        this.sessions.set(token, rec as Session);
-        loaded++;
-      }
-      if (loaded > 0) this.logger.log(`已从磁盘恢复 ${loaded} 个会话（避免重启后全员重新登录）`);
-    } catch (e) {
-      this.logger.warn(`会话文件读取失败，按空会话启动：${(e as Error).message}`);
+  private async loadSessions(): Promise<void> {
+    const raw = await this.store.loadSessions();
+    const now = Date.now() / 1000;
+    let loaded = 0;
+    for (const [token, val] of Object.entries(raw || {})) {
+      const rec = val as Partial<Session>;
+      // 缺关键字段的记录不认（旧结构 / 半坏数据），避免加载出不可用的会话
+      if (!rec || typeof rec.exp !== 'number' || typeof rec.max_exp !== 'number') continue;
+      if (rec.exp < now || rec.max_exp <= now) continue; // 停机期间已过期
+      this.sessions.set(token, rec as Session);
+      loaded++;
     }
+    if (loaded > 0) this.logger.log(`已恢复 ${loaded} 个会话（避免重启后全员重新登录）`);
   }
 
-  private persistSessions(): void {
-    if (!this.sessionsFile) return;
-    try {
-      const obj: Record<string, Session> = {};
-      for (const [token, s] of this.sessions) obj[token] = s;
-      const body = JSON.stringify(obj);
-      const tmp = this.sessionsFile + '.tmp';
-      fs.writeFileSync(tmp, body, { mode: 0o600 });
-      try {
-        // 原子替换：避免写到一半崩溃留下损坏的会话文件
-        fs.renameSync(tmp, this.sessionsFile);
-      } catch (e) {
-        fs.writeFileSync(this.sessionsFile, body, { mode: 0o600 });
-      }
-    } catch (e) {
-      this.logger.warn(`会话落盘失败：${(e as Error).message}`);
-    }
+  private async persistSessions(): Promise<void> {
+    const obj: Record<string, Session> = {};
+    for (const [token, s] of this.sessions) obj[token] = s;
+    await this.store.saveSessions(obj);
   }
 
   // ---------------- 口令哈希（scrypt，与 Python 互通） ----------------
@@ -267,32 +257,35 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
   }
 
   // ---------------- 用户库 ----------------
+  /**
+   * 返回内存态账号数组（浅拷贝数组，元素仍是同一对象引用）。
+   * 约定与迁移前一致：调用方「取数组 → 改 → saveUsers(数组)」，只有 save 才会落持久层。
+   */
   private loadUsers(): UserRecord[] {
-    try {
-      return JSON.parse(fs.readFileSync(this.usersFile, 'utf-8')).users || [];
-    } catch {
-      return [];
-    }
+    return [...this.users];
   }
   /** 按用户名取单条用户记录（查不到返回 null）。 */
   getUser(username: string): UserRecord | null {
-    const u = this.loadUsers().find((x) => x.username === username);
+    const u = this.users.find((x) => x.username === username);
     return u || null;
   }
   private saveUsers(users: UserRecord[]): void {
-    fs.writeFileSync(this.usersFile, JSON.stringify({ users }, null, 2), 'utf-8');
-    try {
-      fs.chmodSync(this.usersFile, 0o600);
-    } catch {
-      /* ignore */
-    }
+    this.users = users;
+    // 异步落盘：账号写入不在登录校验的关键路径上（内存已更新，读到的永远是最新值）
+    void this.store.saveUsers(users).catch((e) => {
+      this.logger.error('账号持久化失败：' + (e as Error).message);
+    });
   }
 
-  private ensureBootstrap(): void {
-    let users = this.loadUsers();
-    if (users.length === 0) {
+  /** 启动时把账号/角色/策略全量载入内存；空库时按种子数据初始化。 */
+  private async ensureBootstrap(): Promise<void> {
+    this.users = await this.store.loadUsers();
+    this.roles = await this.store.loadRoles();
+    this.policy = (await this.store.loadPolicy()) as Policy | null;
+
+    if (this.users.length === 0) {
       const pw = this.config.get<string>('WB_ADMIN_PASSWORD') || 'admin123';
-      users = [
+      this.users = [
         {
           username: 'admin',
           pw_hash: this.hashPw(pw),
@@ -305,13 +298,19 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
           must_change: !this.config.get<string>('WB_ADMIN_PASSWORD'),
         },
       ];
-      this.saveUsers(users);
+      await this.store.saveUsers(this.users);
       if (!this.config.get<string>('WB_ADMIN_PASSWORD')) {
         this.logger.warn('默认管理员 admin/admin123 已创建，请尽快改密（切勿公网暴露默认口令）');
       }
     }
-    if (!fs.existsSync(this.rolesFile)) this.saveRoles({ ...ROLES_SEED });
-    if (!fs.existsSync(this.policyFile)) this.savePolicy({ ...PW_POLICY_DEFAULT });
+    if (!this.roles) {
+      this.roles = { ...ROLES_SEED };
+      await this.store.saveRoles(this.roles);
+    }
+    if (!this.policy) {
+      this.policy = { ...PW_POLICY_DEFAULT };
+      await this.store.savePolicy(this.policy);
+    }
   }
 
   // ---------------- 角色（可配置 + 继承） ----------------
@@ -326,22 +325,15 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
         all: !!r.all,
       };
     }
-    fs.writeFileSync(this.rolesFile, JSON.stringify({ roles: out }, null, 2), 'utf-8');
-    try {
-      fs.chmodSync(this.rolesFile, 0o600);
-    } catch {
-      /* ignore */
-    }
+    this.roles = out;
+    void this.store.saveRoles(out).catch((e) => {
+      this.logger.error('角色持久化失败：' + (e as Error).message);
+    });
   }
 
   loadRoles(): Record<string, RoleRecord> {
-    let data: Record<string, RoleRecord>;
-    try {
-      data = JSON.parse(fs.readFileSync(this.rolesFile, 'utf-8')).roles || {};
-    } catch {
-      data = { ...ROLES_SEED };
-      this.saveRoles(data);
-    }
+    const data: Record<string, RoleRecord> = this.roles ? { ...this.roles } : { ...ROLES_SEED };
+    // 内置角色始终补齐：避免库里缺了 admin/viewer 导致无人可登录
     for (const [name, seed] of Object.entries(ROLES_SEED)) {
       if (!data[name]) data[name] = { ...seed };
     }
@@ -460,21 +452,13 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
 
   // ---------------- 密码策略 ----------------
   private savePolicy(pol: Policy): void {
-    fs.writeFileSync(this.policyFile, JSON.stringify(pol, null, 2), 'utf-8');
-    try {
-      fs.chmodSync(this.policyFile, 0o600);
-    } catch {
-      /* ignore */
-    }
+    this.policy = pol;
+    void this.store.savePolicy(pol).catch((e) => {
+      this.logger.error('密码策略持久化失败：' + (e as Error).message);
+    });
   }
   getPolicy(): Policy {
-    let pol: Partial<Policy>;
-    try {
-      pol = JSON.parse(fs.readFileSync(this.policyFile, 'utf-8'));
-    } catch {
-      pol = { ...PW_POLICY_DEFAULT };
-      this.savePolicy(pol as Policy);
-    }
+    const pol = this.policy || { ...PW_POLICY_DEFAULT };
     return { ...PW_POLICY_DEFAULT, ...pol };
   }
   setPolicy(patch: Partial<Policy>): Policy {
@@ -568,7 +552,7 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
       ttl,
       fp,
     });
-    this.persistSessions(); // 登录立即落盘：立刻重启也要还活着
+    void this.persistSessions(); // 登录立即落盘：立刻重启也要还活着
     return { token, role, expiresIn: ttl };
   }
 
@@ -576,7 +560,8 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     const s = token ? this.sessions.get(token) : null;
     if (s) {
       this.sessions.delete(token as string);
-      this.persistSessions(); // 登出立即落盘：否则重启后会话会「复活」
+      void this.persistSessions(); // 登出立即落盘：否则重启后会话会「复活」
+      void this.store.deleteSession(token as string);
       this.audit('logout', true, s.user, s.ip, s.role);
     }
   }
@@ -634,11 +619,13 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     // 1) 越过绝对上限：不可续期，直接失效
     if (s.max_exp <= now) {
       this.sessions.delete(token);
+      void this.store.deleteSession(token);
       return null;
     }
     // 2) 空闲超过滑动窗口：失效
     if (s.exp < now) {
       this.sessions.delete(token);
+      void this.store.deleteSession(token);
       return null;
     }
     // 3) 滑动续期：每次访问刷新空闲窗口，但不得越过绝对上限
@@ -847,7 +834,9 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     method = '',
     pth = '',
   ): void {
-    const rec = {
+    // 审计走 AuthStoreService：PG 模式缓冲批量插入 rbac_audit，未配置时回落文件 append。
+    // 写失败只告警，绝不因审计不可用而影响登录。
+    this.store.appendAudit({
       ts: nowStr(),
       action,
       ok: !!ok,
@@ -856,11 +845,6 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
       role: roleOrNote || '-',
       method,
       path: pth,
-    };
-    try {
-      fs.appendFileSync(this.auditFile, JSON.stringify(rec) + '\n', 'utf-8');
-    } catch {
-      /* ignore */
-    }
+    });
   }
 }

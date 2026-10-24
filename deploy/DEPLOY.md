@@ -378,7 +378,47 @@ rm -f /opt/aeolusdata/apps/api/runtime/cron.db /opt/aeolusdata/apps/api/runtime/
 
 > 全新库 + 无旧 sqlite → 只有空表，后续取数会重新填充，无需迁移。
 
-### 9.7 安全
+### 9.7 RBAC 账号 / 角色 / 会话 / 审计（rbac_* 表）
+
+账号、角色、密码策略、会话、审计这五份状态**原先落在 `apps/api/runtime/` 的隐藏文件里**
+（`.users.json` / `.roles.json` / `.pwpolicy.json` / `.sessions.json` / `.audit.jsonl`）。
+它们被 gitignore —— git 里没有副本，机器一丢账号与钉钉绑定关系就没了，也无法随 PG 一起备份。
+现已全部迁到 PG（`AuthStoreService`）：
+
+| 表 | 内容 |
+|---|---|
+| `rbac_users` | 账号、scrypt 口令哈希、`dingtalk_unionid`、头像与资料 |
+| `rbac_roles` | 角色（含继承 parents、内置锁定标记） |
+| `rbac_policy` | 密码策略（单行，id=1） |
+| `rbac_sessions` | 活跃会话（重启后据此恢复登录态） |
+| `rbac_audit` | 登录/账号/角色等审计流水 |
+
+**迁移是内置的，不需要跑任何迁移脚本**：后端启动时若 `rbac_*` 表为空、而历史文件还在，
+会自动把文件内容灌进 PG 并打印日志；PG 一旦有数据就不再读文件，因此天然幂等。
+口令哈希格式（`saltHex$keyHex`，scrypt N=16384/r=8/p=1）原样搬迁，登录校验逻辑不受影响。
+
+```bash
+# 部署新版后重启后端即完成迁移，看迁移日志
+sudo systemctl restart aeolusdata-backend
+sudo journalctl -u aeolusdata-backend --since '5 minutes ago' --no-pager | grep -E 'RBAC|迁移'
+
+# 验证
+psql "$DATABASE_URL" -c "SELECT 'users' t, count(*) FROM rbac_users
+  UNION ALL SELECT 'roles', count(*) FROM rbac_roles
+  UNION ALL SELECT 'policy', count(*) FROM rbac_policy
+  UNION ALL SELECT 'sessions', count(*) FROM rbac_sessions
+  UNION ALL SELECT 'audit', count(*) FROM rbac_audit;"
+```
+
+注意：
+
+- **迁移前先留一份文件备份**（迁移不会删除原文件，但多一层保险）：
+  `sudo cp -a /opt/aeolusdata/apps/api/runtime/.users.json /root/users.json.pre-pg.bak`
+- **未配置 `DATABASE_URL` 的环境会自动回落文件读写**，行为与迁移前完全一致 —— 不会因这次改造登不上系统。
+- 会话仍以内存为主（滑动续期只改内存），每 10 分钟快照回写 PG；非正常关机最多丢一个快照周期的续期时长。
+- 这五份数据现在随 `pg_dump` 一起备份即可，不再依赖 runtime 目录下的隐藏文件。
+
+### 9.8 安全
 
 - PG 默认只监听 `127.0.0.1`，`DATABASE_URL` 用 `localhost` 即可直连，**勿改 `pg_hba.conf` 放行外部 IP**。
 - PG 17 已验证；后端代码注释预期 PG17，其它大版本未测。
