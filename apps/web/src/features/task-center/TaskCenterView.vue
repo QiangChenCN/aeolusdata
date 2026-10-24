@@ -1,5 +1,11 @@
 <template>
   <div class="tc">
+    <!-- 页面标题 -->
+    <div class="page-head">
+      <h1 class="page-title">任务中心</h1>
+      <p class="page-sub">自动化任务总览，覆盖考勤播报、申诉提醒、运单入库与文档生成，点击「运行」立即执行一次。</p>
+    </div>
+
     <!-- 顶部工具条：分类胶囊 + 搜索 + 排序 + 视图切换 -->
     <div class="tc-bar">
       <div class="tc-cats">
@@ -231,6 +237,11 @@ function onArtifacts(task) { artifact.open(task.id); }
 
 <style scoped>
 .tc { width: 100%; max-width: none; min-height: 100%; box-sizing: border-box; padding: 20px 24px 40px; }
+
+/* ── 页面标题 ───────────────────────────────────── */
+.page-head { margin-bottom: 16px; }
+.page-title { font-size: 22px; font-weight: 600; color: var(--el-text-color-primary); }
+.page-sub { margin-top: 6px; font-size: 13px; color: var(--el-text-color-secondary); max-width: 70ch; }
 
 /* ── 顶部工具条 ───────────────────────────────────── */
 .tc-bar {
