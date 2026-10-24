@@ -16,6 +16,7 @@
 1. 本仓库是**标准 monorepo**（pnpm workspace + turbo），不是扁平/单体仓库。
 2. 新增文件或目录**必须对齐现有架构**，放进对应的顶层/二级目录，禁止在仓库根或随意位置新建业务目录。
 3. 本仓库有且仅有两个环境概念：**本地（local）** 与 **服务器（server）**，二者含义固定，不随上下文改变。
+4. **AI 编码助手（CodeBuddy 等）每次动手前必须先通读本文档**，未读不得执行任何改动；且 AI 禁止 SSH 登录服务器、禁止在服务器写文件，服务器侧只输出命令由用户执行（详见 §2.5）。
 
 ---
 
@@ -115,6 +116,18 @@ aeolusdata/
 
 ---
 
+### 2.5 AI 协作操作边界（强制）
+
+> 编码助手（CodeBuddy 等）容易「失忆」或忽略环境边界，故单列本节为硬约束。
+> **任何涉及改代码 / 构建 / 提交 / 服务器相关的动作，动手前必须先 `read_file` 通读本文档（CONSTRAINTS.md）。**
+
+- **禁止 SSH 登录服务器**：含 `ssh root@aeolus.qixinchen.top`、任何到远端 ECS（`/opt/aeolusdata`）的连接。
+- **禁止在服务器上创建 / 修改 / 删除任何文件**：含 `minio_config.json` 等凭据、`cookie.txt`、systemd 单元、nginx 配置、运行时 JSON。
+- **禁止在本地执行会落到服务器的动作**：`systemctl` / `journalctl` 查服务、跑 `deploy/update.sh`、`git pull` 等，一律**只输出命令**，由用户在服务器执行并把输出贴回。
+- AI 只在**本地**（`/home/chenqiang/aeolusdata`）改源码、构建、`git commit` / `git push`；服务器侧诊断、配置文件落地、服务管理、部署全部由用户完成。
+- 凭据类文件（`.env`、`minio_config.json`、`cookie.txt`、`db_config.json` 等 `.gitignore` 项）由用户**人工带外传输**，AI 不代写、不代传、不代部署。
+- 服务器报错排查：让用户贴 `systemctl status` / `journalctl` / 日志原文，AI 据此给命令，不自行连服务器取证。
+
 ## 3. 反模式（禁止）
 
 - ❌ 在仓库根或随意位置新建业务目录 / 散放源码（违反 §1.2）。
@@ -123,6 +136,8 @@ aeolusdata/
 - ❌ 假设本地与服务器文件互通、共享进程。
 - ❌ 后端 Controller 内写业务逻辑或直连进程外资源（详见 `dev-spec-architecture.md` §4）。
 - ❌ `git add -A` / `git add .` 提交运行时缓存 JSON（详见 `deploy/DEPLOY.md` §2）。
+- ❌ AI 代理 SSH 登录服务器或在服务器写文件（违反 §2.5）。
+- ❌ AI 代理未经 `read_file` 通读本文档就动手执行改动（违反 §2.5 / §0.4）。
 
 ---
 

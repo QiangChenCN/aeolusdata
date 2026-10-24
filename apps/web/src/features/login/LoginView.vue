@@ -114,7 +114,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { User, Lock, ArrowLeft, List, DataLine, ChatDotRound } from '@element-plus/icons-vue';
 import { useAuthStore } from '../../stores/auth.js';
@@ -141,8 +141,13 @@ const dtMessage = ref('');
 /** 免登返回「未绑定」时记住的钉钉身份，待账密登录成功后自动绑定。 */
 const pendingUnionid = ref('');
 
-const canGoBack = computed(() => window.history.length > 1);
-function goBack() { if (window.history.length > 1) router.back(); }
+// 能否「返回」要看 Vue Router 自己的历史栈，不能看 window.history.length：
+// 后者是浏览器全局历史条目数（从外站跳进来、或同标签页开过别的页面都 >1），
+// 且它不是响应式值 —— 用它做 computed 会在首屏求值一次后永久缓存，按钮就此常驻。
+// history.state.back 由 createWebHistory 维护，存在即表示应用内确有上一页。
+// 在 onMounted 里落到 ref，保证视图能响应。
+const canGoBack = ref(false);
+function goBack() { router.back(); }
 
 function redirectTarget() {
   return typeof route.query.redirect === 'string' && route.query.redirect
@@ -335,6 +340,10 @@ function errText(e) {
 }
 
 onMounted(async () => {
+  // 上一页若就是登录页自己（守卫反复重定向会形成 /login → / 的环），返回没有意义，不显示。
+  const back = window.history.state && window.history.state.back;
+  canGoBack.value = !!back && String(back).split('?')[0] !== '/login';
+
   // OAuth 回跳的三种结果都要落到界面上。此前只处理了 needbind，error / disabled 一律
   // 被忽略 —— 一旦换取身份或读通讯录失败，用户看到的就是「回到登录页、毫无反应」。
   const dt = route.query.dingtalk;
