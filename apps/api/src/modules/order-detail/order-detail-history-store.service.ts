@@ -47,6 +47,19 @@ export class OrderDetailHistoryStoreService implements OnModuleInit {
       this.logger.warn('DATABASE_URL 未配置，历史运单明细表不可用');
       return;
     }
+    // 历史表可能已存在但为旧结构（缺 stat_date 列）。先探测：结构不符则整体重建，
+    // 否则 CREATE TABLE IF NOT EXISTS / CREATE INDEX IF NOT EXISTS 会因表已存在而跳过，
+    // 进而 CREATE INDEX 引用缺失列 → 启动崩溃（column "stat_date" does not exist）。
+    const col = await this.pg.query<{ n: number }>(
+      `SELECT 1 AS n FROM information_schema.columns
+       WHERE table_name = 'delivery_history' AND column_name = 'stat_date' LIMIT 1`,
+    );
+    if (!col.length) {
+      this.logger.warn('delivery_history 结构过旧（缺 stat_date 列），整体重建');
+      await this.pg.query(
+        'DROP TABLE IF EXISTS delivery_history CASCADE; DROP TABLE IF EXISTS delivery_history_meta;',
+      );
+    }
     await this.pg.query(PG_DDL);
     this.logger.log('运单明细·历史运单明细 PG 表已就绪（delivery_history）');
   }
