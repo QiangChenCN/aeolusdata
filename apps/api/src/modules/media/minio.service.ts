@@ -13,9 +13,11 @@ import { Client as MinioClient } from 'minio';
  */
 interface MinioCfg {
   endpoint: string;
+  port?: number;
   access_key: string;
   secret_key: string;
   bucket: string;
+  /** 公网直链基址；URL = public_base + '/' + obj，obj 已含 prefix，故此处需带上 bucket 段（如 https://s3.xxx.com/mybucket）。 */
   public_base: string;
   secure?: boolean;
 }
@@ -51,6 +53,7 @@ export class MinioService {
     if (!this.client) {
       this.client = new MinioClient({
         endPoint: cfg.endpoint,
+        port: cfg.port ?? 9000,
         accessKey: cfg.access_key,
         secretKey: cfg.secret_key,
         useSSL: cfg.secure !== false,
