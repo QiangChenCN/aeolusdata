@@ -62,26 +62,34 @@ export class MinioService {
     return { client: this.client, cfg };
   }
 
-  /** 确保 bucket 存在且为 public-read（内联图须匿名 GET，否则群内图裂 403）。 */
+  /**
+   * 确保 bucket 存在且为 public-read（内联图须匿名 GET，否则群内图裂 403/AccessDenied）。
+   *
+   * 注意：bucket 即便已存在也必须应用 public-read 策略——很多部署使用「预建 bucket」，
+   * 若只在 makeBucket 时设策略，预建 bucket 会一直保持非公开，导致匿名浏览器/群内图片
+   * 全部 AccessDenied（MinIO 登录态能看到图，是因为带了凭证）。故统一在末尾 setBucketPolicy，
+   * 与 bucket 是否新建无关。
+   */
   private async ensureBucketPublic(client: MinioClient, bucket: string): Promise<void> {
     if (this.bucketEnsured) return;
     const exists = await client.bucketExists(bucket);
     if (!exists) {
       await client.makeBucket(bucket);
-      const policy = {
-        Version: '2012-10-17',
-        Statement: [
-          {
-            Effect: 'Allow',
-            Principal: { AWS: ['*'] },
-            Action: ['s3:GetObject'],
-            Resource: [`arn:aws:s3:::${bucket}/*`],
-          },
-        ],
-      };
-      await client.setBucketPolicy(bucket, JSON.stringify(policy));
-      this.logger.log(`已创建 bucket 并设为 public-read: ${bucket}`);
+      this.logger.log(`已创建 bucket: ${bucket}`);
     }
+    const policy = {
+      Version: '2012-10-17',
+      Statement: [
+        {
+          Effect: 'Allow',
+          Principal: { AWS: ['*'] },
+          Action: ['s3:GetObject'],
+          Resource: [`arn:aws:s3:::${bucket}/*`],
+        },
+      ],
+    };
+    await client.setBucketPolicy(bucket, JSON.stringify(policy));
+    this.logger.log(`已确保 bucket public-read: ${bucket}`);
     this.bucketEnsured = true;
   }
 
