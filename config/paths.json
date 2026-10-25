@@ -6,7 +6,7 @@
     "appsApiConfig": "apps/api/config",
     "appsWebDist": "apps/web/dist",
     "computeStandard": "services/compute/dashboard/standard",
-    "sharedCache": "dashboard/standard/cache",
+    "sharedCache": "services/compute/dashboard/standard/cache",
     "computeHome": "services/compute"
   }
 }

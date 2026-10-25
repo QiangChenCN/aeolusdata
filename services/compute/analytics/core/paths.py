@@ -3,7 +3,7 @@
 取代各模块顶部重复的 `_find_repo_root` / `_find_python_home` bootstrap。
 - 仓库根：env `AEOLUS_REPO_ROOT` 优先；兜底只认 `.git`（子包 apps/api 自身带
   package.json，若用 package.json 兜底会误停在 apps/api，算错仓库根）。
-- 子目录位置统一从仓库根 `contracts/paths.json` 读取，杜绝散落硬编码。
+- 子目录位置统一从仓库根 `config/paths.json` 读取，杜绝散落硬编码。
 
 兼容导出 `ROOT` / `PY_HOME` / `_ROOT` 供现有代码逐步迁移；
 新增 `dirs.*` 函数供新代码按语义取目录。
@@ -46,7 +46,7 @@ if PY_HOME and PY_HOME not in _sys.path:
 
 
 def _load_contract():
-    with open(_os.path.join(ROOT, "contracts", "paths.json"), "r", encoding="utf-8") as f:
+    with open(_os.path.join(ROOT, "config", "paths.json"), "r", encoding="utf-8") as f:
         return _json.load(f)
 
 

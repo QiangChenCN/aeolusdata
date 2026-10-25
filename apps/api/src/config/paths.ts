@@ -5,7 +5,7 @@
  * - 仓库根：env `AEOLUS_REPO_ROOT` 优先；兜底只认 `.git`
  *   （apps/api 自身带 package.json，若用 package.json 兜底会误停在 apps/api，算错仓库根）。
  *   与 services/compute/analytics/core/paths.py 同算法、同 env 名。
- * - 子目录位置统一从仓库根 `contracts/paths.json` 读取，杜绝散落硬编码。
+ * - 子目录位置统一从仓库根 `config/paths.json` 读取，杜绝散落硬编码。
  */
 import * as fs from 'fs';
 import * as path from 'path';
@@ -36,7 +36,7 @@ function resolveRoot(): string {
 export const ROOT = resolveRoot();
 
 const contract = JSON.parse(
-  fs.readFileSync(path.join(resolveRoot(), 'contracts', 'paths.json'), 'utf-8'),
+  fs.readFileSync(path.join(resolveRoot(), 'config', 'paths.json'), 'utf-8'),
 );
 const DIRS = contract.dirs as Record<string, string>;
 

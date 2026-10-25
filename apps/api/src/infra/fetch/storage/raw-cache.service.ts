@@ -81,7 +81,7 @@ export class RawCacheService {
   readonly cacheDir: string;
 
   constructor(private readonly config: ConfigService) {
-    // 经统一路径契约（contracts/paths.json），与 services/compute 同口径、物理路径不变。
+    // 经统一路径契约（config/paths.json），与 services/compute 同口径、物理路径不变。
     this.dataDir = dirs.runtime('raw');
     this.cacheDir = dirs.sharedCache();
   }
