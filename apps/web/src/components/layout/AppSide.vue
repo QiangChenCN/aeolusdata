@@ -30,12 +30,12 @@ const navItems = computed(() => {
 
   const dashSubs = [
     { type: 'leaf', kind: 'assessment', id: '', name: '考核看板', icon: 'DataLine' },
-    { type: 'leaf', kind: 'orderDetail', id: '', name: '运单明细', icon: 'Tickets' },
-    { type: 'leaf', kind: 'timeout', id: '', name: '配送超时', icon: 'Timer' },
-    { type: 'leaf', kind: 'imContact', id: '', name: 'IM 电联', icon: 'ChatDotRound' },
     { type: 'leaf', kind: 'standard', id: '', name: '标准达成', icon: 'Aim' },
     { type: 'leaf', kind: 'attendPeriod', id: '', name: '时段出勤', icon: 'Calendar' },
+    { type: 'leaf', kind: 'timeout', id: '', name: '配送超时', icon: 'Timer' },
     { type: 'leaf', kind: 'unsatisfied', id: '', name: '违规处罚', icon: 'Warning' },
+    { type: 'leaf', kind: 'imContact', id: '', name: 'IM 电联', icon: 'ChatDotRound' },
+    { type: 'leaf', kind: 'orderDetail', id: '', name: '运单明细', icon: 'Tickets' },
     { type: 'leaf', kind: 'assess', id: '', name: '考核设置', icon: 'Trophy' },
   ];
   items.push({ type: 'parent', key: 'dash', name: '数据看板', icon: 'DataLine', children: dashSubs });
