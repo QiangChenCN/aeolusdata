@@ -15,7 +15,13 @@ import { ComputeService } from '../../../modules/compute/compute.service';
 import { FetchPaceService } from './fetch-pace.service';
 import { RefreshAllService } from './refresh-all.service';
 import { TeamsFetchService } from '../sources/teams-fetch.service';
+import { API as ORDERS_API } from '../sources/delivery-query.service';
 import { extractToken } from '../../../common/token.util';
+import { probeRuntime } from '../../../common/net-error';
+import { PgService } from '../../../modules/pg/pg.service';
+
+/** 运单接口域名（阶段 0 失败时用它做现场探测，与失败请求同一目标）。 */
+const ORDERS_HOST = new URL(ORDERS_API).hostname;
 
 /**
  * 全量刷新「编排器」（原 Python `dashboard/standard/refresh_all.py` 的 Nest 原生实现）。
@@ -134,6 +140,8 @@ export class RefreshRunnerService {
     private readonly compute: ComputeService,
     private readonly auth: AuthService,
     private readonly dataPerm: DataPermService,
+    /** 仅用于失败时取连接池体检指标（诊断用，不参与业务流程）。 */
+    private readonly pg: PgService,
   ) {
     this.rootDir = ROOT;
     this.logsDir = dirs.runtime('logs');
@@ -389,10 +397,18 @@ export class RefreshRunnerService {
         // 阶段 0 是运单的**唯一**来源：Python 侧的本地拉取路径已按「取数归 NestJS」移除，
         // 因此这里失败即整体失败 —— 不再「降级为逐站拉取」（那等于恢复一套已删除的实现）。
         const why = `阶段 0 取数失败：${(e as Error).message}`;
-        this.log(why);
+        // 现场取证：`net fetch failed` 分不清「机器/宿主网络不通」与「本进程自己卡死」
+        // （后者是长跑进程的常见病，重启即恢复，两者处置完全不同）。失败瞬间独立探测一次
+        // DNS + TCP + 事件循环延迟，并附带 PG 连接池体检 —— 池 waiting>0 就是池被占满，
+        // loop 明显偏大就是事件循环被同步任务堵住，探测全正常则指向进程内连接池自身。
+        const probe = await probeRuntime(ORDERS_HOST).catch(() => '探测自身异常');
+        const ps = this.pg.poolStats();
+        const pool = ps ? `pg=${ps.total}建/${ps.idle}闲/${ps.waiting}等(max${ps.max})` : 'pg=未启用';
+        const detail = `${why}｜现场探测 ${probe}｜${pool}`;
+        this.log(detail);
         for (const tid of teams) {
           const nm = this.state.teams.find((t) => t.id === String(tid))?.name || String(tid);
-          failed.push({ id: String(tid), name: nm, error: why });
+          failed.push({ id: String(tid), name: nm, error: detail });
           this.finishTeam(tid, false, why);
         }
         return; // finally 仍会收尾（running=false / 状态落定）

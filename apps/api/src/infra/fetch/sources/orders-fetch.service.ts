@@ -90,9 +90,14 @@ export class OrdersFetchService {
           attempt = 0; // 新会话，退避计数归零
           continue;
         }
-        this.pace.penalize(); // 被限流/失败 → 间隔往大调（乘性退让）
-        if (this.pace.isThrottle(e)) this.pace.bump('throttle');
-        else this.pace.bump('failed');
+        // 被限流 → 抬下限（碰撞学习）；网络等其它失败 → 只退当前间隔（详见 pace.penalizeNet）
+        if (this.pace.isThrottle(e)) {
+          this.pace.penalize();
+          this.pace.bump('throttle');
+        } else {
+          this.pace.penalizeNet();
+          this.pace.bump('failed');
+        }
         if (attempt >= MAX_RETRIES) throw e;
         this.pace.bump('retries');
         await this.pace.backoffSleep(BACKOFF_BASE, attempt);

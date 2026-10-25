@@ -142,6 +142,21 @@ export class FetchPaceService {
     );
   }
 
+  /**
+   * 非限流失败（网络异常 / 上游错误码）：只把**当前**间隔乘性退让，
+   * **不抬下限、不计碰撞** —— 与 `penalize()` 的分界点是「这是不是上游配额信号」。
+   *
+   * 为什么必须分开：下限会写盘（pace_state.json，与 Python 共用）且只按 0.90 缓慢衰减，
+   * 一次网络抖动（DNS/连接超时，与限流无关）就会把下限永久钉到 PACE_MAX=4.00s，
+   * 之后每次刷新都按 4s/页跑 —— 实测曾把一次全量刷新拖到 8 分钟，且久久回不来。
+   */
+  penalizeNet(): void {
+    this.cur = Math.min(PACE_MAX, this.cur * PACE_MUL + 0.1);
+    this.logger.warn(
+      `请求失败（非限流）：当前间隔退到 ${this.cur.toFixed(2)}s，下限维持 ${this.floor.toFixed(2)}s`,
+    );
+  }
+
   /** 页间隔：当前间隔叠 ±15% 抖动。 */
   async pageSleep(): Promise<void> {
     await this.sleep(this.rnd(this.cur * PACE_JITTER[0], this.cur * PACE_JITTER[1]) * 1000);

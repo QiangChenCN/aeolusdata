@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { netError } from '../../../common/net-error';
 
 /**
  * 运单明细接口单次请求（移植自 get_data/delivery.py 的 query）。
@@ -106,7 +107,9 @@ export class DeliveryQueryService {
       });
       j = await res.json();
     } catch (e) {
-      throw new Error(`net ${(e as Error).message}`);
+      // 展开 cause：只留 `net fetch failed` 无法判断是 DNS / 超时 / 连接重置，
+      // 远端排查只能靠猜（详见 common/net-error.ts）。
+      throw netError(e);
     } finally {
       clearTimeout(timer);
     }

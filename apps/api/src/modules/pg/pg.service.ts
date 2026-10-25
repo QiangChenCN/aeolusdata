@@ -99,6 +99,23 @@ export class PgService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
+  /**
+   * 连接池体检（仅诊断用）：`total` 已建连接数、`idle` 空闲、`waiting` 排队等连接。
+   *
+   * 为什么需要：连接拿不到的报错是 `timeout exceeded when trying to connect`
+   * （`connectionTimeoutMillis=5s`），它**不区分**「PG 挂了」和「池被占满」——
+   * waiting>0 就坐实池耗尽，处置方向完全不同。
+   */
+  poolStats(): { total: number; idle: number; waiting: number; max: number } | null {
+    if (!this.pool) return null;
+    return {
+      total: this.pool.totalCount,
+      idle: this.pool.idleCount,
+      waiting: this.pool.waitingCount,
+      max: Number(this.config.get('PG_POOL_MAX')) || 10,
+    };
+  }
+
   /** 是否已启用（DATABASE_URL 已配置且连接池已建）。双模存储据此选择 PG / SQLite 兜底。 */
   get isEnabled(): boolean {
     return !!this.pool;

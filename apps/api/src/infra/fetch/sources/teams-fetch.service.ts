@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import * as fs from 'fs';
 import * as path from 'path';
 import { AeolusCookieService } from '../creds/aeolus-cookie.service';
+import { netError } from '../../../common/net-error';
 
 /**
  * 站点目录取数（原 Python `get_data/teams.py::fetch_teams` + `server.py::_fetch_all_teams`）。
@@ -139,7 +140,7 @@ export class TeamsFetchService {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       j = await res.json();
     } catch (e) {
-      throw new Error(`net ${(e as Error).message}`);
+      throw netError(e);
     } finally {
       clearTimeout(timer);
     }

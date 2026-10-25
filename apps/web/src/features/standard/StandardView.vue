@@ -537,6 +537,15 @@ async function onRefresh() {
     riderLoading.value = false;
   }
 }
+/* 后端失败原因多为网络层错误码（DNS / 超时 / 连接重置），直接给码用户看不懂，
+   这里补一句人话，原始信息仍完整保留便于排查。 */
+function humanizeErr(msg) {
+  const s = String(msg || '');
+  if (/EAI_AGAIN|ENOTFOUND/.test(s)) return `${s}（DNS 解析失败，检查本机网络）`;
+  if (/ETIMEDOUT|UND_ERR|timed out|超时/.test(s)) return `${s}（连接上游超时，稍后重试）`;
+  if (/ECONNRESET|ECONNREFUSED/.test(s)) return `${s}（连接被重置/拒绝，稍后重试）`;
+  return s;
+}
 function poll() {
   if (pollTimer) clearInterval(pollTimer);
   pollTimer = setInterval(async () => {
@@ -546,7 +555,24 @@ function poll() {
       if (!status || !status.running) {
         clearInterval(pollTimer); pollTimer = null;
         refreshing.value = false;
-        ElMessage.success('刷新完成');
+        /* 后端把失败站点记在 status.error 里：只看 running=false 会一律提示「刷新完成」，
+           于是阶段 0 取数失败（所有站点都没更新）也显示成功 —— 表现为「刷新了却不生效、也不报错」。
+           这里必须先把 error 摆到用户面前。 */
+        const errs = Array.isArray(status && status.error) ? status.error : [];
+        if (errs.length) {
+          const first = String((errs[0] && errs[0].error) || '未知原因');
+          const more = errs.length > 1 ? `（另有 ${errs.length - 1} 个站点同样失败）` : '';
+          ElMessage({
+            type: 'error',
+            message: `刷新失败：${humanizeErr(first)}${more}`,
+            duration: 10000,
+            showClose: true,
+          });
+        } else if (!status) {
+          ElMessage.error('刷新状态读取失败，请确认后端服务是否正常');
+        } else {
+          ElMessage.success('刷新完成');
+        }
         load();
         riderLoaded.value = false;
         if (tab.value === 'rider') loadRiders();

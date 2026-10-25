@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import * as fs from 'fs';
 import * as path from 'path';
 import { dirs } from '../../../config/paths';
+import { describeNetError } from '../../../common/net-error';
 
 /**
  * 风神（Aeolus）SSO 登录协议 —— 原 Python `aeolus_sdk/login.py` 的 Nest 移植。
@@ -80,27 +81,6 @@ export function encodeURIComponentLoose(s: string): string {
     }
   }
   return out;
-}
-
-/**
- * 网络错误的**完整**描述。
- *
- * Node 的 `fetch` 失败时只给笼统的 `fetch failed`，真正原因（DNS / TLS / 连接重置 / 超时）
- * 挂在 `cause` 上。以前只拼 `message`，上层看到的就是一句 `登录页请求失败: fetch failed`，
- * 既无法远程定位，也触发不了 `diagnose()` 的网络关键字匹配（详见 diagnostics.util.ts）。
- * 这里把自身 code 与 cause 的 code/errno/message 一并展开。
- */
-function describeNetError(prefix: string, ex: unknown): Error {
-  const e = ex as Error & {
-    code?: string;
-    errno?: number;
-    cause?: { code?: string; errno?: number; message?: string };
-  };
-  const stem = `${prefix}: ${e?.message || String(ex)}`;
-  const ownErrno = e?.code ? ` code=${e.code}` : '';
-  const c = e?.cause;
-  const cause = c ? ` cause=${c.code || c.errno || c.message || '未知'}` : '';
-  return new Error(`${stem}${ownErrno}${cause}`);
 }
 
 /** 模幂（平方-乘法）。 */

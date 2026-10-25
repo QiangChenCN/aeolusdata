@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { AeolusCookieService } from '../creds/aeolus-cookie.service';
+import { netError } from '../../../common/net-error';
 
 /**
  * 排班目标（排班统计）取数 —— 原 Python `get_data/schedule_statistics.py`。
@@ -91,7 +92,7 @@ export class ScheduleFetchService {
         });
         j = await res.json();
       } catch (e) {
-        last = `net ${(e as Error).message}`;
+        last = netError(e).message;
         this.logger.warn(`排班取数网络异常（第 ${attempt + 1}/${retries} 次）：${last}`);
         await sleep((2 + attempt * 2) * 1000);
         continue;

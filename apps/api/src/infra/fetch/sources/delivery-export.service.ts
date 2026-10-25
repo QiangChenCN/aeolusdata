@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import * as XLSX from 'xlsx';
 import { AeolusCookieService } from '../creds/aeolus-cookie.service';
 import { AuthError, TIME_FIELDS, TIME_FIELD } from './delivery-query.service';
+import { netError } from '../../../common/net-error';
 
 /**
  * 运单明细「导出优先」取数（移植自 Python `get_data/delivery_export.py`）。
@@ -307,6 +308,8 @@ export class DeliveryExportService {
         signal: ctrl.signal,
       });
       return await res.json();
+    } catch (e) {
+      throw netError(e);
     } finally {
       clearTimeout(timer);
     }
@@ -362,6 +365,8 @@ export class DeliveryExportService {
       });
       const ab = await res.arrayBuffer();
       return Buffer.from(ab);
+    } catch (e) {
+      throw netError(e);
     } finally {
       clearTimeout(timer);
     }
