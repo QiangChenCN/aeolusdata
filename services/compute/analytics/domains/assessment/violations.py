@@ -74,7 +74,7 @@ FALSE_REPORT_REASON_SUB = "虚假报备了商户出货慢"
 # 违规明细 ↔ 运单「高比单」JOIN 用的运单标识键：违规明细用「运单号」，运单明细用
 # 「运单id / trackingId」，订单号 orderNo 作兜底键。同一运单在两侧取数口径下可能以
 # 不同标识出现，故多键建索引，提升命中率（保守：未命中不计入高比单）。
-WAYBILL_JOIN_KEYS = ("运单id", "trackingId", "订单号", "orderNo")
+WAYBILL_JOIN_KEYS = ("运单id", "trackingId", "订单号", "platformTrackingId", "orderNo")
 
 
 def _pick(row, keys):

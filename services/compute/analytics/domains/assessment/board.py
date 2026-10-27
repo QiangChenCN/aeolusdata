@@ -203,8 +203,8 @@ def count_gaobi_orders(orders, date, all_dates=False):
 
 # ---- 天气等级（考核看板新增列，2026-10-14）----
 # 订单天气严重度档位：0=正常，1=轻微恶劣天气，2=恶劣天气，3=极恶劣天气，4=罕见恶劣天气。
-# 取值字段 weatherLevel（天气等级 中文别名同源）；数值档位或文本标签均可识别。
-WEATHER_LEVEL_KEYS = ("weatherLevel", "天气等级")
+# 取值字段 weatherGradeName（天气等级 中文别名同源）；数值档位或文本标签均可识别。
+WEATHER_LEVEL_KEYS = ("weatherGradeName", "天气等级", "weatherLevel")
 
 
 def _weather_grade(o):

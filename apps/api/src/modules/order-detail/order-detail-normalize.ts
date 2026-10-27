@@ -1,16 +1,20 @@
 /**
  * 运单明细看板的「原始行 → 展示行」归一化（本看板私有，不与其它看板共享）。
  *
- * 原始行是风神导出的**宽表**（一份行同时带中文表头键与英文键，共 80+ 列：
- * 见 `infra/fetch/sources/delivery-export.service.ts` 的 CN2EN）。直接整行丢给前端
- * 有两个问题：单日全站动辄数千行 × 80 列，包体过大；且中英双键让前端无从下手。
+ * 原始行是风神导出的**宽表**（一份行同时带中文表头键与英文键，见
+ * `infra/fetch/sources/delivery-export.service.ts` 的 CN2EN，共 70+ 列）。直接整行丢给前端
+ * 有两个问题：单日全站动辄数千行 × 70 列，包体过大；且中英双键让前端无从下手。
  *
  * 因此这里把原始行投影成一份**固定列定义**的展示行：
  *   · 列定义（`ORDER_DETAIL_COLUMNS`）是唯一事实源，控制器把它一并返回，前端据此渲染表头；
+ *   · 列定义直接由风神原始字段（`CN2EN`：中文表头 → 英文真名）全量生成，
+ *     列名即字段名、不做任何美化重命名，看板开放风神导出的**全部列**，用户可在「列设置」里自行勾选；
  *   · 取值按 keys 顺序回落（英文键优先，兼容分页接口的纯英文行）；
  *   · 时间列统一成北京时间字符串 `YYYY-MM-DD HH:mm:ss`（字典序即时间序，排序无需特判）；
  *   · 布尔列统一成「是 / 否」，避免「否」这类字符串被当成真值。
  */
+
+import { CN2EN, BOOL_EN, TIME_EN } from '../../infra/fetch/sources/delivery-export.service';
 
 export type OrderDetailColKind = 'text' | 'time' | 'bool' | 'num';
 
@@ -22,62 +26,94 @@ export interface OrderDetailColumn {
   keys: string[];
 }
 
-export const ORDER_DETAIL_COLUMNS: OrderDetailColumn[] = [
-  { key: 'order_id', label: '运单ID', kind: 'text', keys: ['trackingId', '运单id', '运单ID'] },
-  { key: 'order_no', label: '订单号', kind: 'text', keys: ['orderNo', '订单号', 'merchantOrderSerial', '商家订单流水号'] },
-  { key: 'team_id', label: '站点ID', kind: 'text', keys: ['teamId', '站点id', '团队ID'] },
-  { key: 'team_name', label: '站点名称', kind: 'text', keys: ['teamName', '站点名称'] },
-  { key: 'rider_id', label: '骑手ID', kind: 'text', keys: ['knightId', '骑手id'] },
-  { key: 'rider_name', label: '骑手姓名', kind: 'text', keys: ['knightName', '骑手名称'] },
-  { key: 'merchant_id', label: '商家ID', kind: 'text', keys: ['merchantId', '商id'] },
-  { key: 'merchant_name', label: '商家名称', kind: 'text', keys: ['merchantName', '商名称'] },
-  { key: 'zone_name', label: '商圈', kind: 'text', keys: ['zoneName', '商圈名称'] },
-  { key: 'state', label: '运单状态', kind: 'text', keys: ['stateDesc', '运单状态'] },
-  { key: 'tracking_type', label: '运单类型', kind: 'text', keys: ['trackingType', '运单类型'] },
-  { key: 'order_source', label: '订单来源', kind: 'text', keys: ['orderSource', '订单来源'] },
-  { key: 'weather', label: '天气', kind: 'text', keys: ['weather', '天气'] },
-  { key: 'distance_km', label: '订单距离(km)', kind: 'num', keys: ['orderDistanceKm', '订单距离(km)'] },
-  { key: 'amount', label: '订单金额(元)', kind: 'num', keys: ['orderAmount', '订单金额(元)'] },
-  { key: 'weight_kg', label: '订单重量(kg)', kind: 'num', keys: ['orderWeightKg', '订单重量(kg)'] },
-  { key: 'user_order_at', label: '用户下单时间', kind: 'time', keys: ['userOrderAt', '用户下单时间'] },
-  { key: 'tracking_created_at', label: '运单创建时间', kind: 'time', keys: ['trackingCreatedAt', '运单创建时间'] },
-  { key: 'team_accept_at', label: '团队接单时间', kind: 'time', keys: ['teamAcceptAt', '团队接单时间'] },
-  { key: 'accept_at', label: '骑手接单时间', kind: 'time', keys: ['acceptAtLast', '骑手接单时间'] },
-  { key: 'arrive_at', label: '骑手到店时间', kind: 'time', keys: ['riderArriveAt', '骑手到店时间'] },
-  { key: 'meal_ready_at', label: '实际出餐时间', kind: 'time', keys: ['actualMealReadyAt', '实际出餐时间'] },
-  { key: 'pickup_at', label: '骑手取餐时间', kind: 'time', keys: ['pickupAt', '骑手取餐时间'] },
-  { key: 'deliver_at', label: '骑手送达时间', kind: 'time', keys: ['deliverAt', '骑手送达时间'] },
-  { key: 'finish_at', label: '运单完成时间', kind: 'time', keys: ['trackingFinishAt', '运单完成时间'] },
-  { key: 'platform_expect_at', label: '平台期望时间', kind: 'time', keys: ['platformExpectAt', '平台期望时间'] },
-  { key: 'user_expect_at', label: '用户期望时间', kind: 'time', keys: ['userExpectAt', '用户期望时间'] },
-  { key: 'rider_assess_at', label: '骑手考核时间', kind: 'time', keys: ['riderAssessAt', '骑手考核时间'] },
-  { key: 'cancel_at', label: '运单取消时间', kind: 'time', keys: ['trackingCancelAt', '运单取消时间'] },
-  { key: 'over_platform', label: '超平台期望', kind: 'bool', keys: ['isOverPlatformExpect', '是否超平台期望时间'] },
-  { key: 'over_user_t', label: '超用户T', kind: 'bool', keys: ['isOverUserT', '是否超用户T'] },
-  { key: 'over_rider_t', label: '超骑手T', kind: 'bool', keys: ['isOverRiderT', '是否超骑手T'] },
-  { key: 'is_transfer', label: '转单', kind: 'bool', keys: ['isTransfer', '是否发生转单'] },
-  { key: 'is_reassign', label: '改派', kind: 'bool', keys: ['isReassign', '是否发生改派'] },
-  { key: 'is_reverse', label: '逆向单', kind: 'bool', keys: ['isReverse', '是否逆向单'] },
-  { key: 'is_abnormal_report', label: '异常报备', kind: 'bool', keys: ['isAbnormalReport', '是否异常报备'] },
-  { key: 'is_cheat', label: '欺诈', kind: 'bool', keys: ['isCheat', '欺诈是否成立'] },
-  { key: 'is_high_value', label: '高笔单', kind: 'bool', keys: ['isHighValue', '是否高笔单'] },
-];
+/**
+ * 分页/导出两套取数现已**统一字段名**：2026-10-27 起 CN2EN 的英文侧已对齐风神
+ * queryTracking 的真实字段名（`infra/fetch/storage/delivery-columns.ts` 的 `FIELD_ORDER`），
+ * 与分页接口返回键完全一致。因此不再需要「分页键 → 导出键」的反向桥接，PAGE_ALIAS 留空。
+ * 列取值仍按 `keys` 顺序回落（英文真名优先 + 中文表头兜底），两种取数来源天然兼容。
+ */
+const PAGE_ALIAS: Record<string, string> = {};
+
+/**
+ * 枚举「分页编码 → 导出中文名」对照表（按**风神英文真名**做 key）。分页接口对部分枚举只回数字编码、
+ * 导出回中文名，为让两路径显示一致（且回落分页时也有可读名），按列 key 做编码翻译。
+ * 仅含实拉反推确认的一对一映射；未出现的编码原样透传（不猜测，避免翻错责任方等）。
+ */
+const ENUM_DICT: Record<string, Record<string, string>> = {
+  deliverTypeName: { '1': '即时单', '2': '预订单' }, // 运单类型：分页 trackingType ↔ 导出 deliverTypeName
+  weatherGradeName: { '0': '正常' }, // 天气等级：分页 weatherGrade=0 ↔ 导出 weatherGradeName=正常
+  cancelSponsor: { '1': '用户' }, // 取消发起方：分页 cancelSponsor=1 ↔ 导出 cancelInitiator=用户
+  cancelDuty: { '3': '用户责' }, // 取消责任方：分页 cancelDuty=3 ↔ 导出 cancelResponsible=用户责
+};
+
+/** 对文本列的取值做枚举编码 → 中文名翻译（无匹配则原样返回）。 */
+function translateEnum(colKey: string, v: unknown): unknown {
+  if (v === null || v === undefined) return v;
+  const dict = ENUM_DICT[colKey];
+  if (!dict) return v;
+  const s = String(v);
+  return dict[s] !== undefined ? dict[s] : v;
+}
+
+/** 导出键 → 其分页别名键列表（构造列 keys 时展开）。 */
+const PAGE_ALIAS_REV: Record<string, string[]> = {};
+for (const [pg, en] of Object.entries(PAGE_ALIAS)) {
+  (PAGE_ALIAS_REV[en] ||= []).push(pg);
+}
+
+/** 把列的基础 keys 扩展为「基础键 + 其分页别名键」，兼容两套取数 schema。 */
+function expandKeys(keys: string[]): string[] {
+  const out: string[] = [];
+  for (const k of keys) {
+    out.push(k);
+    for (const pg of PAGE_ALIAS_REV[k] || []) out.push(pg);
+  }
+  return out;
+}
+
+/**
+ * 时长类数字列（不在 TIME_EN 但应参与数值排序）：超平台期望送达时长 / 配送时长。
+ */
+const EXTRA_NUMERIC_EN = new Set(['overPlatfromExpecteTime', 'deliveryDuration']);
+
+/**
+ * 列定义直接由风神原始字段（`CN2EN`：中文表头 → 英文真名）全量生成：
+ *   · 列名（label）= 风神中文表头（如「商名称」「运单完成时间」），key = 风神英文真名（如 agencyName / trackingFinishAt）；
+ *   · 不做任何「美化重命名」，列名即字段名、所见即所得，避免列名与真实字段对不上的困惑；
+ *   · 取值按 keys=[英文真名, 中文表头] 顺序回落（兼容分页接口的纯英文行）；
+ *   · kind 由 BOOL_EN / TIME_EN / EXTRA_NUMERIC_EN 推断；
+ *   · 看板开放风神导出的全部列，用户可在「列设置」里自行勾选。
+ */
+function buildColumns(): OrderDetailColumn[] {
+  const out: OrderDetailColumn[] = [];
+  for (const [cn, en] of Object.entries(CN2EN)) {
+    let kind: OrderDetailColKind = 'text';
+    if (BOOL_EN.has(en)) kind = 'bool';
+    else if (TIME_EN.has(en)) kind = 'time';
+    else if (EXTRA_NUMERIC_EN.has(en)) kind = 'num';
+    out.push({ key: en, label: cn, kind, keys: expandKeys([en, cn]) });
+  }
+  return out;
+}
+
+/** 看板列定义（唯一事实源）：风神导出的全部字段，直接由 CN2EN 生成。 */
+export const ORDER_DETAIL_COLUMNS: OrderDetailColumn[] = buildColumns();
 
 /** 数值列（排序时按数值比大小，其余按字典序）。 */
 export const ORDER_DETAIL_NUMERIC_KEYS = new Set(
   ORDER_DETAIL_COLUMNS.filter((c) => c.kind === 'num').map((c) => c.key),
 );
 
-/** 关键字搜索命中的列（运单号 / 骑手 / 商家 / 站点）。 */
+/** 关键字搜索命中的列（运单号 / 骑手 / 商家 / 站点），用风神英文真名。 */
 export const ORDER_DETAIL_SEARCH_KEYS = [
-  'order_id',
-  'order_no',
-  'team_id',
-  'team_name',
-  'rider_id',
-  'rider_name',
-  'merchant_id',
-  'merchant_name',
+  'trackingId',
+  'platformTrackingId',
+  'teamId',
+  'teamName',
+  'knightId',
+  'knightName',
+  'agencyId',
+  'agencyName',
 ];
 
 export type OrderDetailRow = Record<string, string | number | null>;
@@ -103,10 +139,10 @@ function pad(n: number): string {
  */
 export function fmtOrderTime(v: unknown): string {
   if (v === null || v === undefined) return '';
-  if (typeof v === 'number') return msToStr(v);
+  if (typeof v === 'number') return v === 0 ? '' : msToStr(v);
   const s = String(v).trim();
   if (!s) return '';
-  if (/^\d+$/.test(s)) return msToStr(Number(s));
+  if (/^\d+$/.test(s)) return Number(s) === 0 ? '' : msToStr(Number(s));
   return s; // 已是格式化时间，原样返回
 }
 
@@ -140,7 +176,7 @@ function fmtNum(v: unknown): number | null {
 export function normalizeOrderRow(raw: Record<string, unknown>): OrderDetailRow {
   const out: OrderDetailRow = {};
   for (const col of ORDER_DETAIL_COLUMNS) {
-    const v = pick(raw, col.keys);
+    const v = translateEnum(col.key, pick(raw, expandKeys(col.keys)));
     if (col.kind === 'time') out[col.key] = fmtOrderTime(v);
     else if (col.kind === 'bool') out[col.key] = fmtBool(v);
     else if (col.kind === 'num') out[col.key] = fmtNum(v);

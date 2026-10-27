@@ -13,13 +13,11 @@ function todayYmd() {
   return new Date(Date.now() + 8 * 3600 * 1000).toISOString().slice(0, 10);
 }
 
-/** 默认展示列（38 列全开会挤成横向长条，默认只摊开查单最常用的那些）。 */
-export const DEFAULT_VISIBLE_COLUMNS = [
-  'order_id', 'order_no', 'team_name', 'rider_name', 'merchant_name',
-  'state', 'tracking_type', 'distance_km', 'amount',
-  'user_order_at', 'accept_at', 'arrive_at', 'pickup_at', 'deliver_at',
-  'finish_at', 'platform_expect_at', 'over_platform', 'over_user_t', 'over_rider_t',
-];
+/**
+ * 默认展示列：首次加载后端返回列定义后，整体填为「全部列」（用户要求看板开放风神全部原始列）。
+ * 保留本导出仅为兼容潜在外部引用；实际默认可见集在 load() 里按 columns 全量初始化。
+ */
+export const DEFAULT_VISIBLE_COLUMNS = [];
 
 export function useOrderDetail() {
   /* 筛选条件 */
@@ -43,7 +41,7 @@ export function useOrderDetail() {
   const total = ref(0);
   const page = ref(1);
   const pageSize = ref(50);
-  const sortProp = ref('finish_at');
+  const sortProp = ref('trackingFinishAt');
   const sortOrder = ref('descending');
   const fetchedAt = ref('');
 
@@ -60,8 +58,10 @@ export function useOrderDetail() {
   const refreshing = ref(false);
   const cooldown = ref(0);
 
-  /* 列显隐 */
+  /* 列显隐：默认全部可见（首次拿到后端列定义后整体填为全部 key）。
+   * colInit 保证：仅首次加载填充默认全列，之后用户手动在「列设置」里的增删不被覆盖。 */
   const visibleKeys = ref([...DEFAULT_VISIBLE_COLUMNS]);
+  let colInit = false;
   const visibleColumns = computed(() =>
     columns.value.filter((c) => visibleKeys.value.includes(c.key)),
   );
@@ -130,7 +130,15 @@ export function useOrderDetail() {
       fetchedAt.value = res.fetched_at || '';
       loadErrMsg.value = '';
       // 列定义 / 站点覆盖 / 状态枚举：首次拿到后再补，切换条件时保持上次的值以免下拉闪空
-      if (Array.isArray(res.columns) && res.columns.length) columns.value = res.columns;
+      if (Array.isArray(res.columns) && res.columns.length) {
+        const first = columns.value.length === 0;
+        columns.value = res.columns;
+        // 首次拿到列定义：默认全部可见（用户要求看板开放风神全部原始列）
+        if (first && !colInit) {
+          visibleKeys.value = res.columns.map((c) => c.key);
+          colInit = true;
+        }
+      }
       if (Array.isArray(res.teams)) teamStats.value = res.teams;
       if (Array.isArray(res.states)) states.value = res.states;
     } catch (e) {
@@ -181,7 +189,7 @@ export function useOrderDetail() {
         return { ok: false, error: (res && res.error) || '刷新失败' };
       }
       // 实时表只存当天：若当前在查历史日，刷新后切回今天最新快照（重载交给 handleRefresh）
-      if (date.value !== todayYmd()) date.value = todayYmd();
+      if (dateRange.value[0] !== todayYmd()) dateRange.value = [todayYmd(), todayYmd()];
       return { ok: true, data: res };
     } catch (e) {
       startCooldown(e && e.data && e.data.retry_after);

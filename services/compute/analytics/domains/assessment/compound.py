@@ -14,10 +14,10 @@
 · 圈单（仅作用分子）：
   - 大网考核单范围 / 兜底单 / 二次配送单：运单明细**没有**对应标记字段，
     无法识别，当前不剔除（待数据源补齐字段后再收口）。
-  - 二呼单：isSecondCall=真 且 配送成功（站点承接并妥投）→ 剔除。
+  - 二呼单：isSecondCallOrder=真 且 配送成功（站点承接并妥投）→ 剔除。
 · 超时秒数 X = 骑手送达时间 - 基准时间：
-  - 即时单：基准 = 平台期望送达时间 platformExpectAt（点值毫秒）；
-  - 预订单：platformExpectAt 为「起~止」时间片字符串，基准 = 区间终点
+  - 即时单：基准 = 平台期望送达时间 logisticsPredictDeliveryAt（点值毫秒）；
+  - 预订单：logisticsPredictDeliveryAt 为「起~止」时间片字符串，基准 = 区间终点
     （最晚送达时间，即"生效时间片"口径）；为点值时直接用该点值
     （"未生效时间片"近似同口径）。
   - 「出餐后呼单 → 基准由预测T+8min 改为骑士T」：明细无呼单类型字段，
@@ -46,11 +46,11 @@ from analytics.core import order_rules as OR
 BJ = datetime.timezone(datetime.timedelta(hours=8))
 
 # ---- 取数键（live 英文键 / 导出中文键兼容）----
-PLATFORM_EXPECT_KEYS = OR.PLATFORM_EXPECT_KEYS          # platformExpectAt / 平台期望时间
-DELIVER_KEYS = OR.DELIVER_KEYS                          # deliverAt / 骑手送达时间
+PLATFORM_EXPECT_KEYS = OR.PLATFORM_EXPECT_KEYS          # logisticsPredictDeliveryAt / 平台期望时间
+DELIVER_KEYS = OR.DELIVER_KEYS                          # completeAt / 骑手送达时间
 FINISH_KEYS = ("trackingFinishAt", "运单完成时间")        # 终态时间（保留供 finish_ms 兜底，已不再用于归属过滤）
-TYPE_KEYS = ("trackingType", "运单类型", "配送类型名称")   # 即时单 / 预订单
-SECOND_CALL_KEYS = ("isSecondCall", "是否二呼单")
+TYPE_KEYS = ("deliverTypeName", "运单类型", "配送类型名称")   # 即时单 / 预订单
+SECOND_CALL_KEYS = ("isSecondCallOrder", "是否二呼单")
 
 # ---- 分段阈值（秒）----
 T_NONE = 480        # <=8min 不考核
@@ -114,7 +114,7 @@ def lateness_seconds(o):
 
 
 def is_second_call(o):
-    """二呼单判定：isSecondCall / 是否二呼单 为真。"""
+    """二呼单判定：isSecondCallOrder / 是否二呼单 为真。"""
     return OR._is_truthy_flag(OR.order_val(o, SECOND_CALL_KEYS))
 
 

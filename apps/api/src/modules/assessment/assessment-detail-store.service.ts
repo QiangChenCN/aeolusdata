@@ -48,8 +48,8 @@ CREATE TABLE IF NOT EXISTS violation (
   UNIQUE(stat_date, violation_no));
 `;
 
-/** 运单号取值键（与 Python order_rules 同口径）。 */
-const ORDER_NO_KEYS = ['trackingId', '运单id', 'orderNo', 'orderId', '订单号'];
+/** 运单号取值键（与 Python order_rules 同口径）。风神真名 platformTrackingId / trackingId；旧数据或带 orderNo。 */
+const ORDER_NO_KEYS = ['trackingId', '运单id', 'platformTrackingId', '订单号', 'orderNo', 'orderId'];
 /** 站点 id 取值键。 */
 const TEAM_KEYS = ['teamId', '站点id', 'teamID', '团队ID'];
 /** 违规稳定主键的构成键（同站点 + 同运单 + 同类型 + 同原因 → 同一条违规）。 */

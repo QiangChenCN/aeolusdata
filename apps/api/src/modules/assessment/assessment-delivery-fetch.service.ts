@@ -24,7 +24,7 @@ import { AssessmentDetailStoreService } from './assessment-detail-store.service'
 function deliveryId(o: Record<string, unknown>): string {
   const v: Record<string, unknown> = o;
   const cand =
-    v['trackingId'] ?? v['运单id'] ?? v['orderNo'] ?? v['orderId'] ?? v['订单号'];
+    v['trackingId'] ?? v['运单id'] ?? v['platformTrackingId'] ?? v['orderNo'] ?? v['orderId'] ?? v['订单号'];
   if (cand != null && String(cand).trim()) return String(cand).trim();
   return 'h' + createHash('sha1').update(JSON.stringify(o)).digest('hex').slice(0, 24);
 }

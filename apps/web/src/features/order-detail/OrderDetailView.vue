@@ -272,7 +272,7 @@ onUnmounted(dispose);
   padding: var(--sp-12); max-height: 380px; overflow: auto;
   display: flex; flex-direction: column; gap: var(--sp-4);
 }
-/* 列设置：一列一行，避免 38 个复选框横排溢出下拉面板 */
+/* 列设置：一列一行，避免全部原始列（70+）复选框横排溢出下拉面板 */
 .od-cols :deep(.el-checkbox-group) { display: flex; flex-direction: column; gap: var(--sp-4); }
 .od-cols :deep(.el-checkbox) { height: auto; margin-right: 0; }
 .od-hint { margin-bottom: var(--sp-12); }

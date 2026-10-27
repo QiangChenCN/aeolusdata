@@ -116,9 +116,9 @@ def compute_quality(orders):
     for o in orders:
         if str(o.get("运单状态") or o.get("stateDesc") or "") == "配送成功":
             done += 1
-        if _t(o.get("是否超平台期望时间") or o.get("isOverPlatformExpect")):
+        if _t(o.get("是否超平台期望时间") or o.get("isOverPlatfromExpecteTime")):
             over += 1
-            d = _parse_dur(o.get("超平台期望送达时长") or o.get("overPlatformExpectDuration"))
+            d = _parse_dur(o.get("超平台期望送达时长") or o.get("overPlatfromExpecteTime"))
             if d:
                 timeout_sec_sum += d
                 timeout_cnt += 1
@@ -127,9 +127,9 @@ def compute_quality(orders):
             complain += 1
         if _t(o.get("索赔是否成立") or o.get("isClaim")):
             claim += 1
-        if _t(o.get("违规取餐是否成立") or o.get("isViolatePickup")) or \
-           _t(o.get("违规到店是否成立") or o.get("isViolateArrive")) or \
-           _t(o.get("违规送达是否成立") or o.get("isViolateDeliver")):
+        if _t(o.get("违规取餐是否成立") or o.get("isIllegalFetch")) or \
+           _t(o.get("违规到店是否成立") or o.get("isIllegalArrival")) or \
+           _t(o.get("违规送达是否成立") or o.get("isIllegalComplete")):
             violate += 1
         if _t(o.get("欺诈是否成立") or o.get("isCheat")):
             cheat += 1

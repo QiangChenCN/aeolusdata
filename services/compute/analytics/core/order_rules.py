@@ -55,17 +55,17 @@ RIDER_NAME_KEYS = ("knightName", "骑手姓名", "riderName")
 TEAM_KEYS = ("teamId", "团队ID")
 CREATE_KEYS = ("trackingCreatedAt", "运单创建时间", "createTime", "orderCreateTime")
 # 骑手「接单时间」：订单日期归属以此为准（2026-09-09 用户要求）
-ACCEPT_KEYS = ("acceptAtLast", "最近接单时间", "骑手接单时间")
+ACCEPT_KEYS = ("assignAtLast", "骑手接单时间")
 
 # ---- 平台期望 / 超时口径（实时数据看板 T8 超时单，2026-09-19）----
 # 「超平台期望送达时长」由平台算好，导出为 'HH:MM:SS' 字符串，恒等于
-#   （骑手送达时间 deliverAt - 平台期望时间 platformExpectAt）。
-# 注意 platformExpectAt 有约 1 成运单导出为「区间字符串」（如 '11:25:00~11:45:00'），
+#   （骑手送达时间 completeAt - 平台期望时间 logisticsPredictDeliveryAt）。
+# 注意 logisticsPredictDeliveryAt 有约 1 成运单导出为「区间字符串」（如 '11:25:00~11:45:00'），
 # 这类单平台不给「是否超时」结论（时长为 00:00:00），一律按「未超时」处理。
-# 平台自带 isOverPlatformExpect 是「>0 即超」；T8 把阈值提到 8 分钟（见下）。
-PLATFORM_EXPECT_KEYS = ("platformExpectAt", "平台期望时间")
-DELIVER_KEYS = ("deliverAt", "骑手送达时间")
-OVER_EXPECT_KEYS = ("overPlatformExpectDuration", "超平台期望送达时长")
+# 平台自带 isOverPlatfromExpecteTime 是「>0 即超」（注意风神拼写 Platfrom）；T8 把阈值提到 8 分钟（见下）。
+PLATFORM_EXPECT_KEYS = ("logisticsPredictDeliveryAt", "平台期望时间")
+DELIVER_KEYS = ("completeAt", "骑手送达时间")
+OVER_EXPECT_KEYS = ("overPlatfromExpecteTime", "超平台期望送达时长")
 
 # T8 超时阈值：超出平台期望时间超过 8 分钟即记「T8 超时单」。
 T8_TIMEOUT_MIN = 8
@@ -233,7 +233,7 @@ def over_expect_seconds(o):
 
     优先取平台已算好的「超平台期望送达时长」('HH:MM:SS')；该字段缺失时用
     「骑手送达时间 - 平台期望时间」兜底（两者均为毫秒时间戳）。两者都拿不到
-    （如 platformExpectAt 是区间字符串）返回 None。
+    （如 logisticsPredictDeliveryAt 是区间字符串）返回 None。
     """
     sec = parse_hms_seconds(order_val(o, OVER_EXPECT_KEYS))
     if sec is not None:
@@ -253,7 +253,7 @@ def is_t8_timeout(o, threshold_min=None):
     """T8 超时单判定：配送成功 且 超出平台期望时间 > 8 分钟。
 
     「超时」时长以平台「超平台期望送达时长」为准（= 骑手送达时间 - 平台期望时间），
-    与 isOverPlatformExpect（>0 即超）同源，但阈值提升到 8 分钟。阈值可覆盖。
+    与 isOverPlatfromExpecteTime（>0 即超，注意风神拼写 Platfrom）同源，但阈值提升到 8 分钟。阈值可覆盖。
     无法判定超时时长的单不计入（返回 False）。
     """
     if not is_completed(o):
@@ -263,12 +263,12 @@ def is_t8_timeout(o, threshold_min=None):
     return sec is not None and sec > thr * 60
 
 
-# 高笔单（大额 / 高价值单）键：原始接口英文 isHighValue 与中文「是否高笔单」同源。
-HIGH_VALUE_KEYS = ("是否高笔单", "isHighValue")
+# 高笔单（大额 / 高价值单）键：原始接口英文 isHighValueOrder 与中文「是否高笔单」同源。
+HIGH_VALUE_KEYS = ("是否高笔单", "isHighValueOrder")
 
 
 def is_high_value_order(o):
-    """高笔单（大额 / 高价值单）判定：是否高笔单 / isHighValue 为真即记高笔单。
+    """高笔单（大额 / 高价值单）判定：是否高笔单 / isHighValueOrder 为真即记高笔单。
 
     与 is_t8_timeout 同属「配送完成单」子集口径（都要求当天接单 + 配送成功），
     差异仅在判定条件：高笔单以「是否高笔单=是」替代「超平台期望 > 8 分钟」。

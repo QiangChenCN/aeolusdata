@@ -27,8 +27,9 @@ CREATE TABLE IF NOT EXISTS delivery_realtime (
 CREATE INDEX IF NOT EXISTS idx_delivery_realtime_date_team ON delivery_realtime(stat_date, team_id);
 `;
 
-/** 运单号取值键（与 Python order_rules 同口径），用于行去重键 `UNIQUE(stat_date, order_no)`。 */
-export const ORDER_NO_KEYS = ['trackingId', '运单id', 'orderNo', '订单号', 'merchantOrderSerial'];
+/** 运单号取值键（与 Python order_rules 同口径），用于行去重键 `UNIQUE(stat_date, order_no)`。
+ * 风神真名 platformTrackingId / trackingId；旧数据可能带 orderNo / merchantOrderSerial。 */
+export const ORDER_NO_KEYS = ['trackingId', '运单id', 'platformTrackingId', '订单号', 'platformMerchantSeq', 'orderNo', 'merchantOrderSerial'];
 /** 站点 id 取值键。 */
 export const TEAM_KEYS = ['teamId', '站点id', '团队ID'];
 

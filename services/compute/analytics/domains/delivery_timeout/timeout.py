@@ -57,20 +57,20 @@ RIDER_ID_KEYS = ("knightId", "骑手ID", "riderId", "riderID")
 RIDER_NAME_KEYS = ("knightName", "骑手姓名", "riderName")
 
 # T8 加权准时率取数键（运单维度）
-FALSE_MARK_REASON_KEYS = ("虚假标记原因", "falseMarkReason")                 # 虚假标记项原因
-MERCHANT_NAME_KEYS = ("平台商家名称", "merchantName", "platformMerchantName")  # 商户名（星巴克识别）
+FALSE_MARK_REASON_KEYS = ("虚假标记项", "isBogusMarkReasons")                # 虚假标记项原因
+MERCHANT_NAME_KEYS = ("平台商家名称", "platformMerchantName")                # 商户名（星巴克识别）
 STATE_KEYS = ("状态", "state", "status", "statusCode", "orderStatus")
 
 # 运单明细取数键（中文键样本 / 英文键 live 兼容）
 ORDER_ID_KEYS = ("运单ID", "trackingId", "orderId")                       # 运单ID
-FLOW_NO_KEYS = ("商家订单流水号", "merchantOrderSerial", "订单号", "orderNo",   # 流水号 = 风神导出「商家订单流水号」（每日商家序号），兜底订单号 / 平台运单ID
-                 "平台运单ID", "platformOrderId")
-MERCHANT_ID_KEYS = ("平台商家ID", "merchantId", "shopId")                 # 商家ID
+FLOW_NO_KEYS = ("商家订单流水号", "platformMerchantSeq", "订单号", "orderNo",  # 流水号 = 风神导出「商家订单流水号」（每日商家序号），兜底订单号 / 平台运单ID
+                 "platformTrackingId", "平台运单ID", "platformOrderId")
+MERCHANT_ID_KEYS = ("平台商家ID", "platformMerchantId", "shopId", "merchantId")  # 商家ID
 TEAM_NAME_KEYS = ("团队/站点名称", "teamName", "站点名称")                  # 站点姓名（订单自带，兜底用）
-ARRIVE_KEYS = ("最近到店时间", "arriveAt", "骑手到店时间")                 # 到店时间
-PICKUP_KEYS = ("最近取货时间", "pickupAt", "骑手取餐时间")                 # 取餐时间
-DELIVER_AT_KEYS = ("完成时间", "运单完成时间", "deliverAt", "骑手送达时间")  # 送达时间（完成）
-EXPECT_KEYS = ("平台期望时间", "platformExpectAt", "当前预计送达时间")       # 平台期望时间
+ARRIVE_KEYS = ("最近到店时间", "arriveAtLast", "骑手到店时间")             # 到店时间
+PICKUP_KEYS = ("最近取货时间", "fetchAtLast", "骑手取餐时间")              # 取餐时间
+DELIVER_AT_KEYS = ("完成时间", "运单完成时间", "completeAt", "骑手送达时间")  # 送达时间（完成）
+EXPECT_KEYS = ("平台期望时间", "logisticsPredictDeliveryAt")                # 平台期望时间
 
 
 def _severity_bucket(over_min):
