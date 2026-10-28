@@ -27,7 +27,8 @@ export function fetchOrderDetail({ start, end, date, team, q, state, sort, order
   if (start) p.push('start=' + enc(start));
   if (end) p.push('end=' + enc(end));
   if (date) p.push('date=' + enc(date));
-  if (team) p.push('team=' + enc(team));
+  const tv = Array.isArray(team) ? team.join(',') : team;
+  if (tv) p.push('team=' + enc(tv));
   if (q) p.push('q=' + enc(q));
   if (state) p.push('state=' + enc(state));
   if (sort) p.push('sort=' + enc(sort));

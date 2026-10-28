@@ -56,6 +56,8 @@ export class AccessGuard implements CanActivate {
 
   canActivate(context: ExecutionContext): boolean {
     const req = context.switchToHttp().getRequest<Request>();
+    // 操作日志：先解析「谁在操作」挂到 req.actor，供全局 OperationLogMiddleware 在响应结束时读取
+    (req as unknown as { actor?: string }).actor = this.resolveActor(req);
     const path = (req.url || '/').split('?')[0];
     const method = (req.method || 'GET').toUpperCase();
 
@@ -132,5 +134,14 @@ export class AccessGuard implements CanActivate {
     // 会话是更强的单用户凭证，已通过鉴权即视为通过机器闸门（外部无会话调用仍需机器令牌）。
     if (this.auth.getSession(this.token(req))) return true;
     return false;
+  }
+
+  /** 解析「谁在操作」，结果挂到 req.actor 供全局 OperationLogInterceptor 使用。 */
+  private resolveActor(req: Request): string {
+    const token = extractToken(req);
+    const s = token ? this.auth.getSession(token) : undefined;
+    if (s?.user) return s.user;
+    if (this.machineOk(req)) return 'machine';
+    return 'anonymous';
   }
 }

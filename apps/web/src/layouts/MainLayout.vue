@@ -5,7 +5,7 @@
     </el-header>
     <el-container class="app-body">
       <!-- 桌面端：保留可手风琴折叠的内嵌侧栏 -->
-      <el-aside v-if="!isCompact" :width="app.sideOpen ? '248px' : '0'" class="app-aside">
+      <el-aside v-if="!isCompact" :width="app.sideOpen ? '200px' : '0'" class="app-aside">
         <AppSide />
       </el-aside>
       <!-- 紧凑布局（≤992）：侧栏改为覆盖式抽屉，由顶栏汉堡按钮唤起 -->
@@ -14,16 +14,25 @@
         v-model="drawerOpen"
         :with-header="false"
         direction="ltr"
-        size="248px"
+        size="200px"
         class="app-side-drawer"
       >
         <AppSide />
       </el-drawer>
-      <el-main class="app-main">
-        <router-view v-slot="{ Component }">
-          <component :is="Component" :key="route.fullPath" />
-        </router-view>
-      </el-main>
+      <el-container class="app-content">
+        <el-main class="app-main">
+          <div class="app-main-inner">
+            <router-view v-slot="{ Component }">
+              <component :is="Component" :key="route.fullPath" />
+            </router-view>
+          </div>
+        </el-main>
+        <el-footer class="app-footer" height="40px">
+          <span>摸🐟岛 · 工作台</span>
+          <span class="app-footer-sep">·</span>
+          <span>© 2026 内部工具，仅供团队使用</span>
+        </el-footer>
+      </el-container>
     </el-container>
   </el-container>
 </template>
@@ -55,6 +64,8 @@ watch(isCompact, (v) => { if (!v) drawerOpen.value = false; });
 .app-root { height: 100%; }
 .app-header { padding: 0; background: var(--el-bg-color); border-bottom: 1px solid var(--el-border-color); }
 .app-body { height: calc(100% - 56px); }
+/* 内容区满宽：底栏因此横跨整屏、不受 1440 限制；主内容的 1440 上限/下限与居中改由内层 .app-main-inner 控制 */
+.app-content { flex: 1; height: 100%; }
 .app-aside {
   background: var(--el-fill-color-light);
   border-right: 1px solid var(--el-border-color);
@@ -62,4 +73,18 @@ watch(isCompact, (v) => { if (!v) drawerOpen.value = false; });
   overflow: hidden;
 }
 .app-main { padding: 0; background: var(--el-bg-color-page); overflow: auto; }
+/* 主内容内层：固定 1440（下限防压坏、上限防拉伸），并在主区剩余空间内居中；窄屏时由 .app-main 内部横向滚动 */
+.app-main-inner { max-width: 1440px; min-width: 1440px; margin: 0 auto; height: 100%; }
+.app-footer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-8);
+  padding: 0 var(--sp-16);
+  font-size: var(--el-font-size-extra-small);
+  color: var(--el-text-color-secondary);
+  background: var(--el-bg-color);
+  border-top: 1px solid var(--el-border-color);
+}
+.app-footer-sep { opacity: 0.5; }
 </style>

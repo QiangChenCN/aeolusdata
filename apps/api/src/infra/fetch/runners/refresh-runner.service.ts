@@ -92,6 +92,21 @@ const RATE_LIMIT_SEC = 60;
 /** 「任意两次刷新之间」的全局最小间隔（秒）—— 与迁移前 `REFRESH_ALL_GLOBAL_GAP_SEC` 一致。 */
 const REFRESH_ALL_GLOBAL_GAP_SEC = 15;
 
+/**
+ * 单次刷新的**最长时长**（秒）—— watchdog 兜底。
+ *
+ * 为什么需要：刷新是「单飞」的，只有 `run()` 的 `finally` 会把 `running` 置 false。
+ * 一旦某个 await 永久挂住（实测：阶段 0 失败后的现场探测撞上宿主 DNS 无响应，
+ * `dns.promises.lookup` 永不 settle），`finally` 永远不到 ⇒ `running` 永久 true
+ * ⇒ 之后每次点刷新都返回 `already_running`、前端按钮永远卡在「刷新中…」，
+ * 且只能靠重启后端恢复。故在这里加一道与业务流程无关的硬上限：超时即强制收尾，
+ * 把未完成站点标失败并写日志，前端立刻能拿到 `running=false` 与失败原因。
+ */
+const REFRESH_MAX_SEC = 900;
+
+/** 失败现场取证（DNS/TCP/连接池）的硬超时（毫秒）：诊断信息绝不能拖住收尾。 */
+const PROBE_TIMEOUT_MS = 5000;
+
 /** 北京时区（UTC+8）—— 刷新窗口与日志时间戳都按北京时间，与 Python `BJ` 同口径。 */
 const BJ_OFFSET_MS = 8 * 3600 * 1000;
 const pad = (n: number) => String(n).padStart(2, '0');
@@ -131,6 +146,14 @@ export class RefreshRunnerService {
   private lastGlobalAt = 0;
   /** 项目根（PROJECT_ROOT 或 cwd 上一级），用于读全局标准达成设置取参与站 / 写刷新日志。 */
   private readonly rootDir: string;
+  /**
+   * 刷新轮次号：每启动一轮 +1。`run()` 结束时若发现轮次已变（被 watchdog 强制收尾，
+   * 或用户又启动了新一轮），就不再把自己的结果写回 `state` —— 避免迟到的那一轮
+   * 把「已超时终止」的结论覆盖成「完成」。
+   */
+  private gen = 0;
+  /** watchdog 定时器（见 REFRESH_MAX_SEC）。 */
+  private watchdog: ReturnType<typeof setTimeout> | null = null;
 
   constructor(
     private readonly config: ConfigService,
@@ -249,7 +272,9 @@ export class RefreshRunnerService {
     };
     this.pace.statsReset();
 
-    void this.run(teams, startDate, endDate);
+    const gen = ++this.gen;
+    this.armWatchdog(gen);
+    void this.run(teams, startDate, endDate, gen);
     return { ok: true, error: null, msg: `已启动，共 ${teams.length} 个站点`, status: this.status() };
   }
 
@@ -373,7 +398,15 @@ export class RefreshRunnerService {
   }
 
   // ---------------------------------------------------------------- 编排主体
-  private async run(teams: string[], start: string, end: string): Promise<void> {
+  private async run(
+    teams: string[],
+    start: string,
+    end: string,
+    /** 轮次号，缺省取当前轮次（单测 / 内部直接调用时的行为与迁移前一致）。 */
+    gen: number = this.gen,
+  ): Promise<void> {
+    /** 本轮是否已被 watchdog 接管 / 被新一轮取代：是则尽快退出，不再产生副作用。 */
+    const stale = () => gen !== this.gen;
     const failed: RefreshFailure[] = [];
     try {
       this.logPath = this.openLogFile();
@@ -401,7 +434,7 @@ export class RefreshRunnerService {
         // （后者是长跑进程的常见病，重启即恢复，两者处置完全不同）。失败瞬间独立探测一次
         // DNS + TCP + 事件循环延迟，并附带 PG 连接池体检 —— 池 waiting>0 就是池被占满，
         // loop 明显偏大就是事件循环被同步任务堵住，探测全正常则指向进程内连接池自身。
-        const probe = await probeRuntime(ORDERS_HOST).catch(() => '探测自身异常');
+        const probe = await this.probeWithDeadline();
         const ps = this.pg.poolStats();
         const pool = ps ? `pg=${ps.total}建/${ps.idle}闲/${ps.waiting}等(max${ps.max})` : 'pg=未启用';
         const detail = `${why}｜现场探测 ${probe}｜${pool}`;
@@ -413,10 +446,18 @@ export class RefreshRunnerService {
         }
         return; // finally 仍会收尾（running=false / 状态落定）
       }
+      if (stale()) {
+        this.log('本轮已被 watchdog 强制结束，阶段 0 之后提前退出');
+        return;
+      }
       this.setCurrent(SHARED_TEAM_KEY, '共享运单完成');
 
       // ── 每站：骑手维度 → 站点维度
       for (const tid of teams) {
+        if (stale()) {
+          this.log('本轮已被 watchdog 强制结束，站点循环提前退出');
+          break;
+        }
         const name = this.state.teams.find((t) => t.id === String(tid))?.name || String(tid);
         try {
           this.setCurrent(tid, '拉取排班目标 / 实时考勤');
@@ -462,10 +503,19 @@ export class RefreshRunnerService {
       this.log(`编排异常：${why}`);
       failed.push({ id: SHARED_TEAM_KEY, name: '编排', error: why });
     } finally {
+      this.clearWatchdog();
       try {
         this.state.stats = this.pace.statsSnapshot();
       } catch {
         /* 统计取不到不影响结束 */
+      }
+      if (stale()) {
+        // 已被 watchdog 强制收尾，或用户已启动新一轮：状态以那一次为准，
+        // 迟到的这一轮只补一条日志，绝不把自己「覆盖」上去（否则会把「已超时终止」
+        // 抹成「完成」，用户看到刷新成功但数据其实没更新）。
+        this.log(`本轮（第 ${gen} 轮）收尾时已过期，状态不再覆盖`);
+        this.logPath = null;
+        return;
       }
       this.state.running = false;
       this.state.finished_at = nowStr();
@@ -578,6 +628,74 @@ export class RefreshRunnerService {
     this.state.done = this.state.teams.filter(
       (t) => t.status === 'ok' || t.status === 'error',
     ).length;
+  }
+
+  // ---------------------------------------------------------------- 兜底
+  /**
+   * watchdog：一轮刷新超过 `REFRESH_MAX_SEC` 仍未结束，就在这里强制收尾。
+   *
+   * 只做状态收敛（running=false + 未完成站点标失败 + 记日志），**不试图中断**仍在跑的
+   * 那一轮（JS 没法取消一个 pending 的 await）。收敛后把轮次号推进，使迟到的那一轮
+   * 在 `run()` 的 `finally` 里识别到自己已过期、不再覆盖状态。
+   */
+  private armWatchdog(gen: number): void {
+    this.clearWatchdog();
+    this.watchdog = setTimeout(() => {
+      this.watchdog = null;
+      if (gen !== this.gen || !this.state.running) return;
+      const why =
+        `刷新超过 ${REFRESH_MAX_SEC}s 未完成（卡在「${this.state.current_stage}」），已强制结束`;
+      const unfinished = this.state.teams.filter(
+        (t) => t.status !== 'ok' && t.status !== 'error',
+      );
+      for (const t of unfinished) this.finishTeam(t.id, false, why);
+      // 推进轮次：让仍在跑的那一轮变成「过期」，其收尾不再覆盖本次超时结论。
+      this.gen += 1;
+      this.state.running = false;
+      this.state.finished_at = nowStr();
+      this.state.current_team = null;
+      this.state.current_stage = '超时终止';
+      const errs: RefreshFailure[] = unfinished.map((t) => ({
+        id: t.id,
+        name: t.name,
+        error: why,
+      }));
+      if (!errs.length) {
+        errs.push({ id: SHARED_TEAM_KEY, name: '编排', error: why });
+      }
+      this.state.error = [...(this.state.error || []), ...errs];
+      this.log(`watchdog：${why}（未完成站点 ${unfinished.length} 个）`);
+      this.logPath = null;
+    }, REFRESH_MAX_SEC * 1000);
+    // 不阻止进程退出：watchdog 只是业务兜底，不应因为它而让事件循环无法结束。
+    this.watchdog.unref?.();
+  }
+
+  private clearWatchdog(): void {
+    if (this.watchdog) {
+      clearTimeout(this.watchdog);
+      this.watchdog = null;
+    }
+  }
+
+  /**
+   * 阶段 0 失败的现场取证（DNS / TCP / 连接池体检）—— 带硬超时。
+   * 取证只是诊断，拿不到也必须让收尾继续，绝不能反向拖住整个编排。
+   */
+  private async probeWithDeadline(): Promise<string> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const guard = new Promise<string>((resolve) => {
+      timer = setTimeout(
+        () => resolve(`探测超时（>${PROBE_TIMEOUT_MS}ms，已放弃）`),
+        PROBE_TIMEOUT_MS,
+      );
+    });
+    return Promise.race([
+      probeRuntime(ORDERS_HOST).catch(() => '探测自身异常'),
+      guard,
+    ]).finally(() => {
+      if (timer) clearTimeout(timer);
+    });
   }
 
   /** 一次刷新一个日志文件：事后可回查「被限流几次 / 哪一站在哪一步卡住」。 */

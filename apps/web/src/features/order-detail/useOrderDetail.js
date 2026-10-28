@@ -14,10 +14,54 @@ function todayYmd() {
 }
 
 /**
- * 默认展示列：首次加载后端返回列定义后，整体填为「全部列」（用户要求看板开放风神全部原始列）。
- * 保留本导出仅为兼容潜在外部引用；实际默认可见集在 load() 里按 columns 全量初始化。
+ * 看板默认可见列（系统默认集，非全量）：首次进入且无 localStorage 持久化时采用。
+ * 与后端返回列求交集后生效（剔除已失效列）。对应列设置抽屉里的「默认列」。
  */
-export const DEFAULT_VISIBLE_COLUMNS = [];
+export const DEFAULT_VISIBLE_COLUMNS = [
+  'trackingId',               // 运单id
+  'knightId',                 // 骑手id
+  'knightName',               // 骑手姓名
+  'teamId',                   // 站点id
+  'teamName',                 // 站点名称
+  'platformMerchantId',       // 平台商家id
+  'platformMerchantName',     // 平台商家名称
+  'platformMerchantSeq',      // 商家订单流水号
+  'stateDesc',                // 运单状态
+  'merchantConsumerDistance', // 订单距离(km)
+  'payAmount',                // 订单金额(元)
+  'weight',                   // 订单重量(kg)
+  'completeAt',               // 骑手送达时间
+  'logisticsPredictDeliveryAt', // 平台期望时间
+  'weatherGradeName',         // 天气等级
+  'weatherName',              // 天气
+  'isReverse',                // 是否逆向单
+  'isReassign',               // 是否发生改派
+  'isHighValueOrder',         // 是否高笔单
+  'isSecondCallOrder',        // 是否二呼单
+];
+
+/** 默认列的展示顺序（与 DEFAULT_VISIBLE_COLUMNS 一一对应）。visibleColumns 据此排序：默认列在前按此顺序，用户额外勾选的列按后端原始顺序排其后。 */
+const DEFAULT_ORDER_INDEX = new Map(DEFAULT_VISIBLE_COLUMNS.map((k, i) => [k, i]));
+
+/** 看板调试日志前缀：浏览器 DevTools Console 用 "[OD]" 过滤所有表格调用。 */
+const OD_LOG = '[OD]';
+const odLog = (...a) => console.log(OD_LOG, ...a);
+const odNow = () => Date.now();
+
+/** 列显隐偏好的 localStorage key（持久化用户勾选，刷新不丢）。 */
+const LS_VISIBLE_KEYS = 'od_visible_keys_v1';
+
+/** 读取持久化的列显隐：无存储返回 null（首次默认全列）；解析失败同样回 null。 */
+function loadStoredVisible() {
+  try {
+    const raw = localStorage.getItem(LS_VISIBLE_KEYS);
+    if (!raw) return null;
+    const v = JSON.parse(raw);
+    return Array.isArray(v) ? v : null;
+  } catch {
+    return null;
+  }
+}
 
 export function useOrderDetail() {
   /* 筛选条件 */
@@ -29,7 +73,7 @@ export function useOrderDetail() {
   };
   /** 所选日期区间 [开始, 结束]（含端点）；默认当天单日（历史与今天不可同时选）。 */
   const dateRange = ref([shiftDay(0), shiftDay(0)]);
-  const teamSel = ref('__all__');
+  const teamSel = ref([]); // 多选：默认不选 = 全站
   const stateSel = ref('');
   const keyword = ref('');
 
@@ -58,13 +102,27 @@ export function useOrderDetail() {
   const refreshing = ref(false);
   const cooldown = ref(0);
 
-  /* 列显隐：默认全部可见（首次拿到后端列定义后整体填为全部 key）。
-   * colInit 保证：仅首次加载填充默认全列，之后用户手动在「列设置」里的增删不被覆盖。 */
-  const visibleKeys = ref([...DEFAULT_VISIBLE_COLUMNS]);
-  let colInit = false;
-  const visibleColumns = computed(() =>
-    columns.value.filter((c) => visibleKeys.value.includes(c.key)),
-  );
+  /* 列显隐：优先读取 localStorage 持久化；无存储（null）则首次加载默认全列。
+   * colInit 仅在「无存储」时为 true —— 首次拿到列定义后填全列；有存储则尊重用户配置
+   * （与现有列求交集、剔除失效列，新增列默认隐藏，因用户已接管列配置）。 */
+  const storedVisible = loadStoredVisible();
+  const visibleKeys = ref(Array.isArray(storedVisible) ? [...storedVisible] : []);
+  let colInit = storedVisible === null;
+  const visibleColumns = computed(() => {
+    const vis = new Set(visibleKeys.value);
+    const cols = columns.value.filter((c) => vis.has(c.key));
+    // 默认列按用户指定顺序排在前，用户额外勾选的列（不在默认集中）按后端原始顺序排在后
+    return cols.sort((a, b) => {
+      const ia = DEFAULT_ORDER_INDEX.has(a.key) ? DEFAULT_ORDER_INDEX.get(a.key) : Infinity;
+      const ib = DEFAULT_ORDER_INDEX.has(b.key) ? DEFAULT_ORDER_INDEX.get(b.key) : Infinity;
+      return ia - ib;
+    });
+  });
+
+  /** 持久化列显隐到 localStorage（任意勾选变化都写，刷新不丢）。 */
+  watch(visibleKeys, () => {
+    try { localStorage.setItem(LS_VISIBLE_KEYS, JSON.stringify(visibleKeys.value)); } catch {}
+  }, { deep: true });
 
   // 站点下拉：有数据的站点带上当天行数，便于一眼看出哪天哪站有单
   const statMap = computed(() => {
@@ -104,20 +162,26 @@ export function useOrderDetail() {
   }
 
   async function load() {
+    // 多选团队规整：空 / 含「全部站点」→ []（全站）；否则传具体站点数组
+    const teamParam = (() => {
+      const arr = Array.isArray(teamSel.value) ? teamSel.value : [teamSel.value].filter(Boolean);
+      if (!arr.length || arr.includes('__all__')) return [];
+      return arr;
+    })();
+    const params = {
+      start: dateRange.value[0], end: dateRange.value[1],
+      team: teamParam, q: keyword.value.trim(), state: stateSel.value,
+      sort: sortProp.value, order: sortOrder.value === 'ascending' ? 'asc' : 'desc',
+      page: page.value, pageSize: pageSize.value,
+    };
+    const t = odNow();
+    odLog('load ▶ 请求', JSON.stringify(params));
     loading.value = true;
     try {
-      const res = await fetchOrderDetail({
-        start: dateRange.value[0],
-        end: dateRange.value[1],
-        team: teamSel.value,
-        q: keyword.value.trim(),
-        state: stateSel.value,
-        sort: sortProp.value,
-        order: sortOrder.value === 'ascending' ? 'asc' : 'desc',
-        page: page.value,
-        pageSize: pageSize.value,
-      });
+      const res = await fetchOrderDetail(params);
+      const ms = odNow() - t;
       if (!res || !res.ok) {
+        odLog('load ✗ 失败', `${ms}ms`, (res && res.error) || '运单明细读取失败');
         rows.value = [];
         total.value = 0;
         loadErrMsg.value = (res && res.error) || '运单明细读取失败';
@@ -129,19 +193,30 @@ export function useOrderDetail() {
       page.value = Number(res.page) || 1;
       fetchedAt.value = res.fetched_at || '';
       loadErrMsg.value = '';
-      // 列定义 / 站点覆盖 / 状态枚举：首次拿到后再补，切换条件时保持上次的值以免下拉闪空
+      // 列定义：首次拿到后再补；切换条件时保持用户配置不动，以免闪空或被覆盖
       if (Array.isArray(res.columns) && res.columns.length) {
         const first = columns.value.length === 0;
         columns.value = res.columns;
-        // 首次拿到列定义：默认全部可见（用户要求看板开放风神全部原始列）
-        if (first && !colInit) {
-          visibleKeys.value = res.columns.map((c) => c.key);
-          colInit = true;
+        if (first) {
+          const existing = res.columns.map((c) => c.key);
+          if (colInit) {
+            // 无持久化：采用系统默认可见列（与现有列求交集，剔除失效列）
+            const def = new Set(DEFAULT_VISIBLE_COLUMNS);
+            visibleKeys.value = existing.filter((k) => def.has(k));
+          } else {
+            // 有持久化：仅与现有列求交集（剔除后端已删除的失效列），新增列默认隐藏（尊重用户接管）
+            const set = new Set(visibleKeys.value);
+            visibleKeys.value = existing.filter((k) => set.has(k));
+          }
+          colInit = false;
         }
       }
       if (Array.isArray(res.teams)) teamStats.value = res.teams;
       if (Array.isArray(res.states)) states.value = res.states;
+      odLog(`load ✓ 完成 ${ms}ms`, `total=${total.value} rows=${rows.value.length} fetchedAt=${fetchedAt.value || '—'}`);
+      return true;
     } catch (e) {
+      odLog('load ✗ 异常', `${odNow() - t}ms`, e && e.message ? e.message : e);
       rows.value = [];
       loadErrMsg.value = '加载失败：' + (e && e.message ? e.message : '未知错误');
       return false;
@@ -152,17 +227,37 @@ export function useOrderDetail() {
   }
 
   /* 条件变更：一律回到第 1 页 —— 换条件后停在第 7 页多半是空页。 */
-  function changeDate() { page.value = 1; return load(); }
-  function changeTeam() { page.value = 1; return load(); }
-  function changeState() { page.value = 1; return load(); }
+  function changeDate() { odLog('trigger load ← changeDate', dateRange.value); page.value = 1; return load(); }
+  /** 多选站点规范化：`__all__` 与具体站点互斥；默认不选（清空）= 全站。 */
+  function changeTeam(val) {
+    let next = Array.isArray(val) ? val.slice() : [val].filter(Boolean);
+    if (next.includes('__all__') && next.length > 1) next = next.filter((x) => x !== '__all__');
+    teamSel.value = next;
+    page.value = 1;
+    odLog('trigger load ← changeTeam', next);
+    return load();
+  }
+  function changeState() { odLog('trigger load ← changeState', stateSel.value); page.value = 1; return load(); }
   function onSortChange({ prop, order }) {
     sortProp.value = order ? prop : '';
     sortOrder.value = order || '';
     page.value = 1;
+    odLog('trigger load ← onSortChange', { prop, order });
     return load();
   }
-  function onPageChange(p) { page.value = p; return load(); }
-  function onPageSizeChange(s) { pageSize.value = s; page.value = 1; return load(); }
+  function onPageChange(p) { odLog('trigger load ← onPageChange', p); page.value = p; return load(); }
+  function onPageSizeChange(s) { odLog('trigger load ← onPageSizeChange', s); pageSize.value = s; page.value = 1; return load(); }
+
+  /** 列设置：全选（显示全部列）。 */
+  function selectAll() {
+    visibleKeys.value = columns.value.map((c) => c.key);
+  }
+
+  /** 当前系统默认可见列 key（与现有列求交集，随 DEFAULT_VISIBLE_COLUMNS 动态增减）。供「重置」恢复默认集。 */
+  function defaultVisibleKeys() {
+    const def = new Set(DEFAULT_VISIBLE_COLUMNS);
+    return (columns.value || []).map((c) => c.key).filter((k) => def.has(k));
+  }
 
   let kwTimer = null;
   watch(keyword, () => {
@@ -178,22 +273,27 @@ export function useOrderDetail() {
    * 若当前在查历史日，刷新后切回今天最新快照（避免「在历史日点刷新却无变化」的困惑）。
    */
   async function onRefresh() {
-    if (refreshing.value || cooldown.value > 0) return { ok: false, error: '刷新中或处于冷却' };
+    if (refreshing.value || cooldown.value > 0) { odLog('refresh 跳过（刷新中或冷却）'); return { ok: false, error: '刷新中或处于冷却' }; }
+    const t = odNow();
+    odLog('refresh ▶ 请求', { date: todayYmd() });
     refreshing.value = true;
     loading.value = true; // 取数耗时最长，覆盖此等待期让表格全程有 loading 反馈
     try {
       const res = await refreshOrderDetail({ date: todayYmd() });
       startCooldown(REFRESH_COOLDOWN_SEC);
       if (!res || !res.ok) {
+        odLog('refresh ✗ 失败', `${odNow() - t}ms`, (res && res.error) || '刷新失败');
         loading.value = false;
         return { ok: false, error: (res && res.error) || '刷新失败' };
       }
       // 实时表只存当天：若当前在查历史日，刷新后切回今天最新快照（重载交给 handleRefresh）
       if (dateRange.value[0] !== todayYmd()) dateRange.value = [todayYmd(), todayYmd()];
+      odLog(`refresh ✓ 完成 ${odNow() - t}ms`);
       return { ok: true, data: res };
     } catch (e) {
       startCooldown(e && e.data && e.data.retry_after);
       loading.value = false;
+      odLog('refresh ✗ 异常', e && e.message ? e.message : e);
       return { ok: false, error: e.message || '刷新失败' };
     } finally {
       refreshing.value = false;
@@ -202,9 +302,12 @@ export function useOrderDetail() {
 
   /** 历史滚动状态：T-1 ~ T-7 各天入库行数 + 上次运行快照。失败不影响主表。 */
   async function loadHistory() {
+    const t = odNow();
+    odLog('history ▶ 请求');
     try {
       const res = await fetchOrderDetailHistoryStatus();
       if (!res || !res.ok) {
+        odLog('history ✗ 失败', `${odNow() - t}ms`, (res && res.error) || '状态读取失败');
         historyDays.value = [];
         lastRun.value = null;
         return;
@@ -212,7 +315,9 @@ export function useOrderDetail() {
       historyDays.value = res.days || [];
       historyTotal.value = Number(res.total) || 0;
       lastRun.value = res.last_run || null;
-    } catch {
+      odLog(`history ✓ 完成 ${odNow() - t}ms`, `total=${historyTotal.value} lastRun=${(res.last_run && res.last_run.finished_at) || '—'}`);
+    } catch (e) {
+      odLog('history ✗ 异常', e && e.message ? e.message : e);
       /* 忽略：历史状态取不到时标签显示 0 条，不影响当天明细查看 */
     }
   }
@@ -236,10 +341,13 @@ export function useOrderDetail() {
   }
 
   async function init() {
+    const t = odNow();
     try {
-      const t = await fetchTeams();
-      teams.value = (t && t.teams) || [];
-    } catch {
+      const res = await fetchTeams();
+      teams.value = (res && res.teams) || [];
+      odLog(`teams ✓ ${odNow() - t}ms`, `count=${teams.value.length}`);
+    } catch (e) {
+      odLog('teams ✗ 异常', e && e.message ? e.message : e);
       /* 忽略：目录取不到时站点下拉为空，仍可按「全部站点」查看 */
     }
     await load();
@@ -260,6 +368,6 @@ export function useOrderDetail() {
     refreshing, cooldown, startCooldown,
     bodyRef, bodyH, initMeasure,
     load, changeDate, changeTeam, changeState, onSortChange, onPageChange, onPageSizeChange,
-    onRefresh, init, dispose,
+    onRefresh, init, dispose, selectAll, defaultVisibleKeys,
   };
 }

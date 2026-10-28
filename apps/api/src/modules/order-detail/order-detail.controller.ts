@@ -79,8 +79,12 @@ export class OrderDetailController {
       return empty({ error: 'PG 未启用（DATABASE_URL 未配置）' });
     }
     const d = (date || '').trim() || todayYmd();
+    // team 支持逗号分隔多站点（前端 multiple 多选）；含 `__all__` 或为空 = 全站
     const t = String(team ?? '').trim();
-    const teamFilter = t && t !== '__all__' ? t : '';
+    const teamList = t && t !== '__all__'
+      ? t.split(',').map((s) => s.trim()).filter(Boolean)
+      : [];
+    const teamFilter = teamList.length ? teamList : null; // null = 全站
 
     let raw: Record<string, unknown>[];
     let teams: { team: string; rows: number }[];
@@ -108,13 +112,15 @@ export class OrderDetailController {
       }
     } catch (e) {
       this.logger.error(`读取运单明细失败 ${d}: ${(e as Error).message}`);
-      return empty({ date: d, team: teamFilter, error: (e as Error).message });
+      return empty({ date: d, team: teamFilter ? teamFilter.join(',') : '', error: (e as Error).message });
     }
 
     const all = raw.map(normalizeOrderRow);
-    const scoped = teamFilter ? all.filter((r) => String(r.team_id ?? '') === teamFilter) : all;
+    const scoped = teamFilter && teamFilter.length
+      ? all.filter((r) => teamFilter.includes(String(r.teamId ?? r.team_id ?? '')))
+      : all;
 
-    const states = [...new Set(scoped.map((r) => String(r.state ?? '')).filter(Boolean))].sort();
+    const states = [...new Set(scoped.map((r) => String(r.stateDesc ?? r.state ?? '')).filter(Boolean))].sort();
 
     const kw = String(q ?? '').trim().toLowerCase();
     const st = String(state ?? '').trim();
@@ -124,7 +130,7 @@ export class OrderDetailController {
         ORDER_DETAIL_SEARCH_KEYS.some((k) => String(r[k] ?? '').toLowerCase().includes(kw)),
       );
     }
-    if (st) rows = rows.filter((r) => String(r.state ?? '') === st);
+    if (st) rows = rows.filter((r) => String(r.stateDesc ?? r.state ?? '') === st);
 
     // 排序：数值列按数值，其余按字典序（时间列格式 YYYY-MM-DD HH:mm:ss，字典序即时间序）
     const sk = String(sort ?? '').trim();
@@ -154,7 +160,7 @@ export class OrderDetailController {
     return {
       ok: true,
       date: d,
-      team: teamFilter,
+      team: teamFilter ? teamFilter.join(',') : '',
       columns: ORDER_DETAIL_COLUMNS.map((c) => ({ key: c.key, label: c.label, kind: c.kind })),
       teams,
       states,

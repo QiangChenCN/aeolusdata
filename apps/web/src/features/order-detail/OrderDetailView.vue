@@ -15,7 +15,17 @@
         style="width: 260px; flex: 0 0 260px"
         @change="changeDate"
       />
-      <el-select v-model="teamSel" class="od-sel" placeholder="站点" @change="changeTeam">
+      <el-select
+        v-model="teamSel"
+        class="od-sel"
+        multiple
+        clearable
+        collapse-tags
+        collapse-tags-tooltip
+        placeholder="选择站点"
+        style="width: 240px; flex: 0 0 240px"
+        @change="changeTeam"
+      >
         <el-option label="全部站点" value="__all__" />
         <el-option v-for="t in teamOptions" :key="t.id" :label="t.name" :value="t.id" />
       </el-select>
@@ -34,37 +44,12 @@
         clearable
         placeholder="运单号 / 订单号 / 骑手 / 商家"
       />
-      <el-dropdown trigger="click">
-        <el-button><el-icon><Operation /></el-icon> 列设置</el-button>
-        <template #dropdown>
-          <div class="od-cols">
-            <el-checkbox-group v-model="visibleKeys">
-              <el-checkbox v-for="c in columns" :key="c.key" :value="c.key" :label="c.label" />
-            </el-checkbox-group>
-          </div>
-        </template>
-      </el-dropdown>
-      <span v-if="fetchedAt" class="od-tag">入库时间：{{ fetchedAt }}</span>
-      <el-popover placement="bottom-end" width="400" trigger="hover">
-        <template #reference>
-          <span class="od-tag od-hist">历史 T-1~T-7：{{ historyTotal }} 条</span>
-        </template>
-        <div class="od-hpop">
-          <div class="od-hpop-h">每天 04:00 滚动回补 T-1 ~ T-7 到历史运单明细表</div>
-          <div v-for="d in historyDays" :key="d.date" class="od-hpop-row">
-            <span class="od-hpop-d">{{ d.date }}</span>
-            <span :class="{ 'od-hpop-zero': !d.rows }">{{ d.rows }} 条</span>
-            <span class="od-hpop-at">{{ d.captured_at || '未入库' }}</span>
-          </div>
-          <div v-if="lastRun" class="od-hpop-last">
-            上次运行：{{ lastRun.finished_at }} · 入库 {{ lastRun.saved_total }} 条
-          </div>
-          <div v-else class="od-hpop-last">暂无运行记录：等 04:00 定时任务，或点「回补历史」手动跑一次</div>
-        </div>
-      </el-popover>
-      <span class="sp" />
+      <el-button @click="colDrawer = true"><el-icon><Operation /></el-icon> 列设置</el-button>
+      <span v-if="rangeIncludesToday && fetchedAt" class="od-tag">刷新时间：{{ fetchedAt }}</span>
+      <span v-else-if="!rangeIncludesToday && historyLatestDate" class="od-tag">历史数据最新：{{ historyLatestDate }}</span>
       <el-button
         type="primary"
+        class="od-refresh"
         :loading="refreshing"
         :disabled="!rangeIncludesToday || refreshing || cooldown > 0"
         :title="!rangeIncludesToday ? '所选区间不含今天，无法刷新（历史数据由每日 04:00 滚动任务维护）' : (cooldown > 0 ? `刷新过于频繁，请等待 ${cooldown} 秒` : '拉取当天全站运单明细入库')"
@@ -84,8 +69,29 @@
       该区间暂无运单明细入库，点「刷新数据」拉取后即可查看（明细按运单完成时间统计当天全站运单）。
     </el-alert>
     <el-alert v-else-if="isHistoryView" type="success" :closable="false" show-icon class="od-hint">
-      历史数据（T-1~T-7 滚动留档） · 入库时间：{{ fetchedAt || '—' }} · 历史 T-1~T-7 共 {{ historyTotal }} 条
+      历史数据（T-1~T-7 滚动留档） · 历史数据最新：{{ historyLatestDate || '—' }} · 共 {{ historyTotal }} 条 · 最近回补：{{ lastRun?.finished_at || '—' }}
     </el-alert>
+
+    <el-drawer v-model="colDrawer" title="列设置" direction="rtl" size="380px">
+      <div class="od-col-toolbar">
+        <el-input v-model="colSearch" clearable placeholder="搜索列名" :prefix-icon="Search" />
+        <div class="od-col-actions">
+          <el-button size="small" @click="selectAllDraft">全选</el-button>
+          <el-button size="small" @click="resetColumns">重置</el-button>
+        </div>
+      </div>
+      <div class="od-cols">
+        <el-checkbox-group v-model="drawerKeys">
+          <el-checkbox v-for="c in filteredColumns" :key="c.key" :value="c.key" :label="c.label" />
+        </el-checkbox-group>
+      </div>
+      <template #footer>
+        <div class="od-drawer-foot">
+          <span class="od-col-count">已选 {{ drawerKeys.length }} / {{ columns.length }} 列</span>
+          <el-button type="primary" size="small" @click="applyColumns">保存</el-button>
+        </div>
+      </template>
+    </el-drawer>
 
     <div ref="bodyRef" class="od-body">
       <el-table
@@ -103,13 +109,12 @@
           :key="c.key"
           :prop="c.key"
           :label="c.label"
-          :min-width="colWidth(c)"
+          :width="colWidths[c.key]"
           :align="c.kind === 'text' ? 'left' : 'center'"
           sortable="custom"
-          show-overflow-tooltip
         >
           <template #default="{ row }">
-            <span v-if="c.kind === 'bool'" :class="{ 'od-yes': row[c.key] === '是' }">
+            <span v-if="c.kind === 'bool'">
               {{ row[c.key] || '—' }}
             </span>
             <span v-else>{{ cellText(row[c.key]) }}</span>
@@ -134,9 +139,9 @@
 </template>
 
 <script setup>
-import { computed, onMounted, onUnmounted, nextTick } from 'vue';
+import { computed, onMounted, onUnmounted, nextTick, ref, watch } from 'vue';
 import { ElMessage } from 'element-plus';
-import { Operation, Refresh } from '@element-plus/icons-vue';
+import { Operation, Refresh, Search } from '@element-plus/icons-vue';
 import { useOrderDetail } from './useOrderDetail.js';
 
 const {
@@ -148,23 +153,84 @@ const {
   refreshing, cooldown,
   bodyRef, bodyH, initMeasure,
   changeDate, changeTeam, changeState, onSortChange, onPageChange, onPageSizeChange,
-  onRefresh, onRollupHistory, init, dispose,
+  onRefresh, onRollupHistory, init, dispose, defaultVisibleKeys,
 } = useOrderDetail();
+
+/** 列设置抽屉开关与搜索词。 */
+const colDrawer = ref(false);
+const colSearch = ref('');
+/** 列设置抽屉的草稿勾选：仅在「保存」时提交到 visibleKeys，避免每次勾选都实时改表格。 */
+const drawerKeys = ref([]);
+watch(colDrawer, (open) => {
+  if (open) drawerKeys.value = [...visibleKeys.value];
+});
+/** 抽屉内按搜索词过滤列（label / key 命中），不改动实际 visibleKeys。 */
+const filteredColumns = computed(() => {
+  const kw = colSearch.value.trim().toLowerCase();
+  if (!kw) return columns.value;
+  return columns.value.filter(
+    (c) => c.label.toLowerCase().includes(kw) || c.key.toLowerCase().includes(kw),
+  );
+});
+/** 抽屉内「全选」：仅改草稿（显示全部列），需点保存才生效。 */
+function selectAllDraft() {
+  drawerKeys.value = columns.value.map((c) => c.key);
+}
+/** 抽屉内「重置」：把草稿恢复为系统默认列集（19 列，随默认集动态增减），需点保存才生效。 */
+function resetColumns() {
+  drawerKeys.value = defaultVisibleKeys();
+  colSearch.value = '';
+}
+/** 保存：把抽屉草稿提交为实际可见列，触发表格更新与持久化。 */
+function applyColumns() {
+  visibleKeys.value = [...drawerKeys.value];
+  colDrawer.value = false;
+}
 
 /** 当前查询为纯历史区间（不含今天）→ 展示历史数据来源说明条。 */
 const isHistoryView = computed(() => !rangeIncludesToday.value);
 
+/** 历史滚动数据中实际已入库的最新一天（仅统计有数据的天，避免把「理论 T-1」当天未入库的日期算进去）。 */
+const historyLatestDate = computed(() => {
+  const ds = (historyDays.value || [])
+    .filter((d) => (d.rows ?? 0) > 0)
+    .map((d) => d.date)
+    .filter(Boolean)
+    .sort();
+  return ds.length ? ds[ds.length - 1] : '';
+});
+
 const tableH = computed(() => Math.max(200, bodyH.value - 8));
 
-/** 列宽按内容类型给：时间列最长，ID/名称居中偏窄，布尔列最窄。 */
-function colWidth(c) {
-  if (c.kind === 'time') return 165;
-  if (c.kind === 'bool') return 90;
-  if (c.kind === 'num') return 110;
-  if (c.key === 'order_id' || c.key === 'order_no') return 180;
-  if (c.key === 'team_name' || c.key === 'merchant_name') return 160;
-  return 120;
+/**
+ * 列宽自适应：用 canvas 实测「表头 + 每行内容」的最大字符宽度，确保内容不被折叠/省略。
+ * 列宽 = 内容最大宽 + 内边距；内容超宽时由 el-table 内部横向滚动承载，单元格保持单行不换行。
+ */
+let measureCanvas = null;
+function measureTextWidth(text) {
+  if (measureCanvas === null) measureCanvas = document.createElement('canvas');
+  const ctx = measureCanvas.getContext('2d');
+  ctx.font = '14px "Helvetica Neue", Helvetica, "PingFang SC", "Microsoft YaHei", Arial, sans-serif';
+  return ctx.measureText(text == null ? '' : String(text)).width;
 }
+const CELL_PAD = 28;
+/** 各列自适应宽度（key → px），随数据与可见列变化重算。 */
+const colWidths = computed(() => {
+  const map = {};
+  const cols = visibleColumns.value || [];
+  const data = rows.value || [];
+  for (const c of cols) {
+    let w = measureTextWidth(c.label) + CELL_PAD;
+    if (c.kind === 'time') w = Math.max(w, 165);
+    if (c.kind === 'bool') w = Math.max(w, 90);
+    for (let i = 0; i < data.length; i++) {
+      const tw = measureTextWidth(data[i][c.key]) + CELL_PAD;
+      if (tw > w) w = tw;
+    }
+    map[c.key] = Math.max(80, Math.min(Math.round(w), 360));
+  }
+  return map;
+});
 
 function cellText(v) {
   return v === null || v === undefined || v === '' ? '—' : v;
@@ -267,19 +333,21 @@ onUnmounted(dispose);
   border-top: 1px solid var(--el-border-color-lighter);
   font-size: var(--el-font-size-small); color: var(--el-text-color-secondary);
 }
-.od-bar .sp { flex: 1; }
+.od-refresh { margin-left: auto; }
+.od-col-toolbar { display: flex; flex-direction: column; gap: var(--sp-8); margin-bottom: var(--sp-12); }
+.od-col-actions { display: flex; gap: var(--sp-8); }
 .od-cols {
-  padding: var(--sp-12); max-height: 380px; overflow: auto;
+  max-height: 66vh; overflow-y: auto;
   display: flex; flex-direction: column; gap: var(--sp-4);
 }
-/* 列设置：一列一行，避免全部原始列（70+）复选框横排溢出下拉面板 */
+/* 列设置：一列一行，避免全部原始列（70+）复选框横排溢出 */
 .od-cols :deep(.el-checkbox-group) { display: flex; flex-direction: column; gap: var(--sp-4); }
 .od-cols :deep(.el-checkbox) { height: auto; margin-right: 0; }
+.od-col-count { font-size: var(--el-font-size-small); color: var(--el-text-color-secondary); }
+.od-drawer-foot { display: flex; align-items: center; justify-content: space-between; width: 100%; }
 .od-hint { margin-bottom: var(--sp-12); }
 .od-body { flex: 1; min-height: 0; }
 .od-pg { flex: none; padding-top: var(--sp-12); display: flex; justify-content: flex-end; }
-
-.od-yes { color: var(--danger, #d32f2f); font-weight: var(--fw-bold); }
 
 .od-table { border-radius: var(--el-border-radius-base); }
 .od-table :deep(.el-table th.el-table__cell),

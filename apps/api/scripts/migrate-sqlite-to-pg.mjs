@@ -133,6 +133,35 @@ async function migrateJob(job) {
 
 async function main() {
   console.log(`[migrate] 开始，DB_DIR=${DB_DIR}`);
+  // 操作日志（溯源：记录「脚本用哪段代码操作了数据库」）。表结构以 API 侧为准，这里仅幂等兜底。
+  await pool
+    .query(
+      `CREATE TABLE IF NOT EXISTS operation_log (
+        id SERIAL PRIMARY KEY, ts TEXT NOT NULL,
+        actor TEXT NOT NULL DEFAULT 'anonymous', method TEXT, action TEXT NOT NULL,
+        target TEXT, code TEXT, status INTEGER, duration_ms INTEGER, detail TEXT)`,
+    )
+    .catch(() => undefined);
+  const pad = (n) => String(n).padStart(2, '0');
+  const bjNow = (() => {
+    const d = new Date(Date.now() + 8 * 3600 * 1000);
+    return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}`;
+  })();
+  await pool
+    .query(
+      `INSERT INTO operation_log (ts, actor, action, target, code, status, detail)
+       VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+      [
+        bjNow,
+        'script:migrate-sqlite-to-pg',
+        'migrate',
+        'multiple',
+        'migrate-sqlite-to-pg.mjs',
+        200,
+        JSON.stringify({ tables: JOBS.map((j) => j.pg) }),
+      ],
+    )
+    .catch(() => undefined);
   let total = 0;
   for (const job of JOBS) total += await migrateJob(job);
   console.log(`[migrate] 完成，共 ${total} 行。`);

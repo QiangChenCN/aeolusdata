@@ -77,17 +77,14 @@ export class OrderDetailStoreService implements OnModuleInit {
    * 整日读取而非下推过滤：本看板要在同一份数据上同时算「站点覆盖」与「状态枚举」，
    * 下推反而要多次往返；单日全站是千级行数，内存里过滤/排序/分页足够。
    */
-  async getDay(date: string, team?: string): Promise<Record<string, unknown>[]> {
-    const t = String(team ?? '').trim();
-    const rows = t
-      ? await this.pg.query<{ raw_json: string }>(
-          'SELECT raw_json FROM delivery_realtime WHERE stat_date = $1 AND team_id = $2 ORDER BY id',
-          [date, t],
-        )
-      : await this.pg.query<{ raw_json: string }>(
-          'SELECT raw_json FROM delivery_realtime WHERE stat_date = $1 ORDER BY id',
-          [date],
-        );
+  async getDay(date: string, team?: string[]): Promise<Record<string, unknown>[]> {
+    const useTeam = team && team.length;
+    const sql = useTeam
+      ? 'SELECT raw_json FROM delivery_realtime WHERE stat_date = $1 AND team_id = ANY($2::text[]) ORDER BY id'
+      : 'SELECT raw_json FROM delivery_realtime WHERE stat_date = $1 ORDER BY id';
+    const rows = useTeam
+      ? await this.pg.query<{ raw_json: string }>(sql, [date, team])
+      : await this.pg.query<{ raw_json: string }>(sql, [date]);
     const out: Record<string, unknown>[] = [];
     for (const r of rows) {
       try {
@@ -160,17 +157,14 @@ export class OrderDetailStoreService implements OnModuleInit {
   }
 
   /** 该（天 → 站点）最近一次入库时间（北京时间），无数据返回 ''。 */
-  async lastFetchedAt(date: string, team?: string): Promise<string> {
-    const t = String(team ?? '').trim();
-    const r = t
-      ? await this.pg.queryOne<{ t?: string }>(
-          'SELECT MAX(created_at) AS t FROM delivery_realtime WHERE stat_date = $1 AND team_id = $2',
-          [date, t],
-        )
-      : await this.pg.queryOne<{ t?: string }>(
-          'SELECT MAX(created_at) AS t FROM delivery_realtime WHERE stat_date = $1',
-          [date],
-        );
+  async lastFetchedAt(date: string, team?: string[]): Promise<string> {
+    const useTeam = team && team.length;
+    const sql = useTeam
+      ? 'SELECT MAX(created_at) AS t FROM delivery_realtime WHERE stat_date = $1 AND team_id = ANY($2::text[])'
+      : 'SELECT MAX(created_at) AS t FROM delivery_realtime WHERE stat_date = $1';
+    const r = useTeam
+      ? await this.pg.queryOne<{ t?: string }>(sql, [date, team])
+      : await this.pg.queryOne<{ t?: string }>(sql, [date]);
     return r?.t || '';
   }
 
@@ -192,17 +186,17 @@ export class OrderDetailStoreService implements OnModuleInit {
    * 读某日期段（含端点）的运单明细原始行，联合实时表（当天）与历史表（T-1~T-7）。
    * 两张表的 stat_date 不重叠（实时表仅今天、历史表不含今天），UNION ALL 不产生重复行。
    */
-  async getRange(start: string, end: string, team?: string): Promise<Record<string, unknown>[]> {
-    const t = String(team ?? '').trim();
-    const sql = t
-      ? `SELECT raw_json FROM delivery_realtime WHERE stat_date BETWEEN $1 AND $2 AND team_id = $3
+  async getRange(start: string, end: string, team?: string[]): Promise<Record<string, unknown>[]> {
+    const useTeam = team && team.length;
+    const sql = useTeam
+      ? `SELECT raw_json FROM delivery_realtime WHERE stat_date BETWEEN $1 AND $2 AND team_id = ANY($3::text[])
          UNION ALL
-         SELECT raw_json FROM delivery_history WHERE stat_date BETWEEN $1 AND $2 AND team_id = $3`
+         SELECT raw_json FROM delivery_history WHERE stat_date BETWEEN $1 AND $2 AND team_id = ANY($3::text[])`
       : `SELECT raw_json FROM delivery_realtime WHERE stat_date BETWEEN $1 AND $2
          UNION ALL
          SELECT raw_json FROM delivery_history WHERE stat_date BETWEEN $1 AND $2`;
-    const rows = t
-      ? await this.pg.query<{ raw_json: string }>(sql, [start, end, t])
+    const rows = useTeam
+      ? await this.pg.query<{ raw_json: string }>(sql, [start, end, team])
       : await this.pg.query<{ raw_json: string }>(sql, [start, end]);
     const out: Record<string, unknown>[] = [];
     for (const r of rows) {
@@ -229,21 +223,21 @@ export class OrderDetailStoreService implements OnModuleInit {
   }
 
   /** 日期段内最近一次写入时间（联合两表取最大）。 */
-  async rangeLastFetchedAt(start: string, end: string, team?: string): Promise<string> {
-    const t = String(team ?? '').trim();
-    const sql = t
+  async rangeLastFetchedAt(start: string, end: string, team?: string[]): Promise<string> {
+    const useTeam = team && team.length;
+    const sql = useTeam
       ? `SELECT MAX(t) AS t FROM (
-           SELECT MAX(created_at) AS t FROM delivery_realtime WHERE stat_date BETWEEN $1 AND $2 AND team_id = $3
+           SELECT MAX(created_at) AS t FROM delivery_realtime WHERE stat_date BETWEEN $1 AND $2 AND team_id = ANY($3::text[])
            UNION ALL
-           SELECT MAX(captured_at) AS t FROM delivery_history WHERE stat_date BETWEEN $1 AND $2 AND team_id = $3
+           SELECT MAX(captured_at) AS t FROM delivery_history WHERE stat_date BETWEEN $1 AND $2 AND team_id = ANY($3::text[])
          ) s`
       : `SELECT MAX(t) AS t FROM (
            SELECT MAX(created_at) AS t FROM delivery_realtime WHERE stat_date BETWEEN $1 AND $2
            UNION ALL
            SELECT MAX(captured_at) AS t FROM delivery_history WHERE stat_date BETWEEN $1 AND $2
          ) s`;
-    const r = t
-      ? await this.pg.queryOne<{ t: string }>(sql, [start, end, t])
+    const r = useTeam
+      ? await this.pg.queryOne<{ t: string }>(sql, [start, end, team])
       : await this.pg.queryOne<{ t: string }>(sql, [start, end]);
     return r?.t ?? '';
   }

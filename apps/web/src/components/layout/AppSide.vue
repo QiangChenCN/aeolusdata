@@ -58,6 +58,7 @@ const navItems = computed(() => {
       { type: 'leaf', kind: 'sys-aeolus', id: '', name: '风神设置', icon: 'Key' },
       { type: 'leaf', kind: 'rbac', id: '', name: '权限管理', icon: 'Tools' },
       { type: 'leaf', kind: 'bots', id: '', name: '调度设置', icon: 'ChatDotRound' },
+      { type: 'leaf', kind: 'operationLog', id: '', key: 'operationLog', name: '操作日志', icon: 'Document' },
     );
   }
   items.push({ type: 'parent', key: 'sys', name: '系统设置', icon: 'Setting', kind: 'syscfg', children: sysSubs });

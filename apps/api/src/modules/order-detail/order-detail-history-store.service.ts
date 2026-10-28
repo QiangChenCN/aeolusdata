@@ -161,17 +161,14 @@ export class OrderDetailHistoryStoreService implements OnModuleInit {
    * 读某天（可选某站点）的历史运单明细原始行。与实时表 `getDay` 同构，
    * 仅表名与时间列（captured_at）不同；列定义 / 排序 / 分页在 controller 复用同一套逻辑。
    */
-  async getDay(date: string, team?: string): Promise<Record<string, unknown>[]> {
-    const t = String(team ?? '').trim();
-    const rows = t
-      ? await this.pg.query<{ raw_json: string }>(
-          'SELECT raw_json FROM delivery_history WHERE stat_date = $1 AND team_id = $2 ORDER BY id',
-          [date, t],
-        )
-      : await this.pg.query<{ raw_json: string }>(
-          'SELECT raw_json FROM delivery_history WHERE stat_date = $1 ORDER BY id',
-          [date],
-        );
+  async getDay(date: string, team?: string[]): Promise<Record<string, unknown>[]> {
+    const useTeam = team && team.length;
+    const sql = useTeam
+      ? 'SELECT raw_json FROM delivery_history WHERE stat_date = $1 AND team_id = ANY($2::text[]) ORDER BY id'
+      : 'SELECT raw_json FROM delivery_history WHERE stat_date = $1 ORDER BY id';
+    const rows = useTeam
+      ? await this.pg.query<{ raw_json: string }>(sql, [date, team])
+      : await this.pg.query<{ raw_json: string }>(sql, [date]);
     const out: Record<string, unknown>[] = [];
     for (const r of rows) {
       try {
@@ -194,17 +191,14 @@ export class OrderDetailHistoryStoreService implements OnModuleInit {
   }
 
   /** 该日最近一次滚动写入时间（北京时间 captured_at）；指定站点则取该站点最新。 */
-  async lastFetchedAt(date: string, team?: string): Promise<string> {
-    const t = String(team ?? '').trim();
-    const r = t
-      ? await this.pg.queryOne<{ t: string }>(
-          'SELECT MAX(captured_at) AS t FROM delivery_history WHERE stat_date = $1 AND team_id = $2',
-          [date, t],
-        )
-      : await this.pg.queryOne<{ t: string }>(
-          'SELECT MAX(captured_at) AS t FROM delivery_history WHERE stat_date = $1',
-          [date],
-        );
+  async lastFetchedAt(date: string, team?: string[]): Promise<string> {
+    const useTeam = team && team.length;
+    const sql = useTeam
+      ? 'SELECT MAX(captured_at) AS t FROM delivery_history WHERE stat_date = $1 AND team_id = ANY($2::text[])'
+      : 'SELECT MAX(captured_at) AS t FROM delivery_history WHERE stat_date = $1';
+    const r = useTeam
+      ? await this.pg.queryOne<{ t: string }>(sql, [date, team])
+      : await this.pg.queryOne<{ t: string }>(sql, [date]);
     return r?.t ?? '';
   }
 }

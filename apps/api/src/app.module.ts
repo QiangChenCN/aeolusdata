@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, NestModule, MiddlewareConsumer } from '@nestjs/common';
 import { ScheduleModule } from '@nestjs/schedule';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { APP_GUARD } from '@nestjs/core';
@@ -25,6 +25,8 @@ import { AssessmentModule } from './modules/assessment/assessment.module';
 import { StandardModule } from './modules/standard/standard.module';
 import { OrderDetailModule } from './modules/order-detail/order-detail.module';
 import { PgModule } from './modules/pg/pg.module';
+import { OperationLogModule } from './modules/operation-log/operation-log.module';
+import { OperationLogMiddleware } from './modules/operation-log/operation-log.middleware';
 
 @Module({
   imports: [
@@ -54,8 +56,14 @@ import { PgModule } from './modules/pg/pg.module';
     StandardModule,
     OrderDetailModule,
     PgModule,
+    OperationLogModule,
   ],
   // 统一访问闸门：机器令牌闸门 + RBAC 会话鉴权（见 AccessGuard）
   providers: [{ provide: APP_GUARD, useClass: AccessGuard }],
 })
-export class AppModule {}
+export class AppModule implements NestModule {
+  // 全局操作日志中间件（替代原先 APP_INTERCEPTOR：拦截器会包裹 SSE 长连接流导致其秒断）
+  configure(consumer: MiddlewareConsumer): void {
+    consumer.apply(OperationLogMiddleware).forRoutes('*');
+  }
+}

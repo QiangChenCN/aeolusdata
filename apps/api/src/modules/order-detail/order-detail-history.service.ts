@@ -3,6 +3,7 @@ import { Cron } from '@nestjs/schedule';
 import { OrdersFetchService } from '../../infra/fetch/sources/orders-fetch.service';
 import { OrderDetailHistoryStoreService } from './order-detail-history-store.service';
 import { beijingNowStr } from './order-detail-store.service';
+import { OperationLogService } from '../operation-log/operation-log.service';
 
 /** 滚动窗口天数：T-1 ~ T-7。 */
 export const HISTORY_WINDOW_DAYS = 7;
@@ -60,6 +61,7 @@ export class OrderDetailHistoryService implements OnModuleInit {
   constructor(
     private readonly orders: OrdersFetchService,
     private readonly store: OrderDetailHistoryStoreService,
+    private readonly opLog: OperationLogService,
   ) {}
 
   onModuleInit(): void {
@@ -80,7 +82,10 @@ export class OrderDetailHistoryService implements OnModuleInit {
   @Cron('0 4 * * *', { timeZone: 'Asia/Shanghai' })
   async dailyRollup(): Promise<void> {
     try {
-      const r = await this.rollup();
+      const r = await this.rollup(undefined, {
+        source: 'OrderDetailHistoryService.dailyRollup[@Cron 0 4 * * *]',
+        operator: 'system',
+      });
       this.logger.log(
         `历史运单明细滚动完成：${r.dates[0]} ~ ${r.dates[r.dates.length - 1]}，` +
           `共入库 ${r.saved_total} 条（${r.days.filter((d) => d.status === 'ok').length}/${r.days.length} 天成功）`,
@@ -91,7 +96,10 @@ export class OrderDetailHistoryService implements OnModuleInit {
   }
 
   /** 滚动更新指定日期（默认 T-1 ~ T-7）。串行逐天，单天失败不影响其它天。 */
-  async rollup(dates?: string[]): Promise<OrderDetailRollupResult> {
+  async rollup(
+    dates?: string[],
+    ctx?: { source?: string; operator?: string },
+  ): Promise<OrderDetailRollupResult> {
     const started = beijingNowStr();
     const list = (dates && dates.length ? dates : this.windowDates()).slice(0, MAX_DATES);
     const fail = (error: string): OrderDetailRollupResult => ({
@@ -149,6 +157,23 @@ export class OrderDetailHistoryService implements OnModuleInit {
       await this.store.setMeta('last_run', JSON.stringify(result));
     } catch (e) {
       this.logger.error(`写入滚动运行状态失败：${(e as Error).message}`);
+    }
+    // 操作日志：记录「谁用哪段代码写了 delivery_history」（非 HTTP，拦截器覆盖不到）
+    try {
+      await this.opLog.record({
+        actor: ctx?.operator ?? 'system',
+        action: ctx?.source ?? 'rollup.history',
+        target: 'delivery_history',
+        code: 'OrderDetailHistoryService.rollup',
+        status: result.ok ? 200 : 500,
+        detail: {
+          dates: result.dates,
+          saved_total: result.saved_total,
+          days: result.days.map((d) => ({ date: d.date, status: d.status, saved: d.saved })),
+        },
+      });
+    } catch {
+      /* 审计失败不影响主流程 */
     }
     return result;
   }

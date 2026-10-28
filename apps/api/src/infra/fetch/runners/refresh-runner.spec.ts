@@ -10,6 +10,8 @@ import { FetchPaceService } from './fetch-pace.service';
 import { RefreshAllService } from './refresh-all.service';
 import { RefreshRunnerService } from './refresh-runner.service';
 import { TeamsFetchService } from '../sources/teams-fetch.service';
+import { PgService } from '../../../modules/pg/pg.service';
+import * as netErr from '../../../common/net-error';
 
 /**
  * 全量刷新的「作用域收敛 / 频控 / 单飞 / 阶段 0 失败语义」回归。
@@ -22,6 +24,10 @@ import { TeamsFetchService } from '../sources/teams-fetch.service';
  * 无可见站点时绝不能回落全量（越权）、阶段 0 失败绝不能降级（那会恢复已删除的本地拉取）。
  */
 const ALL_TEAMS = ['917521130', '917521136', '917521139'];
+/** 北京时区的今天（与编排的 todayYmd() 同口径），用于绕过「历史日期护栏」。 */
+const TODAY = new Date(Date.now() + 8 * 3600 * 1000).toISOString().slice(0, 10);
+/** 与编排的 REFRESH_MAX_SEC 对齐：watchdog 触发阈值（毫秒）。 */
+const WATCHDOG_MS = 900 * 1000;
 
 function makeReq(user?: string): Request {
   const headers: Record<string, string> = {};
@@ -71,12 +77,17 @@ describe('RefreshRunnerService —— 作用域收敛 / 频控 / 单飞', () => 
         { provide: ComputeService, useValue: compute },
         { provide: AuthService, useValue: { getSession: jest.fn(() => session) } },
         { provide: DataPermService, useValue: { resolveAllowed: jest.fn(() => allowed) } },
+        // 失败现场取证会查连接池体检指标：给个空实现，避免用例依赖真实 PG。
+        { provide: PgService, useValue: { poolStats: () => null } },
       ],
     }).compile();
 
     runner = moduleRef.get(RefreshRunnerService);
     // 「参与站点」由 Python teams-config 提供；这里打桩，聚焦作用域收敛本身。
     jest.spyOn(runner, 'configuredTeams').mockResolvedValue([...ALL_TEAMS]);
+    // 现场取证（DNS/TCP/连接池）在单测里必须打桩：它默认会真的解析域名、连 443，
+    // 既慢又依赖外网。它挂死曾经把整个刷新卡死过，故这里连「会不会被调用」一起测。
+    jest.spyOn(netErr, 'probeRuntime').mockResolvedValue('probe=stub');
     // 不真跑刷新（会拉真实接口、耗时数分钟）：只捕获被下发的刷新范围。
     startSpy = jest.spyOn(runner, 'start').mockResolvedValue({ ok: true, msg: '已启动' });
   });
@@ -180,5 +191,53 @@ describe('RefreshRunnerService —— 作用域收敛 / 频控 / 单飞', () => 
     expect(snap.error?.[0]?.error).toContain('阶段 0 取数失败');
     // 关键：一次计算步调用都不该发生（没有降级）。
     expect(compute.proxy).not.toHaveBeenCalled();
+  });
+
+  // ---- 卡死兜底（2026-10-27 事故回归）----
+  // 事故：阶段 0 失败后进 catch 做现场取证，`dns.promises.lookup` 在宿主 DNS 无响应时
+  // 永不 settle ⇒ catch 永不返回 ⇒ `finally` 不执行 ⇒ `running` 永久 true ⇒ 前端按钮
+  // 永远「刷新中…」，只能重启后端。以下两例锁住「刷新永远不会把自己锁死」这条底线。
+  it('watchdog：超时未完成会强制收尾，running 复位（按钮不会永久「刷新中」）', async () => {
+    startSpy.mockRestore(); // 测 start() 本体：它会 arm watchdog
+    jest.useFakeTimers();
+    // 阶段 0 永久挂起：模拟某个 await 永不返回
+    ordersStage.refreshOrders.mockReturnValue(new Promise(() => {}));
+
+    await runner.start({ teams: [...ALL_TEAMS], start: TODAY, end: TODAY });
+    expect(runner.status().running).toBe(true);
+
+    jest.advanceTimersByTime(WATCHDOG_MS + 10);
+
+    const snap = runner.status();
+    expect(snap.running).toBe(false);
+    expect(snap.error?.length).toBeGreaterThan(0);
+    expect(String(snap.error?.[0]?.error)).toContain('强制结束');
+    jest.useRealTimers();
+  });
+
+  it('watchdog 收尾后，迟到的那一轮不得把状态覆盖回「完成」', async () => {
+    startSpy.mockRestore();
+    jest.useFakeTimers();
+    let release: () => void = () => {};
+    ordersStage.refreshOrders.mockReturnValue(
+      new Promise((r) => {
+        release = () => r({ ok: true, total: 0, hit: 0, perTeam: [], distinctTeams: [] });
+      }),
+    );
+
+    await runner.start({ teams: [...ALL_TEAMS], start: TODAY, end: TODAY });
+    jest.advanceTimersByTime(WATCHDOG_MS + 10);
+    expect(runner.status().running).toBe(false);
+    expect(runner.status().current_stage).toBe('超时终止');
+
+    // 卡住的 await 很久之后才返回：它的收尾必须被识别为「已过期」，不得抹掉超时结论。
+    release();
+    jest.useRealTimers();
+    await new Promise((r) => setTimeout(r, 0));
+
+    const snap = runner.status();
+    expect(snap.running).toBe(false);
+    expect(snap.current_stage).toBe('超时终止');
+    expect(snap.error?.length).toBeGreaterThan(0);
   });
 });

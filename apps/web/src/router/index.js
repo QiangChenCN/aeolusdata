@@ -31,6 +31,7 @@ import BotInstanceView from '../features/bot-instance/BotInstanceView.vue';
 import BotView from '../features/bot/BotView.vue';
 import ProfileInfoView from '../features/profile-info/ProfileInfoView.vue';
 import NotFoundView from '../features/not-found/NotFoundView.vue';
+import OperationLogView from '../features/operation-log/OperationLogView.vue';
 import { useAuthStore } from '../stores/auth.js';
 
 // 单一出口架构：所有受保护页挂在 MainLayout 之下（壳 + 内部 router-view），
@@ -60,6 +61,7 @@ const routes = [
       { path: 'timeout', name: 'timeout', component: DeliveryTimeoutView, meta: { title: '配送超时', kind: 'timeout', id: '' } },
       { path: 'im-contact', name: 'im-contact', component: ImContactView, meta: { title: 'IM 电联', kind: 'imContact', id: '' } },
       { path: 'unsatisfied', name: 'unsatisfied', component: UnsatisfiedView, meta: { title: '违规处罚', kind: 'unsatisfied', id: '' } },
+      { path: 'operation-log', name: 'operation-log', component: OperationLogView, meta: { title: '操作日志', kind: 'operationLog', id: '' } },
       { path: 'groups', name: 'groups', component: GroupsView, meta: { title: '群组' } },
       { path: 'settings', name: 'system-settings', component: SystemSettingsView, meta: { title: '系统设置', kind: 'syscfg' } },
       { path: 'settings/dingtalk', name: 'dingtalk-settings', component: DingtalkSettingsView, meta: { title: '钉钉设置', kind: 'sys-dingtalk' } },

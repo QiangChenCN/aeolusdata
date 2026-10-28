@@ -198,6 +198,22 @@ const loading = ref(false);
 const refreshing = ref(false);
 let pollTimer = null;
 
+/* 进度轮询兜底：与后端 REFRESH_MAX_SEC（watchdog 强制收尾阈值）对齐。
+   后端卡死时 running 会一直是 true，只靠「running=false 才复位」会把按钮永久锁在
+   「刷新中…」。故这里再加两道闸：轮询总时长上限 + 后端自报 elapsed_sec 上限，
+   任一超限就停止等待并把按钮交还给用户。 */
+const POLL_MAX_SEC = 15 * 60;
+let pollStartedAt = 0;
+function stopPolling(reason) {
+  if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+  refreshing.value = false;
+  loading.value = false;
+  riderLoading.value = false;
+  if (reason) {
+    ElMessage({ type: 'warning', message: reason, duration: 10000, showClose: true });
+  }
+}
+
 // 刷新按钮冷却倒计时：对齐后端 refresh-all 频控（refresh-runner.service.ts 的
 // RATE_LIMIT_SEC=60，全局 REFRESH_ALL_GLOBAL_GAP_SEC=15）。后端接受刷新的那一刻
 // 起算 60s；若被频控拒绝（429 + RATE_LIMITED），用服务端返回的 retry_after 对齐剩余秒数。
@@ -548,13 +564,29 @@ function humanizeErr(msg) {
 }
 function poll() {
   if (pollTimer) clearInterval(pollTimer);
+  pollStartedAt = Date.now();
   pollTimer = setInterval(async () => {
+    // 闸一：本地等待上限（后端状态接口异常 / 进程重启后状态残留时的最后兜底）
+    if ((Date.now() - pollStartedAt) / 1000 > POLL_MAX_SEC) {
+      stopPolling('等待刷新超过 15 分钟仍未结束，已停止等待，请稍后重试');
+      load();
+      return;
+    }
     try {
       const st = await fetchRefreshStatus();
       const status = st && st.status;
+      // 闸二：后端自报已跑太久（watchdog 会强制收尾，收尾前先别干等）
+      const elapsed = Number(status && status.elapsed_sec) || 0;
+      if (elapsed > POLL_MAX_SEC) {
+        stopPolling(`刷新已运行 ${elapsed}s 仍未结束，已停止等待（后端会按超时处理），请稍后重试`);
+        load();
+        return;
+      }
       if (!status || !status.running) {
         clearInterval(pollTimer); pollTimer = null;
         refreshing.value = false;
+        loading.value = false;
+        riderLoading.value = false;
         /* 后端把失败站点记在 status.error 里：只看 running=false 会一律提示「刷新完成」，
            于是阶段 0 取数失败（所有站点都没更新）也显示成功 —— 表现为「刷新了却不生效、也不报错」。
            这里必须先把 error 摆到用户面前。 */
@@ -592,6 +624,13 @@ onMounted(async () => {
     const st = await fetchRefreshStatus();
     const sec = st && st.status && st.status.cooldown_sec;
     if (sec && sec > 0) startCooldown(sec);
+    // 后端仍有任务在跑（刚刷新过页面 / 从别的页签回来）：直接接入进度轮询，
+    // 否则按钮显示「刷新数据」，点下去只会回一句 already_running。
+    if (st && st.status && st.status.running) {
+      refreshing.value = true;
+      loading.value = true;
+      poll();
+    }
   } catch (e) { /* 查询失败不影响首屏 */ }
 });
 
@@ -618,12 +657,14 @@ onUnmounted(() => {
 }
 .dv-card-num { font-size: 24px; font-weight: var(--fw-bold); color: var(--el-color-primary); }
 .dv-card-label { font-size: var(--el-font-size-extra-small); color: var(--el-text-color-secondary); }
-.dv-table { border-radius: var(--el-border-radius-base); width: 100%; }
+/* 表格根元素作为 flex item：min-width:0 破除 flex 默认的 min-width:auto，
+   否则内部列宽之和(骑手看板 14 列)会把表格撑出容器，导致两个 tab 宽度不一致 */
+.dv-table { border-radius: var(--el-border-radius-base); width: 100%; min-width: 0; flex: 1; }
 /* 表格包裹层：占满标签页剩余高度，让 el-table(height=100%) 底部贴合视口 */
-.dv-table-wrap { flex: 1; min-height: 0; display: flex; }
-/* 骑手看板：表格 + 分页器纵向铺满 */
-.dv-rider-body { flex: 1; min-height: 0; display: flex; flex-direction: column; }
-.dv-pager { flex: none; padding: var(--sp-12) 0 0; display: flex; justify-content: flex-end; }
+.dv-table-wrap { flex: 1; min-height: 0; display: flex; min-width: 0; overflow: hidden; }
+/* 骑手看板：表格 + 分页器纵向铺满；min-width:0 防止被超宽分页器撑出容器 */
+.dv-rider-body { flex: 1; min-height: 0; display: flex; flex-direction: column; min-width: 0; }
+.dv-pager { flex: none; padding: var(--sp-12) 0 0; display: flex; justify-content: flex-end; min-width: 0; }
 
 /* tabs 占满 dv 剩余高度，内容区弹性填充，确保激活的表格填满可视区 */
 .dv-tabs { margin-top: var(--sp-4); flex: 1; min-height: 0; display: flex; flex-direction: column; }

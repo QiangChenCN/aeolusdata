@@ -43,6 +43,33 @@ export function netError(ex: unknown): Error {
   return new Error(`net ${e?.message || String(ex)}${netCauseSuffix(ex)}`);
 }
 
+/** 探测超时兜底串的统一后缀（提示这只是诊断信息缺失，不代表主流程失败）。 */
+const PROBE_TIMEOUT_HINT = '（探测自身超时已放弃，非主流程失败）';
+
+/**
+ * 硬超时：任何探测都**不能**无限期挂住调用方。
+ *
+ * 为什么必须：宿主 DNS 异常（WSL 的 NAT DNS 高发）时 `dns.promises.lookup` 可能
+ * 既不 resolve 也不 reject，socket 一直 ESTABLISHED。它原本被用在「阶段 0 取数失败」
+ * 的 catch 里做现场取证 —— 取证挂死 ⇒ catch 永不返回 ⇒ `finally` 不执行 ⇒ 刷新的
+ * 「单飞」标记 `running` 永久为 true，前端按钮从此卡在「刷新中…」。
+ * 诊断信息永远不该有高于业务流程的优先级，故一律用超时 + 降级串兜住。
+ */
+function withTimeout<T>(
+  p: Promise<T>,
+  ms: number,
+  fallback: (elapsedMs: number) => T,
+): Promise<T> {
+  const t0 = Date.now();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const guard = new Promise<T>((resolve) => {
+    timer = setTimeout(() => resolve(fallback(Date.now() - t0)), ms);
+  });
+  return Promise.race([p, guard]).finally(() => {
+    if (timer) clearTimeout(timer);
+  });
+}
+
 /**
  * 失败瞬间的**现场取证**：独立做一次 DNS 解析 + TCP 443 连接，绕开 undici 的连接池。
  *
@@ -79,20 +106,34 @@ function loopLag(): Promise<number> {
  *   · `dns/tcp` 也失败 → 机器 / 宿主网络问题，与本进程无关。
  */
 export async function probeRuntime(host: string, port = 443, timeoutMs = 5000): Promise<string> {
-  const [net, lag] = await Promise.all([probeNet(host, port, timeoutMs), loopLag()]);
-  const rss = Math.round(process.memoryUsage().rss / 1048576);
-  return `${net} loop=${lag}ms rss=${rss}MB uptime=${Math.floor(process.uptime())}s`;
+  // 整体再兜一层：即使下面每一段都各自有超时，任意一段出现预期外的挂起（如 loopLag 的
+  // 定时器被拖到极晚）也不能把调用方一起拖死。
+  const totalMs = timeoutMs * 2 + 2000;
+  return withTimeout(
+    (async () => {
+      const [net, lag] = await Promise.all([probeNet(host, port, timeoutMs), loopLag()]);
+      const rss = Math.round(process.memoryUsage().rss / 1048576);
+      return `${net} loop=${lag}ms rss=${rss}MB uptime=${Math.floor(process.uptime())}s`;
+    })(),
+    totalMs,
+    (elapsed) =>
+      `probe=timeout(>${elapsed}ms)${PROBE_TIMEOUT_HINT} ` +
+      `rss=${Math.round(process.memoryUsage().rss / 1048576)}MB uptime=${Math.floor(process.uptime())}s`,
+  );
 }
 
 async function probeDns(host: string, timeoutMs: number): Promise<string> {
   const t0 = Date.now();
-  try {
-    const addrs = await dns.promises.lookup(host, { all: true });
-    return `dns=ok(${addrs.map((a) => a.address).join('/')}) ${Date.now() - t0}ms`;
-  } catch (e) {
-    const err = e as Error & { code?: string };
-    return `dns=fail(${err.code || err.message}) ${Date.now() - t0}ms`;
-  }
+  // `dns.promises.lookup` 无超时参数：宿主 DNS 无响应时会永久 pending（只留一条 ESTABLISHED
+  // 的 53 端口连接）。这里必须自行 race 一个定时器，否则调用方会被永久挂住。
+  return withTimeout(
+    dns.promises.lookup(host, { all: true }).then(
+      (addrs) => `dns=ok(${addrs.map((a) => a.address).join('/')}) ${Date.now() - t0}ms`,
+      (e: Error & { code?: string }) => `dns=fail(${e.code || e.message}) ${Date.now() - t0}ms`,
+    ),
+    timeoutMs,
+    (elapsed) => `dns=timeout(>${elapsed}ms, 宿主 DNS 无响应)${PROBE_TIMEOUT_HINT}`,
+  );
 }
 
 async function probeTcp(host: string, port: number, timeoutMs: number): Promise<string> {
