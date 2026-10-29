@@ -116,7 +116,7 @@ def _cell_scores(pooled_orders, pooled_violations, team_id, date_type, settings,
         pooled_violations, team_id
     )
 
-    ontime = RTB.ontime_rate(completed, t8)
+    ontime = RTB.ontime_rate(completed, t8, false_report_slow_unfinished, early_delivered, gaobi)
     # 「物流妥投率」口径与 build_one 一致：RV.fulfillment_rate（违规派生），非 completed/pushed。
     delivery = RV.fulfillment_rate(completed, cancel_liable, early_delivered)
     unsat = RV.unsat_rate(complaint, bad_review, claim, pushed)

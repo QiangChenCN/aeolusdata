@@ -16,7 +16,8 @@
                   （判定见 order_rules.is_high_value_order；与 T8 同为配送完成单子集）
   · 复合超时时长(单均, 秒) = 考核方案分段加权超时总时长 / 剔除前有效完单
                   （独立计算，口径见 analytics.domains.assessment.compound；与「配送超时看板」同公式但本看板自算、不公用其代码）
-  · T8准时率    = (配送完成单 - T8超时单) / 配送完成单，百分比；分母为 0 时 None
+  · T8准时率    = (配送完成单 - T8超时单 - 虚假报备出餐慢未完成单 - 提前点送达*2)
+                  / (配送完成单 + 高比单超时单)，百分比；违规派生项不可用时为 None
   · 投诉/差评/索赔 = 违规处罚明细中「违规分类=投诉/差评/餐货损 且 违规状态=成立」的条数
   · 物流责取消单 = 违规处罚明细中「违规分类=取消 且 违规状态=成立」的条数
   · 提前点送达单 = 违规处罚明细中「违规类型包含 提前点送达 且 违规状态=成立」的条数
@@ -149,8 +150,8 @@ def count_delivery_completed(orders, date, all_dates=False):
 def count_t8_timeout(orders, date, all_dates=False):
     """T8 超时单：配送成功 且 超平台期望时间 > 8 分钟。
 
-    是「配送完成单」的子集（两者都要求配送成功），因此
-    T8准时率 = (配送完成单 - T8超时单) / 配送完成单 必然落在 [0, 1]。
+    是「配送完成单」的子集（两者都要求配送成功）；新口径 T8准时率还额外扣减
+    虚假报备出餐慢未完成单与提前点送达*2，分母加高比单超时单（见 ontime_rate）。
 
     考核看板专用口径（all_dates=True）：不再按骑手接单时间归属当天，直接用全部运单。
     all_dates=False 保留原口径（接单时间归属当天）。
@@ -170,11 +171,20 @@ def count_t8_timeout(orders, date, all_dates=False):
     return cnt
 
 
-def ontime_rate(completed, t8_timeout):
-    """T8 准时率（%）：(配送完成单 - T8超时单) / 配送完成单。分母为 0 返回 None。"""
-    if not completed:
+def ontime_rate(completed, t8_timeout, false_report_slow_unfinished, early_delivered, gaobi_timeout):
+    """T8 准时率（%）：
+        (配送完成单 - T8超时单 - 虚假报备出餐慢未完成单 - 提前点送达*2)
+        / (配送完成单 + 高比单超时单)
+    任一输入为 None（违规明细不可用，无法精确计算）→ 返回 None；分母 ≤ 0 → 返回 None。
+    """
+    if completed is None or t8_timeout is None \
+       or false_report_slow_unfinished is None or early_delivered is None or gaobi_timeout is None:
         return None
-    return (completed - t8_timeout) * 100.0 / completed
+    num = completed - t8_timeout - false_report_slow_unfinished - 2 * early_delivered
+    den = completed + gaobi_timeout
+    if den <= 0:
+        return None
+    return num * 100.0 / den
 
 
 def count_gaobi_orders(orders, date, all_dates=False):
@@ -502,9 +512,16 @@ def build_one(team_id, date=None):
         "gaobi_order": gaobi_order,
         "compound_overtime_sec": comp["numerator_sec"],
         "avg_compound_overtime_sec": comp["avg_sec"],
-        "t8_ontime_rate": ontime_rate(completed, t8_timeout),
     }
     result.update(violation_metrics(team_id, date, pushed, completed, orders))
+    # t8_ontime_rate 依赖违规派生项（虚假报备出餐慢未完成单 / 提前点送达），
+    # 须等 violation_metrics 合并后再算；违规明细不可用时这些项为 None → 率值为 None。
+    result["t8_ontime_rate"] = ontime_rate(
+        completed, t8_timeout,
+        result.get("false_report_slow_unfinished"),
+        result.get("early_delivered"),
+        gaobi_order,
+    )
     # 评分：按当天日型 × 天气取配置阈值，算各指标得分与总分（写回 result 对应 score 字段）。
     _compute_scores(result, orders, date)
     # 三项无实时数据指标（电联率/IM及时回复率/新专送拜访）：当天实时按满分(+15)假设计入总分，
