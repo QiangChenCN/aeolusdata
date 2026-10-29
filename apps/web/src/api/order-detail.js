@@ -2,7 +2,7 @@
 //
 // 隔离约定：本看板只使用 `/api/order-detail/*`，不与其它看板共用接口文件 ——
 // 改这里的字段 / 超时 / 路径不会波及考核、配送超时、标准达成等看板。
-import { request } from './request.js';
+import { request, requestRaw } from './request.js';
 
 const enc = encodeURIComponent;
 const j = (body) => ({
@@ -50,4 +50,39 @@ export function refreshOrderDetail({ date } = {}) {
  */
 export function fetchOrderDetailHistoryStatus() {
   return request('/order-detail/history/status', { timeout: 15000 });
+}
+
+/**
+ * 导出当前筛选结果为 CSV（浏览器直接下载）。
+ * 与 fetchOrderDetail 同筛选口径，但后端返回全部匹配行（不分页）的 CSV 文件流。
+ * cols：当前可见列 key 数组（按显示顺序），控制导出哪些列；缺省由后端导出全部列。
+ */
+export async function exportOrderDetail({ start, end, date, team, q, state, sort, order, cols } = {}) {
+  const p = [];
+  if (start) p.push('start=' + enc(start));
+  if (end) p.push('end=' + enc(end));
+  if (date) p.push('date=' + enc(date));
+  const tv = Array.isArray(team) ? team.join(',') : team;
+  if (tv) p.push('team=' + enc(tv));
+  if (q) p.push('q=' + enc(q));
+  if (state) p.push('state=' + enc(state));
+  if (sort) p.push('sort=' + enc(sort));
+  if (order) p.push('order=' + enc(order));
+  if (cols && cols.length) p.push('cols=' + enc(cols.join(',')));
+  const url = '/order-detail/export' + (p.length ? '?' + p.join('&') : '');
+  const res = await requestRaw(url, { timeout: 60000 });
+  if (!res.ok) {
+    const msg = await res.text().catch(() => '');
+    throw new Error(msg || '导出失败');
+  }
+  const blob = await res.blob();
+  const durl = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const tag = `${start || date || 'all'}_${end || date || 'all'}`;
+  a.href = durl;
+  a.download = `运单明细_${tag}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(durl), 1000);
 }

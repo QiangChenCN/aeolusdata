@@ -2,7 +2,7 @@
 // 只有本看板使用，改这里的请求编排不会波及别的看板。
 import { computed, ref, watch } from 'vue';
 import { fetchTeams } from '../../api/dashboards.js';
-import { fetchOrderDetail, refreshOrderDetail, fetchOrderDetailHistoryStatus } from '../../api/order-detail.js';
+import { fetchOrderDetail, refreshOrderDetail, fetchOrderDetailHistoryStatus, exportOrderDetail } from '../../api/order-detail.js';
 
 const REFRESH_COOLDOWN_SEC = 60;
 /** 关键字输入防抖：每个按键都打一次全量过滤请求太浪费。 */
@@ -101,6 +101,7 @@ export function useOrderDetail() {
   const loadErrMsg = ref('');
   const refreshing = ref(false);
   const cooldown = ref(0);
+  const exporting = ref(false);
 
   /* 列显隐：优先读取 localStorage 持久化；无存储（null）则首次加载默认全列。
    * colInit 仅在「无存储」时为 true —— 首次拿到列定义后填全列；有存储则尊重用户配置
@@ -300,6 +301,36 @@ export function useOrderDetail() {
     }
   }
 
+  /**
+   * 导出当前筛选结果：把当前筛选条件（日期 / 站点 / 状态 / 关键字 / 排序）连同
+   * 当前可见列（visibleColumns 的 key 顺序）发给后端，由后端导出全部匹配行的 CSV 并触发下载。
+   * 与表格查询同口径，但导出「全部」匹配行（不分页）。
+   */
+  async function onExport() {
+    if (exporting.value) return;
+    const teamParam = (() => {
+      const arr = Array.isArray(teamSel.value) ? teamSel.value : [teamSel.value].filter(Boolean);
+      if (!arr.length || arr.includes('__all__')) return [];
+      return arr;
+    })();
+    const colKeys = (visibleColumns.value || []).map((c) => c.key);
+    exporting.value = true;
+    try {
+      await exportOrderDetail({
+        start: dateRange.value[0], end: dateRange.value[1],
+        team: teamParam, q: keyword.value.trim(), state: stateSel.value,
+        sort: sortProp.value, order: sortOrder.value === 'ascending' ? 'asc' : 'desc',
+        cols: colKeys,
+      });
+      odLog('export ✓ 已触发下载');
+    } catch (e) {
+      odLog('export ✗ 失败', e && e.message ? e.message : e);
+      loadErrMsg.value = '导出失败：' + (e && e.message ? e.message : '未知错误');
+    } finally {
+      exporting.value = false;
+    }
+  }
+
   /** 历史滚动状态：T-1 ~ T-7 各天入库行数 + 上次运行快照。失败不影响主表。 */
   async function loadHistory() {
     const t = odNow();
@@ -365,9 +396,9 @@ export function useOrderDetail() {
     total, page, pageSize, sortProp, sortOrder, fetchedAt,
     historyDays, historyTotal, lastRun, loadHistory,
     teams, teamOptions, loading, loaded, loadErrMsg, needRefresh,
-    refreshing, cooldown, startCooldown,
+    refreshing, cooldown, startCooldown, exporting,
     bodyRef, bodyH, initMeasure,
     load, changeDate, changeTeam, changeState, onSortChange, onPageChange, onPageSizeChange,
-    onRefresh, init, dispose, selectAll, defaultVisibleKeys,
+    onRefresh, onExport, init, dispose, selectAll, defaultVisibleKeys,
   };
 }

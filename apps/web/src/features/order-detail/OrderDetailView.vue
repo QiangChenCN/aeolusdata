@@ -45,6 +45,15 @@
         placeholder="运单号 / 订单号 / 骑手 / 商家"
       />
       <el-button @click="colDrawer = true"><el-icon><Operation /></el-icon> 列设置</el-button>
+      <el-button
+        :loading="exporting"
+        :disabled="exporting || loading"
+        @click="onExport"
+      >
+        <el-icon><Download /></el-icon>
+        <span v-if="exporting">导出中…</span>
+        <span v-else>导出</span>
+      </el-button>
       <span v-if="rangeIncludesToday && fetchedAt" class="od-tag">刷新时间：{{ fetchedAt }}</span>
       <span v-else-if="!rangeIncludesToday && historyLatestDate" class="od-tag">历史数据最新：{{ historyLatestDate }}</span>
       <el-button
@@ -141,7 +150,7 @@
 <script setup>
 import { computed, onMounted, onUnmounted, nextTick, ref, watch } from 'vue';
 import { ElMessage } from 'element-plus';
-import { Operation, Refresh, Search } from '@element-plus/icons-vue';
+import { Download, Operation, Refresh, Search } from '@element-plus/icons-vue';
 import { useOrderDetail } from './useOrderDetail.js';
 
 const {
@@ -150,7 +159,7 @@ const {
   total, page, pageSize, fetchedAt,
   historyDays, historyTotal, lastRun,
   teamOptions, loading, loadErrMsg, needRefresh,
-  refreshing, cooldown,
+  refreshing, cooldown, exporting, onExport,
   bodyRef, bodyH, initMeasure,
   changeDate, changeTeam, changeState, onSortChange, onPageChange, onPageSizeChange,
   onRefresh, onRollupHistory, init, dispose, defaultVisibleKeys,

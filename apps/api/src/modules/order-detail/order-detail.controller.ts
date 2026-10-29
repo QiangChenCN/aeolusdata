@@ -1,4 +1,5 @@
-import { Body, Controller, Get, Logger, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, Logger, Post, Query, Res } from '@nestjs/common';
+import { Response } from 'express';
 import { todayYmd } from '../../infra/fetch/storage/raw-cache.service';
 import { OrderDetailStoreService } from './order-detail-store.service';
 import { OrderDetailRefreshService } from './order-detail-refresh.service';
@@ -10,6 +11,7 @@ import {
   ORDER_DETAIL_SEARCH_KEYS,
   normalizeOrderRow,
   OrderDetailRow,
+  OrderDetailColKind,
 } from './order-detail-normalize';
 
 /** 单页最大行数（防止前端把 pageSize 调到极大拖垮传输）。 */
@@ -74,13 +76,94 @@ export class OrderDetailController {
       fetched_at: null,
       ...extra,
     });
-
-    if (!this.store.ready) {
-      return empty({ error: 'PG 未启用（DATABASE_URL 未配置）' });
+    try {
+      const { rows, columns, teams, states, fetchedAt } = await this.resolveRows({ date, start, end, team, q, state, sort, order });
+      const ps = Math.min(Math.max(Number(pageSize) || DEFAULT_PAGE_SIZE, 1), MAX_PAGE_SIZE);
+      const total = rows.length;
+      const pages = Math.max(1, Math.ceil(total / ps));
+      const p = Math.min(Math.max(Number(page) || 1, 1), pages);
+      const slice = rows.slice((p - 1) * ps, (p - 1) * ps + ps);
+      const d = (date || '').trim() || todayYmd();
+      return {
+        ok: true,
+        date: d,
+        team: team && team !== '__all__' ? team : '',
+        columns,
+        teams,
+        states,
+        rows: slice,
+        total,
+        page: p,
+        pageSize: ps,
+        fetched_at: fetchedAt || null,
+        error: null,
+      };
+    } catch (e) {
+      const d = (date || '').trim() || todayYmd();
+      this.logger.error(`运单明细查询失败 ${d}: ${(e as Error).message}`);
+      return empty({ date: d, team: team && team !== '__all__' ? team : '', error: (e as Error).message });
     }
-    const d = (date || '').trim() || todayYmd();
+  }
+
+  /**
+   * 导出当前筛选结果为 CSV（UTF-8 BOM，Excel 直接可读）。
+   * 复用与 orders 完全相同的取数 / 过滤 / 排序逻辑，但返回全部匹配行（不分页）。
+   * cols 为逗号分隔的列 key（前端按当前可见列顺序传入）；缺省导出全部列。
+   */
+  @Get('export')
+  async export(
+    @Res() res: Response,
+    @Query('date') date?: string,
+    @Query('start') start?: string,
+    @Query('end') end?: string,
+    @Query('team') team?: string,
+    @Query('q') q?: string,
+    @Query('state') state?: string,
+    @Query('sort') sort?: string,
+    @Query('order') order?: string,
+    @Query('cols') cols?: string,
+  ) {
+    try {
+      const { rows, columns } = await this.resolveRows({ date, start, end, team, q, state, sort, order });
+      // 导出列：默认全部；指定 cols 时按前端传入顺序筛选（即用户当前可见列）
+      let expCols = columns;
+      const keys = (cols || '').split(',').map((s) => s.trim()).filter(Boolean);
+      if (keys.length) {
+        const byKey = new Map(columns.map((c) => [c.key, c]));
+        const picked = keys.map((k) => byKey.get(k)).filter(Boolean);
+        if (picked.length) expCols = picked as typeof columns;
+      }
+      const csv = this.toCsv(rows, expCols);
+      const tag = `${start || date || 'all'}_${end || date || 'all'}`;
+      const fname = `order-detail_${tag}.csv`;
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename="${fname}"`);
+      res.status(200).send(csv);
+    } catch (e) {
+      this.logger.error(`运单明细导出失败：${(e as Error).message}`);
+      res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+      res.status(500).send('导出失败：' + ((e as Error).message || '未知错误'));
+    }
+  }
+
+  /**
+   * 取数 / 过滤 / 排序的共享内核：根据筛选条件返回「全部匹配且已排序」的行（不分页）。
+   * orders 在此结果上做分页；export 直接整包导出。
+   */
+  private async resolveRows(params: {
+    date?: string; start?: string; end?: string; team?: string;
+    q?: string; state?: string; sort?: string; order?: string;
+  }): Promise<{
+    rows: OrderDetailRow[];
+    columns: { key: string; label: string; kind: OrderDetailColKind }[];
+    teams: { team: string; rows: number }[];
+    states: string[];
+    fetchedAt: string;
+  }> {
+    if (!this.store.ready) throw new Error('PG 未启用（DATABASE_URL 未配置）');
+    const d = (params.date || '').trim() || todayYmd();
     // team 支持逗号分隔多站点（前端 multiple 多选）；含 `__all__` 或为空 = 全站
-    const t = String(team ?? '').trim();
+    const t = String(params.team ?? '').trim();
     const teamList = t && t !== '__all__'
       ? t.split(',').map((s) => s.trim()).filter(Boolean)
       : [];
@@ -90,11 +173,11 @@ export class OrderDetailController {
     let teams: { team: string; rows: number }[];
     let fetchedAt = '';
     try {
-      if (start && end) {
+      if (params.start && params.end) {
         // 区间查询：联合实时表（当天）+ 历史表（T-1~T-7），覆盖所选日期段
-        raw = await this.store.getRange(start, end, teamFilter || undefined);
-        teams = await this.store.rangeCountByTeam(start, end);
-        fetchedAt = await this.store.rangeLastFetchedAt(start, end, teamFilter || undefined);
+        raw = await this.store.getRange(params.start, params.end, teamFilter || undefined);
+        teams = await this.store.rangeCountByTeam(params.start, params.end);
+        fetchedAt = await this.store.rangeLastFetchedAt(params.start, params.end, teamFilter || undefined);
       } else {
         // 单日读取：站点覆盖 / 状态枚举 / 过滤排序都在同一份数据上完成
         raw = await this.store.getDay(d);
@@ -112,7 +195,7 @@ export class OrderDetailController {
       }
     } catch (e) {
       this.logger.error(`读取运单明细失败 ${d}: ${(e as Error).message}`);
-      return empty({ date: d, team: teamFilter ? teamFilter.join(',') : '', error: (e as Error).message });
+      throw e;
     }
 
     const all = raw.map(normalizeOrderRow);
@@ -122,8 +205,8 @@ export class OrderDetailController {
 
     const states = [...new Set(scoped.map((r) => String(r.stateDesc ?? r.state ?? '')).filter(Boolean))].sort();
 
-    const kw = String(q ?? '').trim().toLowerCase();
-    const st = String(state ?? '').trim();
+    const kw = String(params.q ?? '').trim().toLowerCase();
+    const st = String(params.state ?? '').trim();
     let rows = scoped;
     if (kw) {
       rows = rows.filter((r) =>
@@ -133,8 +216,8 @@ export class OrderDetailController {
     if (st) rows = rows.filter((r) => String(r.stateDesc ?? r.state ?? '') === st);
 
     // 排序：数值列按数值，其余按字典序（时间列格式 YYYY-MM-DD HH:mm:ss，字典序即时间序）
-    const sk = String(sort ?? '').trim();
-    const dir = String(order ?? '').trim().toLowerCase() === 'asc' ? 1 : -1;
+    const sk = String(params.sort ?? '').trim();
+    const dir = String(params.order ?? '').trim().toLowerCase() === 'asc' ? 1 : -1;
     if (sk && ORDER_DETAIL_COLUMNS.some((c) => c.key === sk)) {
       rows = rows.slice().sort((a, b) => {
         const av = a[sk];
@@ -151,26 +234,27 @@ export class OrderDetailController {
       });
     }
 
-    const ps = Math.min(Math.max(Number(pageSize) || DEFAULT_PAGE_SIZE, 1), MAX_PAGE_SIZE);
-    const total = rows.length;
-    const pages = Math.max(1, Math.ceil(total / ps));
-    const p = Math.min(Math.max(Number(page) || 1, 1), pages);
-    const slice = rows.slice((p - 1) * ps, (p - 1) * ps + ps);
-
     return {
-      ok: true,
-      date: d,
-      team: teamFilter ? teamFilter.join(',') : '',
+      rows,
       columns: ORDER_DETAIL_COLUMNS.map((c) => ({ key: c.key, label: c.label, kind: c.kind })),
       teams,
       states,
-      rows: slice,
-      total,
-      page: p,
-      pageSize: ps,
-      fetched_at: fetchedAt || null,
-      error: null,
+      fetchedAt,
     };
+  }
+
+  /** 行集合 → CSV 文本（UTF-8 BOM + CRLF，字段按 RFC4180 转义）。 */
+  private toCsv(rows: OrderDetailRow[], cols: { key: string; label: string }[]): string {
+    const esc = (v: unknown): string => {
+      const s = v === null || v === undefined ? '' : String(v);
+      // 15 位以上纯数字（如 19 位运单号）直接写出会被 Excel 当数值解析，
+      // 超出 15 位精度即四舍五入、尾数补 0 并转科学计数法；前置 TAB 强制按文本导入，原样显示。
+      const texted = /^\d{15,}$/.test(s) ? '\t' + s : s;
+      return /[",\r\n]/.test(texted) ? '"' + texted.replace(/"/g, '""') + '"' : texted;
+    };
+    const head = cols.map((c) => esc(c.label)).join(',');
+    const body = rows.map((r) => cols.map((c) => esc(r[c.key])).join(','));
+    return '\uFEFF' + [head, ...body].join('\r\n');
   }
 
   /** 刷新：拉全站运单入库（同步返回，前端无需轮询）。需 data:refresh 权限。 */
