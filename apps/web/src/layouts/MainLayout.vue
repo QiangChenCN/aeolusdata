@@ -73,8 +73,8 @@ watch(isCompact, (v) => { if (!v) drawerOpen.value = false; });
   overflow: hidden;
 }
 .app-main { padding: 0; background: var(--el-bg-color-page); overflow: auto; }
-/* 主内容内层：固定 1440（下限防压坏、上限防拉伸），并在主区剩余空间内居中；窄屏时由 .app-main 内部横向滚动 */
-.app-main-inner { max-width: 1440px; min-width: 1440px; margin: 0 auto; height: 100%; }
+/* 主内容内层：铺满主区剩余空间，不再限制 1440 上下限 */
+.app-main-inner { margin: 0 auto; height: 100%; }
 .app-footer {
   display: flex;
   align-items: center;
