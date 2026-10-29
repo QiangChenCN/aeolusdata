@@ -10,6 +10,7 @@ import { StreamingModule } from './modules/streaming/streaming.module';
 import { TasksModule } from './modules/tasks/tasks.module';
 import { CronModule } from './modules/cron/cron.module';
 import { JobsUiModule } from './modules/jobs/jobs-ui.module';
+import { WorkerSpawnerModule } from './modules/jobs/worker-spawner.module';
 import { ServeModule } from './modules/serve/serve.module';
 import { ProxyModule } from './modules/proxy/proxy.module';
 import { FetchModule } from './infra/fetch/fetch.module';
@@ -41,6 +42,7 @@ import { OperationLogMiddleware } from './modules/operation-log/operation-log.mi
     TasksModule,
     CronModule,
     JobsUiModule,
+    WorkerSpawnerModule,
     ServeModule,
     ProxyModule,
     FetchModule,

@@ -100,7 +100,7 @@ start_watchdog() {
 
 # ---------------- 停止相关 ----------------
 PAT_WEB='vite --port 5173 --strictPort'
-PAT_BACKEND='dist/src/main'
+PAT_BACKEND='dist/src/main$'
 PAT_COMPUTE='compute_api[.]main:app'
 PAT_WATCHDOG='[w]atchdog.sh'
 

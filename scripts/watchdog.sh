@@ -33,7 +33,7 @@ probe(){
 
 restart_backend(){
   log "[restart] backend (8787) — 按原命令 node dist/src/main 拉起"
-  pkill -KILL -f "dist/src/main" 2>/dev/null; sleep 1
+  pkill -KILL -f "dist/src/main$" 2>/dev/null; sleep 1
   setsid bash -c "cd $ROOT/apps/api && exec node dist/src/main" >> "$ROOT/apps/api/runtime/logs/backend.log" 2>&1 < /dev/null &
 }
 restart_compute(){
