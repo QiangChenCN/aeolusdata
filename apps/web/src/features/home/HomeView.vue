@@ -1,29 +1,5 @@
 <template>
   <div class="home">
-    <section class="hero">
-      <div class="hero-main">
-        <div class="hero-logo">🐂</div>
-        <div>
-          <h1>风神工作台</h1>
-          <p class="hero-sub">风神数据自动化中枢 —— 任务编排、运行监控与产物预览，一站直达。</p>
-        </div>
-      </div>
-      <div class="hero-stats">
-        <div class="stat">
-          <span class="stat-num">{{ tasks.tasks.length }}</span>
-          <span class="stat-label">任务总数</span>
-        </div>
-        <div class="stat">
-          <span class="stat-num stat--run">{{ runningCount }}</span>
-          <span class="stat-label">执行中</span>
-        </div>
-        <div class="stat">
-          <span class="stat-num">{{ tasks.groups.length }}</span>
-          <span class="stat-label">业务分组</span>
-        </div>
-      </div>
-    </section>
-
     <section class="cards">
       <el-card class="quick" shadow="hover" @click="go('/tasks')">
         <el-icon class="quick-ic"><Grid /></el-icon>
@@ -69,19 +45,14 @@
 import { computed } from 'vue';
 import { useRouter } from 'vue-router';
 import StatusCapsule from '../../components/common/StatusCapsule.vue';
-import { useTasksStore } from '../../stores/tasks.js';
 import { useRunsStore } from '../../stores/runs.js';
 import { useAppStore } from '../../stores/app.js';
 import { STATUS_TXT } from '../../utils/tokens.js';
 
 const router = useRouter();
-const tasks = useTasksStore();
 const runs = useRunsStore();
 const app = useAppStore();
 
-const runningCount = computed(
-  () => (tasks.tasks || []).filter((t) => t.status === 'running').length,
-);
 const recentRuns = computed(() => (runs.history || []).slice(0, 8));
 
 function go(p) { router.push(p); }
@@ -130,26 +101,6 @@ const quarkText = computed(() => {
   display: flex; flex-direction: column; gap: var(--sp-16);
   overflow: hidden;
 }
-.hero {
-  display: flex; align-items: center; justify-content: space-between; gap: var(--sp-20);
-  background: linear-gradient(120deg, var(--el-color-primary-light-9), var(--el-bg-color));
-  border: 1px solid var(--el-border-color-lighter); border-radius: var(--r-modal);
-  padding: var(--sp-24); flex-wrap: wrap; flex: none;
-}
-.hero-main { display: flex; align-items: center; gap: var(--sp-16); }
-.hero-logo { font-size: 44px; }
-.hero h1 { margin: 0; font-size: clamp(28px, 2vw + 20px, 36px); line-height: var(--lh-tight); }
-.hero-sub { margin: var(--sp-6) 0 0; color: var(--el-text-color-secondary); font-size: var(--el-font-size-base); }
-.hero-stats { display: flex; gap: var(--sp-12); }
-.stat {
-  display: flex; flex-direction: column; align-items: center;
-  min-width: 84px; padding: var(--sp-12) var(--sp-16);
-  background: var(--el-bg-color); border: 1px solid var(--el-border-color-lighter); border-radius: var(--el-border-radius-base);
-}
-.stat-num { font-size: 26px; font-weight: var(--fw-bold); color: var(--el-text-color-primary); }
-.stat-num.stat--run { color: var(--el-color-primary); }
-.stat-label { font-size: var(--el-font-size-extra-small); color: var(--el-text-color-secondary); margin-top: 2px; }
-
 .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: var(--sp-12); flex: none; }
 .quick { cursor: pointer; display: flex; align-items: center; gap: var(--sp-12); }
 .quick-ic { font-size: 26px; color: var(--el-color-primary); }
@@ -177,12 +128,9 @@ const quarkText = computed(() => {
 /* 响应式：窄屏堆叠两栏、收紧内边距，保持铺满不溢出 */
 @media (max-width: 768px) {
   .home { padding: var(--sp-12); gap: var(--sp-12); }
-  .hero { padding: var(--sp-16); }
   .two { grid-template-columns: 1fr; }
 }
 @media (max-width: 480px) {
   .home { padding: var(--sp-8); }
-  .hero-stats { width: 100%; justify-content: space-between; }
-  .stat { flex: 1; min-width: 0; }
 }
 </style>

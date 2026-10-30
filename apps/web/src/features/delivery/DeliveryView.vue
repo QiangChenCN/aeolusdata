@@ -111,7 +111,6 @@
         border
         class="od-table"
         empty-text="暂无运单明细"
-        @sort-change="onSortChange"
       >
         <el-table-column
           v-for="c in visibleColumns"
@@ -120,7 +119,6 @@
           :label="c.label"
           :width="colWidths[c.key]"
           :align="c.kind === 'text' ? 'left' : 'center'"
-          sortable="custom"
         >
           <template #default="{ row }">
             <span v-if="c.kind === 'bool'">
@@ -151,7 +149,7 @@
 import { computed, onMounted, onUnmounted, nextTick, ref, watch } from 'vue';
 import { ElMessage } from 'element-plus';
 import { Download, Operation, Refresh, Search } from '@element-plus/icons-vue';
-import { useOrderDetail } from './useOrderDetail.js';
+import { useDelivery } from './useDelivery.js';
 
 const {
   dateRange, rangeIncludesToday, teamSel, stateSel, keyword,
@@ -161,9 +159,9 @@ const {
   teamOptions, loading, loadErrMsg, needRefresh,
   refreshing, cooldown, exporting, onExport,
   bodyRef, bodyH, initMeasure,
-  changeDate, changeTeam, changeState, onSortChange, onPageChange, onPageSizeChange,
+  changeDate, changeTeam, changeState, onPageChange, onPageSizeChange,
   onRefresh, onRollupHistory, init, dispose, defaultVisibleKeys,
-} = useOrderDetail();
+} = useDelivery();
 
 /** 列设置抽屉开关与搜索词。 */
 const colDrawer = ref(false);
@@ -362,8 +360,4 @@ onUnmounted(dispose);
 .od-table :deep(.el-table th.el-table__cell),
 .od-table :deep(.el-table td.el-table__cell) { padding: 8px 0; }
 .od-table :deep(.el-table .cell) { line-height: 22px; white-space: nowrap; }
-.od-table :deep(.caret-wrapper) { display: none !important; }
-.od-table :deep(.ascending .caret-wrapper),
-.od-table :deep(.descending .caret-wrapper) { display: inline-flex !important; }
-.od-table :deep(.is-sortable:hover .caret-wrapper) { display: inline-flex !important; opacity: 0.4; cursor: pointer; }
 </style>

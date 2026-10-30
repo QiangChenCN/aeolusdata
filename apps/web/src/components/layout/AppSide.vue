@@ -1,5 +1,5 @@
 <template>
-  <nav class="side">
+  <nav class="side" :class="{ collapsed: !app.sideOpen }">
     <NavNode
       v-for="it in navItems"
       :key="it.key"
@@ -7,6 +7,10 @@
       :depth="0"
       :siblings="topParentKeys"
     />
+    <button class="side-collapse" @click="$emit('toggle-nav')" :title="app.sideOpen ? '折叠侧栏' : '展开侧栏'">
+      <el-icon v-if="app.sideOpen"><Fold /></el-icon>
+      <el-icon v-else><Expand /></el-icon>
+    </button>
   </nav>
 </template>
 
@@ -17,9 +21,12 @@ import NavNode from './NavNode.vue';
 import { useTasksStore } from '../../stores/tasks.js';
 import { useAuthStore } from '../../stores/auth.js';
 import { useRunsStore } from '../../stores/runs.js';
+import { useAppStore } from '../../stores/app.js';
 import { openActiveAncestors } from '../../utils/nav.js';
 
 const route = useRoute();
+const app = useAppStore();
+defineEmits(['toggle-nav']);
 const tasks = useTasksStore();
 const auth = useAuthStore();
 const runs = useRunsStore();
@@ -35,7 +42,7 @@ const navItems = computed(() => {
     { type: 'leaf', kind: 'timeout', id: '', name: '配送超时', icon: 'Timer' },
     { type: 'leaf', kind: 'unsatisfied', id: '', name: '违规处罚', icon: 'Warning' },
     { type: 'leaf', kind: 'imContact', id: '', name: 'IM 电联', icon: 'ChatDotRound' },
-    { type: 'leaf', kind: 'orderDetail', id: '', name: '运单明细', icon: 'Tickets' },
+    { type: 'leaf', kind: 'delivery', id: '', name: '运单明细', icon: 'Tickets' },
     { type: 'leaf', kind: 'assess', id: '', name: '考核设置', icon: 'Trophy' },
   ];
   items.push({ type: 'parent', key: 'dash', name: '数据看板', icon: 'DataLine', children: dashSubs });
@@ -72,5 +79,23 @@ watch(() => route.fullPath, () => openActiveAncestors(navItems.value), { immedia
 </script>
 
 <style scoped>
-.side { padding: var(--sp-12) var(--sp-8); display: flex; flex-direction: column; gap: 2px; }
+.side { padding: var(--sp-12) var(--sp-8); display: flex; flex-direction: column; gap: 2px; height: 100%; }
+/* 折叠按钮：固定在侧栏右下角，margin-top:auto 把它顶到底部，align-self:flex-end 靠右 */
+.side-collapse {
+  margin-top: auto;
+  align-self: flex-end;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px; height: 32px;
+  border: none; border-radius: var(--el-border-radius-base);
+  background: transparent; color: var(--el-text-color-regular);
+  cursor: pointer;
+}
+.side-collapse:hover { background: var(--el-fill-color); }
+/* 折叠为图标栏：仅显示图标，隐藏文字/计数/箭头，图标居中 */
+.side.collapsed :deep(.nv) { justify-content: center; padding-left: 0 !important; padding-right: 0 !important; }
+.side.collapsed :deep(.nm),
+.side.collapsed :deep(.ct),
+.side.collapsed :deep(.nv-arw) { display: none; }
 </style>

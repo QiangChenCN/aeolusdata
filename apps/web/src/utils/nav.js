@@ -11,7 +11,7 @@ export function navTo(it) {
     case 'standard': return '/standard';
     case 'attendPeriod': return '/attend-period';
     case 'assessment': return '/assessment';
-    case 'orderDetail': return '/order-detail';
+    case 'delivery': return '/delivery';
     case 'timeout': return '/timeout';
     case 'imContact': return '/im-contact';
     case 'unsatisfied': return '/unsatisfied';

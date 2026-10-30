@@ -1,18 +1,18 @@
 import { Body, Controller, Get, Logger, Post, Query, Res } from '@nestjs/common';
 import { Response } from 'express';
 import { todayYmd } from '../../infra/fetch/storage/raw-cache.service';
-import { OrderDetailStoreService } from './order-detail-store.service';
-import { OrderDetailRefreshService } from './order-detail-refresh.service';
-import { OrderDetailHistoryService } from './order-detail-history.service';
-import { OrderDetailHistoryStoreService } from './order-detail-history-store.service';
+import { DeliveryStoreService } from './delivery-store.service';
+import { DeliveryRefreshService } from './delivery-refresh.service';
+import { DeliveryHistoryService } from './delivery-history.service';
+import { DeliveryHistoryStoreService } from './delivery-history-store.service';
 import {
-  ORDER_DETAIL_COLUMNS,
-  ORDER_DETAIL_NUMERIC_KEYS,
-  ORDER_DETAIL_SEARCH_KEYS,
+  DELIVERY_COLUMNS,
+  DELIVERY_NUMERIC_KEYS,
+  DELIVERY_SEARCH_KEYS,
   normalizeOrderRow,
-  OrderDetailRow,
-  OrderDetailColKind,
-} from './order-detail-normalize';
+  DeliveryRow,
+  DeliveryColKind,
+} from './delivery-normalize';
 
 /** 单页最大行数（防止前端把 pageSize 调到极大拖垮传输）。 */
 const MAX_PAGE_SIZE = 200;
@@ -28,15 +28,15 @@ const DEFAULT_PAGE_SIZE = 50;
  * 过滤 / 排序 / 分页都在内存里做：单日全站是千级行数，下推到 SQL 反而要在
  * JSON 列上做表达式匹配，既慢又难维护（明细行的字段是宽表，未做成列）。
  */
-@Controller('api/order-detail')
-export class OrderDetailController {
-  private readonly logger = new Logger(OrderDetailController.name);
+@Controller('api/delivery')
+export class DeliveryController {
+  private readonly logger = new Logger(DeliveryController.name);
 
   constructor(
-    private readonly store: OrderDetailStoreService,
-    private readonly refreshSvc: OrderDetailRefreshService,
-    private readonly historySvc: OrderDetailHistoryService,
-    private readonly historyStore: OrderDetailHistoryStoreService,
+    private readonly store: DeliveryStoreService,
+    private readonly refreshSvc: DeliveryRefreshService,
+    private readonly historySvc: DeliveryHistoryService,
+    private readonly historyStore: DeliveryHistoryStoreService,
   ) {}
 
   /**
@@ -47,7 +47,7 @@ export class OrderDetailController {
    *   · team     站点 id；空 / `__all__` = 全站
    *   · q        关键字（运单号 / 订单号 / 骑手 / 商家 / 站点）
    *   · state    运单状态精确过滤
-   *   · sort     排序列（ORDER_DETAIL_COLUMNS 的 key）
+   *   · sort     排序列（DELIVERY_COLUMNS 的 key）
    *   · order    asc | desc
    *   · page / pageSize
    */
@@ -66,8 +66,8 @@ export class OrderDetailController {
   ) {
     const empty = (extra: Record<string, unknown> = {}) => ({
       ok: false,
-      rows: [] as OrderDetailRow[],
-      columns: ORDER_DETAIL_COLUMNS.map((c) => ({ key: c.key, label: c.label, kind: c.kind })),
+      rows: [] as DeliveryRow[],
+      columns: DELIVERY_COLUMNS.map((c) => ({ key: c.key, label: c.label, kind: c.kind })),
       teams: [] as { team: string; rows: number }[],
       states: [] as string[],
       total: 0,
@@ -135,7 +135,7 @@ export class OrderDetailController {
       }
       const csv = this.toCsv(rows, expCols);
       const tag = `${start || date || 'all'}_${end || date || 'all'}`;
-      const fname = `order-detail_${tag}.csv`;
+      const fname = `delivery_${tag}.csv`;
       res.setHeader('Content-Type', 'text/csv; charset=utf-8');
       res.setHeader('Content-Disposition', `attachment; filename="${fname}"`);
       res.status(200).send(csv);
@@ -154,8 +154,8 @@ export class OrderDetailController {
     date?: string; start?: string; end?: string; team?: string;
     q?: string; state?: string; sort?: string; order?: string;
   }): Promise<{
-    rows: OrderDetailRow[];
-    columns: { key: string; label: string; kind: OrderDetailColKind }[];
+    rows: DeliveryRow[];
+    columns: { key: string; label: string; kind: DeliveryColKind }[];
     teams: { team: string; rows: number }[];
     states: string[];
     fetchedAt: string;
@@ -210,7 +210,7 @@ export class OrderDetailController {
     let rows = scoped;
     if (kw) {
       rows = rows.filter((r) =>
-        ORDER_DETAIL_SEARCH_KEYS.some((k) => String(r[k] ?? '').toLowerCase().includes(kw)),
+        DELIVERY_SEARCH_KEYS.some((k) => String(r[k] ?? '').toLowerCase().includes(kw)),
       );
     }
     if (st) rows = rows.filter((r) => String(r.stateDesc ?? r.state ?? '') === st);
@@ -218,7 +218,7 @@ export class OrderDetailController {
     // 排序：数值列按数值，其余按字典序（时间列格式 YYYY-MM-DD HH:mm:ss，字典序即时间序）
     const sk = String(params.sort ?? '').trim();
     const dir = String(params.order ?? '').trim().toLowerCase() === 'asc' ? 1 : -1;
-    if (sk && ORDER_DETAIL_COLUMNS.some((c) => c.key === sk)) {
+    if (sk && DELIVERY_COLUMNS.some((c) => c.key === sk)) {
       rows = rows.slice().sort((a, b) => {
         const av = a[sk];
         const bv = b[sk];
@@ -227,7 +227,7 @@ export class OrderDetailController {
         if (an && bn) return 0;
         if (an) return 1; // 空值恒排最后
         if (bn) return -1;
-        const c = ORDER_DETAIL_NUMERIC_KEYS.has(sk)
+        const c = DELIVERY_NUMERIC_KEYS.has(sk)
           ? Number(av) - Number(bv)
           : String(av).localeCompare(String(bv), 'zh');
         return dir * c;
@@ -236,7 +236,7 @@ export class OrderDetailController {
 
     return {
       rows,
-      columns: ORDER_DETAIL_COLUMNS.map((c) => ({ key: c.key, label: c.label, kind: c.kind })),
+      columns: DELIVERY_COLUMNS.map((c) => ({ key: c.key, label: c.label, kind: c.kind })),
       teams,
       states,
       fetchedAt,
@@ -244,7 +244,7 @@ export class OrderDetailController {
   }
 
   /** 行集合 → CSV 文本（UTF-8 BOM + CRLF，字段按 RFC4180 转义）。 */
-  private toCsv(rows: OrderDetailRow[], cols: { key: string; label: string }[]): string {
+  private toCsv(rows: DeliveryRow[], cols: { key: string; label: string }[]): string {
     const esc = (v: unknown): string => {
       const s = v === null || v === undefined ? '' : String(v);
       // 15 位以上纯数字（如 19 位运单号）直接写出会被 Excel 当数值解析，

@@ -1,11 +1,11 @@
 <template>
   <div class="hd">
-    <button class="hd-menu" @click="$emit('toggle-nav')" title="折叠 / 展开侧栏">
+    <button v-if="showMenuBtn" class="hd-menu" @click="$emit('toggle-nav')" title="折叠 / 展开侧栏">
       <el-icon><Menu /></el-icon>
     </button>
     <div class="hd-brand">
-      <span class="hd-logo">🐂</span>
-      <span class="hd-title">摸🐟岛 · 工作台</span>
+      <span class="hd-logo">A</span>
+      <span class="hd-title">Aeolus WorkBench</span>
     </div>
     <span class="hd-spacer"></span>
 
@@ -21,10 +21,15 @@ import { computed, defineEmits } from 'vue';
 import StatusCapsule from '../common/StatusCapsule.vue';
 import UserChip from '../common/UserChip.vue';
 import { useAppStore } from '../../stores/app.js';
+import { useBreakpoint } from '../../composables/useBreakpoint.js';
 
 defineEmits(['toggle-nav']);
 
 const app = useAppStore();
+const { isCompact } = useBreakpoint();
+// 顶栏汉堡按钮仅在紧凑布局（抽屉模式）时显示；桌面端折叠后侧栏保留图标栏、
+// 折叠按钮位于侧栏底部，无需顶栏按钮兜底。
+const showMenuBtn = computed(() => isCompact.value);
 
 // 配色（见 store getters）：后端 + Python 全绿=绿点，都挂=红点，任一挂=黄点（部分可用）；
 // tooltip 逐项列出后端 / Python / Worker，worker 不参与配色。

@@ -3,8 +3,8 @@
     <div class="login-card">
       <!-- 左侧品牌区 -->
       <aside class="login-brand">
-        <div class="lb-logo">🐂</div>
-        <h1 class="lb-title">摸🐟岛 · 工作台</h1>
+        <div class="lb-logo">A</div>
+        <h1 class="lb-title">Aeolus WorkBench</h1>
         <p class="lb-tag">一站式任务编排与数据看板</p>
         <ul class="lb-feats">
           <li><el-icon><List /></el-icon> 任务编排与运行记录</li>

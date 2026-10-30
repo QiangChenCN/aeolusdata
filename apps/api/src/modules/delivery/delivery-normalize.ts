@@ -6,7 +6,7 @@
  * 有两个问题：单日全站动辄数千行 × 70 列，包体过大；且中英双键让前端无从下手。
  *
  * 因此这里把原始行投影成一份**固定列定义**的展示行：
- *   · 列定义（`ORDER_DETAIL_COLUMNS`）是唯一事实源，控制器把它一并返回，前端据此渲染表头；
+ *   · 列定义（`DELIVERY_COLUMNS`）是唯一事实源，控制器把它一并返回，前端据此渲染表头；
  *   · 列定义直接由风神原始字段（`CN2EN`：中文表头 → 英文真名）全量生成，
  *     列名即字段名、不做任何美化重命名，看板开放风神导出的**全部列**，用户可在「列设置」里自行勾选；
  *   · 取值按 keys 顺序回落（英文键优先，兼容分页接口的纯英文行）；
@@ -16,12 +16,12 @@
 
 import { CN2EN, BOOL_EN, TIME_EN } from '../../infra/fetch/sources/delivery-export.service';
 
-export type OrderDetailColKind = 'text' | 'time' | 'bool' | 'num';
+export type DeliveryColKind = 'text' | 'time' | 'bool' | 'num';
 
-export interface OrderDetailColumn {
+export interface DeliveryColumn {
   key: string;
   label: string;
-  kind: OrderDetailColKind;
+  kind: DeliveryColKind;
   /** 取值键（按顺序回落）：英文键来自导出映射 CN2EN，中文键为导出表头原名。 */
   keys: string[];
 }
@@ -84,10 +84,10 @@ const EXTRA_NUMERIC_EN = new Set(['overPlatfromExpecteTime', 'deliveryDuration']
  *   · kind 由 BOOL_EN / TIME_EN / EXTRA_NUMERIC_EN 推断；
  *   · 看板开放风神导出的全部列，用户可在「列设置」里自行勾选。
  */
-function buildColumns(): OrderDetailColumn[] {
-  const out: OrderDetailColumn[] = [];
+function buildColumns(): DeliveryColumn[] {
+  const out: DeliveryColumn[] = [];
   for (const [cn, en] of Object.entries(CN2EN)) {
-    let kind: OrderDetailColKind = 'text';
+    let kind: DeliveryColKind = 'text';
     if (BOOL_EN.has(en)) kind = 'bool';
     else if (TIME_EN.has(en)) kind = 'time';
     else if (EXTRA_NUMERIC_EN.has(en)) kind = 'num';
@@ -97,15 +97,15 @@ function buildColumns(): OrderDetailColumn[] {
 }
 
 /** 看板列定义（唯一事实源）：风神导出的全部字段，直接由 CN2EN 生成。 */
-export const ORDER_DETAIL_COLUMNS: OrderDetailColumn[] = buildColumns();
+export const DELIVERY_COLUMNS: DeliveryColumn[] = buildColumns();
 
 /** 数值列（排序时按数值比大小，其余按字典序）。 */
-export const ORDER_DETAIL_NUMERIC_KEYS = new Set(
-  ORDER_DETAIL_COLUMNS.filter((c) => c.kind === 'num').map((c) => c.key),
+export const DELIVERY_NUMERIC_KEYS = new Set(
+  DELIVERY_COLUMNS.filter((c) => c.kind === 'num').map((c) => c.key),
 );
 
 /** 关键字搜索命中的列（运单号 / 骑手 / 商家 / 站点），用风神英文真名。 */
-export const ORDER_DETAIL_SEARCH_KEYS = [
+export const DELIVERY_SEARCH_KEYS = [
   'trackingId',
   'platformTrackingId',
   'teamId',
@@ -116,7 +116,7 @@ export const ORDER_DETAIL_SEARCH_KEYS = [
   'agencyName',
 ];
 
-export type OrderDetailRow = Record<string, string | number | null>;
+export type DeliveryRow = Record<string, string | number | null>;
 
 /** 按 keys 顺序取第一个非空值（对象 / 字符串均按 trim 后非空判定）。 */
 function pick(raw: Record<string, unknown>, keys: string[]): unknown {
@@ -172,10 +172,10 @@ function fmtNum(v: unknown): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-/** 原始行 → 展示行（键即 ORDER_DETAIL_COLUMNS 的 key）。 */
-export function normalizeOrderRow(raw: Record<string, unknown>): OrderDetailRow {
-  const out: OrderDetailRow = {};
-  for (const col of ORDER_DETAIL_COLUMNS) {
+/** 原始行 → 展示行（键即 DELIVERY_COLUMNS 的 key）。 */
+export function normalizeOrderRow(raw: Record<string, unknown>): DeliveryRow {
+  const out: DeliveryRow = {};
+  for (const col of DELIVERY_COLUMNS) {
     const v = translateEnum(col.key, pick(raw, expandKeys(col.keys)));
     if (col.kind === 'time') out[col.key] = fmtOrderTime(v);
     else if (col.kind === 'bool') out[col.key] = fmtBool(v);

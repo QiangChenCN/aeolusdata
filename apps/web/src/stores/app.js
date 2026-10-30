@@ -17,7 +17,7 @@ export const useAppStore = defineStore('app', {
     cookie: null,    // { status, checked_at, reason, _net }
     quark: null,     // { status, checked_at, reason, age_hours }
     navOpen: JSON.parse(localStorage.getItem(NAV_OPEN_KEY) || '{}'),
-    sideOpen: JSON.parse(localStorage.getItem(SIDE_KEY) || 'false'),
+    sideOpen: JSON.parse(localStorage.getItem(SIDE_KEY) || 'true'),
     confirm: null,   // { id, message, title, okText, cancelText, resolve }
     _tid: 0,
   }),

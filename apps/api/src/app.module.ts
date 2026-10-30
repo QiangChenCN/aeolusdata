@@ -24,7 +24,7 @@ import { ConfigModule as AppConfigModule } from './modules/config/config.module'
 import { BotsModule } from './modules/bots/bots.module';
 import { AssessmentModule } from './modules/assessment/assessment.module';
 import { StandardModule } from './modules/standard/standard.module';
-import { OrderDetailModule } from './modules/order-detail/order-detail.module';
+import { DeliveryModule } from './modules/delivery/delivery.module';
 import { PgModule } from './modules/pg/pg.module';
 import { OperationLogModule } from './modules/operation-log/operation-log.module';
 import { OperationLogMiddleware } from './modules/operation-log/operation-log.middleware';
@@ -56,7 +56,7 @@ import { OperationLogMiddleware } from './modules/operation-log/operation-log.mi
     BotsModule,
     AssessmentModule,
     StandardModule,
-    OrderDetailModule,
+    DeliveryModule,
     PgModule,
     OperationLogModule,
   ],

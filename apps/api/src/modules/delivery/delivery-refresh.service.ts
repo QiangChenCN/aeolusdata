@@ -1,10 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { OrdersFetchService, OrderRow } from '../../infra/fetch/sources/orders-fetch.service';
 import { RawCacheService, todayYmd } from '../../infra/fetch/storage/raw-cache.service';
-import { OrderDetailStoreService } from './order-detail-store.service';
+import { DeliveryStoreService } from './delivery-store.service';
 
 /**
- * 运单明细看板的刷新入口（`POST /api/order-detail/refresh`）。
+ * 运单明细看板的刷新入口（`POST /api/delivery/refresh`）。
  *
  * 与配送超时看板「共享的只剩底层取数」`OrdersFetchService.fetchOrders`（风神运单，一次拉全站）；
  * 落库写的是同一张 `delivery_realtime`，且**写入口径刻意与配送超时刷新保持一致**
@@ -15,7 +15,7 @@ function dayRangeMs(date: string): [number, number] {
   return [Date.parse(`${date}T00:00:00.000+08:00`), Date.parse(`${date}T23:59:59.999+08:00`)];
 }
 
-export interface OrderDetailRefreshResult {
+export interface DeliveryRefreshResult {
   ok: boolean;
   date: string;
   /** 风神抓回的运单总行数（全站，未过滤前）。 */
@@ -29,13 +29,13 @@ export interface OrderDetailRefreshResult {
 }
 
 @Injectable()
-export class OrderDetailRefreshService {
-  private readonly logger = new Logger(OrderDetailRefreshService.name);
+export class DeliveryRefreshService {
+  private readonly logger = new Logger(DeliveryRefreshService.name);
 
   constructor(
     private readonly orders: OrdersFetchService,
     private readonly raw: RawCacheService,
-    private readonly store: OrderDetailStoreService,
+    private readonly store: DeliveryStoreService,
   ) {}
 
   /**
@@ -45,7 +45,7 @@ export class OrderDetailRefreshService {
    * 所有非今天的旧行（历史 T-1~T-7 由每天 4 点的滚动任务维护在 `delivery_history`）。
    * 这样实时表恒定是单日、不会与历史表重复，也不会出现「22 号有、21 号前没有」的断层。
    */
-  async refresh(date?: string): Promise<OrderDetailRefreshResult> {
+  async refresh(date?: string): Promise<DeliveryRefreshResult> {
     const d = todayYmd();
     // 后端防线：只允许刷新当天。传入非今天的日期直接拒绝，不执行任何写入。
     // （前端历史日已置灰刷新按钮，此处防止直接调 API 越权刷新历史日）

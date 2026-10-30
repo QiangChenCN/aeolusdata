@@ -5,8 +5,8 @@
     </el-header>
     <el-container class="app-body">
       <!-- 桌面端：保留可手风琴折叠的内嵌侧栏 -->
-      <el-aside v-if="!isCompact" :width="app.sideOpen ? '200px' : '0'" class="app-aside">
-        <AppSide />
+      <el-aside v-if="!isCompact" :width="app.sideOpen ? '200px' : '64px'" class="app-aside" :class="{ 'is-collapsed': !app.sideOpen }">
+        <AppSide @toggle-nav="onToggleNav" />
       </el-aside>
       <!-- 紧凑布局（≤992）：侧栏改为覆盖式抽屉，由顶栏汉堡按钮唤起 -->
       <el-drawer
@@ -17,7 +17,7 @@
         size="200px"
         class="app-side-drawer"
       >
-        <AppSide />
+        <AppSide @toggle-nav="onToggleNav" />
       </el-drawer>
       <el-container class="app-content">
         <el-main class="app-main">
@@ -28,7 +28,7 @@
           </div>
         </el-main>
         <el-footer class="app-footer" height="40px">
-          <span>摸🐟岛 · 工作台</span>
+          <span>Aeolus WorkBench</span>
           <span class="app-footer-sep">·</span>
           <span>© 2026 内部工具，仅供团队使用</span>
         </el-footer>

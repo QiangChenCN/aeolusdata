@@ -1,8 +1,8 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { OrdersFetchService } from '../../infra/fetch/sources/orders-fetch.service';
-import { OrderDetailHistoryStoreService } from './order-detail-history-store.service';
-import { beijingNowStr } from './order-detail-store.service';
+import { DeliveryHistoryStoreService } from './delivery-history-store.service';
+import { beijingNowStr } from './delivery-store.service';
 import { OperationLogService } from '../operation-log/operation-log.service';
 
 /** 滚动窗口天数：T-1 ~ T-7。 */
@@ -19,7 +19,7 @@ function dayRangeMs(date: string): [number, number] {
 const pad = (n: number) => String(n).padStart(2, '0');
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-export interface OrderDetailHistoryDayResult {
+export interface DeliveryHistoryDayResult {
   date: string;
   /** ok = 已写入；skipped = 取数为空，保留历史表原数据；failed = 取数或写库失败。 */
   status: 'ok' | 'skipped' | 'failed';
@@ -30,12 +30,12 @@ export interface OrderDetailHistoryDayResult {
   error?: string | null;
 }
 
-export interface OrderDetailRollupResult {
+export interface DeliveryRollupResult {
   ok: boolean;
   started_at: string;
   finished_at: string;
   dates: string[];
-  days: OrderDetailHistoryDayResult[];
+  days: DeliveryHistoryDayResult[];
   saved_total: number;
   error?: string | null;
 }
@@ -48,19 +48,19 @@ export interface OrderDetailRollupResult {
  * 「窗口内日期的最新快照」，看板查历史不需要再做去重或补洞。
  *
  * 取数复用共享底座 `OrdersFetchService.fetchOrders`（一次拉全站，时间维度固定
- * trackingFinish），落库走 `OrderDetailHistoryStoreService.replaceDay` 整日覆盖写。
+ * trackingFinish），落库走 `DeliveryHistoryStoreService.replaceDay` 整日覆盖写。
  *
  * 保护：某天取数为 0 行或取数失败时**不动历史表**（标记 skipped / failed），
  * 避免一次抖动把已经存好的历史清空 —— 这是整日覆盖写唯一的真实风险点。
  */
 @Injectable()
-export class OrderDetailHistoryService implements OnModuleInit {
-  private readonly logger = new Logger(OrderDetailHistoryService.name);
+export class DeliveryHistoryService implements OnModuleInit {
+  private readonly logger = new Logger(DeliveryHistoryService.name);
   private running = false;
 
   constructor(
     private readonly orders: OrdersFetchService,
-    private readonly store: OrderDetailHistoryStoreService,
+    private readonly store: DeliveryHistoryStoreService,
     private readonly opLog: OperationLogService,
   ) {}
 
@@ -83,7 +83,7 @@ export class OrderDetailHistoryService implements OnModuleInit {
   async dailyRollup(): Promise<void> {
     try {
       const r = await this.rollup(undefined, {
-        source: 'OrderDetailHistoryService.dailyRollup[@Cron 0 4 * * *]',
+        source: 'DeliveryHistoryService.dailyRollup[@Cron 0 4 * * *]',
         operator: 'system',
       });
       this.logger.log(
@@ -99,10 +99,10 @@ export class OrderDetailHistoryService implements OnModuleInit {
   async rollup(
     dates?: string[],
     ctx?: { source?: string; operator?: string },
-  ): Promise<OrderDetailRollupResult> {
+  ): Promise<DeliveryRollupResult> {
     const started = beijingNowStr();
     const list = (dates && dates.length ? dates : this.windowDates()).slice(0, MAX_DATES);
-    const fail = (error: string): OrderDetailRollupResult => ({
+    const fail = (error: string): DeliveryRollupResult => ({
       ok: false, started_at: started, finished_at: beijingNowStr(),
       dates: list, days: [], saved_total: 0, error,
     });
@@ -116,7 +116,7 @@ export class OrderDetailHistoryService implements OnModuleInit {
 
     this.running = true;
     this.logger.log(`历史运单明细滚动开始：${list.join(', ')}`);
-    const days: OrderDetailHistoryDayResult[] = [];
+    const days: DeliveryHistoryDayResult[] = [];
     try {
       for (const d of list) {
         try {
@@ -144,7 +144,7 @@ export class OrderDetailHistoryService implements OnModuleInit {
     }
 
     const savedTotal = days.reduce((s, d) => s + d.saved, 0);
-    const result: OrderDetailRollupResult = {
+    const result: DeliveryRollupResult = {
       ok: !days.some((d) => d.status === 'failed'),
       started_at: started,
       finished_at: beijingNowStr(),
@@ -164,7 +164,7 @@ export class OrderDetailHistoryService implements OnModuleInit {
         actor: ctx?.operator ?? 'system',
         action: ctx?.source ?? 'rollup.history',
         target: 'delivery_history',
-        code: 'OrderDetailHistoryService.rollup',
+        code: 'DeliveryHistoryService.rollup',
         status: result.ok ? 200 : 500,
         detail: {
           dates: result.dates,
@@ -179,10 +179,10 @@ export class OrderDetailHistoryService implements OnModuleInit {
   }
 
   /** 上次滚动运行的快照（重启后仍可读，用于页面展示）。 */
-  async lastRun(): Promise<OrderDetailRollupResult | null> {
+  async lastRun(): Promise<DeliveryRollupResult | null> {
     try {
       const raw = await this.store.getMeta('last_run');
-      return raw ? (JSON.parse(raw) as OrderDetailRollupResult) : null;
+      return raw ? (JSON.parse(raw) as DeliveryRollupResult) : null;
     } catch {
       return null;
     }

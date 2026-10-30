@@ -7,7 +7,7 @@ import { PgService } from '../pg/pg.service';
  * 表 `delivery_realtime`（实时运单明细，行 = 一条运单原始行，整日覆盖写）由多个看板写入：
  *   · 配送超时刷新 `DeliveryTimeoutRefreshService`
  *   · 考核看板取数 `AssessmentDeliveryFetchService`
- *   · 本看板刷新   `OrderDetailRefreshService`
+ *   · 本看板刷新   `DeliveryRefreshService`
  * 三方的写入语义一致（全站全天快照，时间维度固定 trackingFinish），落同一张表即
  * 「运单明细只有一份」。本服务是**运单明细看板侧唯一的读写方**：与其它看板不共享代码
  * （见 `scripts/check-arch.mjs` 的看板隔离约定），只共享表。
@@ -53,8 +53,8 @@ export function pickCell(r: Record<string, unknown>, keys: string[]): string {
 }
 
 @Injectable()
-export class OrderDetailStoreService implements OnModuleInit {
-  private readonly logger = new Logger(OrderDetailStoreService.name);
+export class DeliveryStoreService implements OnModuleInit {
+  private readonly logger = new Logger(DeliveryStoreService.name);
 
   constructor(private readonly pg: PgService) {}
 

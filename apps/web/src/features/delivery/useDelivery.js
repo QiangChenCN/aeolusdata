@@ -2,7 +2,7 @@
 // 只有本看板使用，改这里的请求编排不会波及别的看板。
 import { computed, ref, watch } from 'vue';
 import { fetchTeams } from '../../api/dashboards.js';
-import { fetchOrderDetail, refreshOrderDetail, fetchOrderDetailHistoryStatus, exportOrderDetail } from '../../api/order-detail.js';
+import { fetchDelivery, refreshDelivery, fetchDeliveryHistoryStatus, exportDelivery } from '../../api/delivery.js';
 
 const REFRESH_COOLDOWN_SEC = 60;
 /** 关键字输入防抖：每个按键都打一次全量过滤请求太浪费。 */
@@ -63,7 +63,7 @@ function loadStoredVisible() {
   }
 }
 
-export function useOrderDetail() {
+export function useDelivery() {
   /* 筛选条件 */
   /** 按天偏移算 YYYY-MM-DD（北京时间），用于快捷区间。 */
   const shiftDay = (n) => {
@@ -85,8 +85,6 @@ export function useOrderDetail() {
   const total = ref(0);
   const page = ref(1);
   const pageSize = ref(50);
-  const sortProp = ref('trackingFinishAt');
-  const sortOrder = ref('descending');
   const fetchedAt = ref('');
 
   /* 历史滚动（T-1 ~ T-7）：每天 04:00 由后端定时任务回补到历史运单明细表 */
@@ -172,14 +170,13 @@ export function useOrderDetail() {
     const params = {
       start: dateRange.value[0], end: dateRange.value[1],
       team: teamParam, q: keyword.value.trim(), state: stateSel.value,
-      sort: sortProp.value, order: sortOrder.value === 'ascending' ? 'asc' : 'desc',
       page: page.value, pageSize: pageSize.value,
     };
     const t = odNow();
     odLog('load ▶ 请求', JSON.stringify(params));
     loading.value = true;
     try {
-      const res = await fetchOrderDetail(params);
+      const res = await fetchDelivery(params);
       const ms = odNow() - t;
       if (!res || !res.ok) {
         odLog('load ✗ 失败', `${ms}ms`, (res && res.error) || '运单明细读取失败');
@@ -239,13 +236,6 @@ export function useOrderDetail() {
     return load();
   }
   function changeState() { odLog('trigger load ← changeState', stateSel.value); page.value = 1; return load(); }
-  function onSortChange({ prop, order }) {
-    sortProp.value = order ? prop : '';
-    sortOrder.value = order || '';
-    page.value = 1;
-    odLog('trigger load ← onSortChange', { prop, order });
-    return load();
-  }
   function onPageChange(p) { odLog('trigger load ← onPageChange', p); page.value = p; return load(); }
   function onPageSizeChange(s) { odLog('trigger load ← onPageSizeChange', s); pageSize.value = s; page.value = 1; return load(); }
 
@@ -280,7 +270,7 @@ export function useOrderDetail() {
     refreshing.value = true;
     loading.value = true; // 取数耗时最长，覆盖此等待期让表格全程有 loading 反馈
     try {
-      const res = await refreshOrderDetail({ date: todayYmd() });
+      const res = await refreshDelivery({ date: todayYmd() });
       startCooldown(REFRESH_COOLDOWN_SEC);
       if (!res || !res.ok) {
         odLog('refresh ✗ 失败', `${odNow() - t}ms`, (res && res.error) || '刷新失败');
@@ -302,7 +292,7 @@ export function useOrderDetail() {
   }
 
   /**
-   * 导出当前筛选结果：把当前筛选条件（日期 / 站点 / 状态 / 关键字 / 排序）连同
+   * 导出当前筛选结果：把当前筛选条件（日期 / 站点 / 状态 / 关键字）连同
    * 当前可见列（visibleColumns 的 key 顺序）发给后端，由后端导出全部匹配行的 CSV 并触发下载。
    * 与表格查询同口径，但导出「全部」匹配行（不分页）。
    */
@@ -316,10 +306,9 @@ export function useOrderDetail() {
     const colKeys = (visibleColumns.value || []).map((c) => c.key);
     exporting.value = true;
     try {
-      await exportOrderDetail({
+      await exportDelivery({
         start: dateRange.value[0], end: dateRange.value[1],
         team: teamParam, q: keyword.value.trim(), state: stateSel.value,
-        sort: sortProp.value, order: sortOrder.value === 'ascending' ? 'asc' : 'desc',
         cols: colKeys,
       });
       odLog('export ✓ 已触发下载');
@@ -336,7 +325,7 @@ export function useOrderDetail() {
     const t = odNow();
     odLog('history ▶ 请求');
     try {
-      const res = await fetchOrderDetailHistoryStatus();
+      const res = await fetchDeliveryHistoryStatus();
       if (!res || !res.ok) {
         odLog('history ✗ 失败', `${odNow() - t}ms`, (res && res.error) || '状态读取失败');
         historyDays.value = [];
@@ -393,12 +382,12 @@ export function useOrderDetail() {
   return {
     dateRange, rangeIncludesToday, teamSel, stateSel, keyword,
     rows, columns, visibleColumns, visibleKeys, states, teamStats,
-    total, page, pageSize, sortProp, sortOrder, fetchedAt,
+    total, page, pageSize, fetchedAt,
     historyDays, historyTotal, lastRun, loadHistory,
     teams, teamOptions, loading, loaded, loadErrMsg, needRefresh,
     refreshing, cooldown, startCooldown, exporting,
     bodyRef, bodyH, initMeasure,
-    load, changeDate, changeTeam, changeState, onSortChange, onPageChange, onPageSizeChange,
+    load, changeDate, changeTeam, changeState, onPageChange, onPageSizeChange,
     onRefresh, onExport, init, dispose, selectAll, defaultVisibleKeys,
   };
 }

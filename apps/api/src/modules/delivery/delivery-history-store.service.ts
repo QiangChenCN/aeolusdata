@@ -1,12 +1,12 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { PgService } from '../pg/pg.service';
-import { ORDER_NO_KEYS, TEAM_KEYS, beijingNowStr, pickCell } from './order-detail-store.service';
+import { ORDER_NO_KEYS, TEAM_KEYS, beijingNowStr, pickCell } from './delivery-store.service';
 
 /**
  * 运单明细看板 —— 历史明细持久层（PostgreSQL only）。
  *
  * 表 `delivery_history`（历史运单明细，行 = 一条运单原始行，按天整日覆盖写）只由本看板的
- * 「每天 04:00 滚动更新 T-1 ~ T-7」写入（`OrderDetailHistoryService`），与实时表
+ * 「每天 04:00 滚动更新 T-1 ~ T-7」写入（`DeliveryHistoryService`），与实时表
  * `delivery_realtime` 结构同构、取值口径一致（同 ORDER_NO_KEYS / TEAM_KEYS）。
  *
  * 与实时表的分工：
@@ -37,8 +37,8 @@ CREATE TABLE IF NOT EXISTS delivery_history_meta (
 const CHUNK = 200;
 
 @Injectable()
-export class OrderDetailHistoryStoreService implements OnModuleInit {
-  private readonly logger = new Logger(OrderDetailHistoryStoreService.name);
+export class DeliveryHistoryStoreService implements OnModuleInit {
+  private readonly logger = new Logger(DeliveryHistoryStoreService.name);
 
   constructor(private readonly pg: PgService) {}
 
