@@ -1,4 +1,4 @@
-import { STANDARDS, Standard } from './standards';
+import { Standard } from './standards';
 import { RiderQueryResult } from './rider-query.service';
 
 export interface StandardResult {
@@ -16,23 +16,23 @@ export interface StandardResult {
 export function computeStandard(
   orders: number | null | undefined,
   hours: number | null | undefined,
-  levels: Standard[] = STANDARDS,
+  levels: Standard[],
 ): StandardResult | null {
   if (orders == null || hours == null) return null;
-  if (!STANDARDS.length) return null;
+  if (!levels || !levels.length) return null;
   const o = Number(orders);
   const h = Number(hours);
   if (Number.isNaN(o) || Number.isNaN(h)) return null;
   let current = 0;
-  for (const s of STANDARDS) {
+  for (const s of levels) {
     if (o >= s.orders && h >= s.hours) current = s.level;
   }
-  const top = STANDARDS[STANDARDS.length - 1];
+  const top = levels[levels.length - 1];
   if (current >= top.level) {
     return { current, next: null, gap_orders: 0, gap_hours: 0, is_max: true };
   }
-  const nxt: Standard = STANDARDS[current]; // current=0 → 标准1
-  const lo = current === 0 ? 0 : STANDARDS[current - 1].orders;
+  const nxt: Standard = levels[current]; // current=0 → 标准1
+  const lo = current === 0 ? 0 : levels[current - 1].orders;
   const hi = nxt.orders;
   return {
     current,
@@ -63,7 +63,7 @@ export function formatReply(
   riderId: string,
   data: RiderQueryResult,
   withHeader = true,
-  levels: Standard[] = STANDARDS,
+  levels: Standard[],
 ): string {
   const status = data.status;
   if (status === 'ok') {

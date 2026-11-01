@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { Bot, BotReply, BotCheckResult, IncomingMessage } from '../../bot.interface';
 import { parseQuery } from './parse';
 import { formatReply } from './format-reply';
+import { Standard } from './standards';
 import { RiderQueryService, RiderQueryResult, StdAchievementConfig } from './rider-query.service';
 import { ConfigService as AppConfigService } from '../../../config/config.service';
 
@@ -105,16 +106,26 @@ export class StdAchievementBot implements Bot {
 
     try {
       const data = await this.riderQuery.query(query, this.cfg);
-      if (data.status === 'ambiguous' && data.candidates?.length && key) {
+      const isAmbiguous = data.status === 'ambiguous';
+      if (isAmbiguous && data.candidates?.length && key) {
         this.pending.set(key, { candidates: data.candidates, ts: Date.now() });
       }
-      const isAmbiguous = data.status === 'ambiguous';
-      const levels = this.appConfig.getStandardGradeLevels(bjMonth(), data.team_id);
+      // 仅对「查到唯一骑手」的情况做运力等级评定；考核设置未配置 → 直接提示错误
+      if (data.status === 'ok') {
+        const levels = this.resolveLevels(data.team_id);
+        if (!levels) return this.unconfiguredReply(data.team_id);
+        return {
+          kind: 'markdown',
+          content: formatReply(query, data, true, levels),
+          title: '查询结果',
+          state: 'ok',
+        };
+      }
       return {
         kind: 'markdown',
-        content: formatReply(query, data, true, levels),
+        content: formatReply(query, data, true, []),
         title: isAmbiguous ? '请选择骑手' : '查询结果',
-        state: isAmbiguous ? 'ambiguous' : 'ok',
+        state: isAmbiguous ? 'ambiguous' : (data.status === 'error' ? 'error' : 'ok'),
       };
     } catch (e) {
       this.logger.error('查询异常: ' + (e as Error).message);
@@ -128,14 +139,49 @@ export class StdAchievementBot implements Bot {
     }
   }
 
+  /** 解析某站点的运力等级档位；该 (月,站) 未在「考核设置」中配置则返回 null。 */
+  private resolveLevels(teamId: string | number | null | undefined): Standard[] | null {
+    if (teamId == null) return null;
+    const month = bjMonth();
+    const settings = this.appConfig.getStandardGradeSettings(month) as {
+      teams?: Record<string, unknown>;
+    };
+    if (!settings.teams || !settings.teams[String(teamId)]) return null;
+    return this.appConfig.getStandardGradeLevels(month, teamId);
+  }
+
+  /** 考核设置未配置时的错误提示。 */
+  private unconfiguredReply(teamId: string | number | null | undefined): BotReply {
+    const month = bjMonth();
+    const tk = teamId != null ? String(teamId) : '未知';
+    return {
+      kind: 'markdown',
+      content:
+        `⚠️ 该站点（${tk}）在 ${month} 的「考核设置」中尚未配置运力达成标准（单量/时长要求）。\n` +
+        `请先在「系统设置 → 考核设置」中配置对应站点后，再查询骑手运力等级。`,
+      title: '未配置考核标准',
+      state: 'error',
+    };
+  }
+
   /** 按骑手 ID 精确查询并格式化（序号选择 / 直接 ID 查询共用）。 */
   private async runQuery(riderId: string): Promise<BotReply> {
     try {
       const data = await this.riderQuery.query(riderId, this.cfg);
-      const levels = this.appConfig.getStandardGradeLevels(bjMonth(), data.team_id);
+      // 仅对「查到唯一骑手」的情况评级；考核设置未配置 → 直接提示错误
+      if (data.status === 'ok') {
+        const levels = this.resolveLevels(data.team_id);
+        if (!levels) return this.unconfiguredReply(data.team_id);
+        return {
+          kind: 'markdown',
+          content: formatReply(riderId, data, true, levels),
+          title: '查询结果',
+          state: 'ok',
+        };
+      }
       return {
         kind: 'markdown',
-        content: formatReply(riderId, data, true, levels),
+        content: formatReply(riderId, data, true, []),
         title: data.status === 'error' ? '查询失败' : '查询结果',
         state: data.status === 'error' ? 'error' : 'ok',
       };

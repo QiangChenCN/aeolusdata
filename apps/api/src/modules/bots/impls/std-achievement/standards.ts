@@ -1,19 +1,7 @@
-/** 运力等级标准（单量 + 有效在线时长，两者同时满足才算达成该等级）。 */
-
+/** 运力等级标准（单量 + 有效在线时长，两者同时满足才算达成该等级）。
+ * 具体档位（单量/时长要求）由「考核设置」按 (月,站) 配置，运行时读取，不再在此写死。 */
 export interface Standard {
   level: number;
   orders: number;
   hours: number;
 }
-
-/**
- * 来源：站点运力等级表（三个站点当前一致）。
- * 修改标准直接改这里（纯数据，不必动逻辑）。
- */
-export const STANDARDS: Standard[] = [
-  { level: 1, orders: 18, hours: 6 },
-  { level: 2, orders: 21, hours: 6 },
-  { level: 3, orders: 26, hours: 6 },
-  { level: 4, orders: 32, hours: 7 },
-  { level: 5, orders: 39, hours: 8 },
-];
