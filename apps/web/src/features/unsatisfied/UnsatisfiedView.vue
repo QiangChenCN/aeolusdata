@@ -2,10 +2,12 @@
   <div class="dv">
     <div class="dv-topbar">
       <span class="dv-title">违规处罚</span>
-      <el-menu mode="horizontal" :default-active="tab" class="dv-menu" @select="(k) => (tab = k)">
-        <el-menu-item index="realtime">实时</el-menu-item>
-        <el-menu-item index="monthly">月累计</el-menu-item>
-      </el-menu>
+      <!-- 卡片式标签页：与标准达成看板同款 Edge 风格（type="card" 自动套用全局样式）。
+           只用头部做切换，内容区仍由 .dv-pane + v-show 承载。 -->
+      <el-tabs v-model="tab" type="card" class="dv-tabs">
+        <el-tab-pane label="实时" name="realtime" />
+        <el-tab-pane label="月累计" name="monthly" />
+      </el-tabs>
     </div>
 
     <!-- 月累计 -->
@@ -105,7 +107,7 @@
         </el-select>
         <span v-if="monthDays" class="dv-date" style="margin-left:auto">已入库 {{ monthDays }} 天</span>
       </div>
-      <div class="dv-table-wrap">
+      <el-card class="dv-table-wrap" shadow="never">
         <el-table
           ref="monthlyTableRef"
           :data="monthlyPagedRows"
@@ -125,7 +127,7 @@
             show-overflow-tooltip
           />
         </el-table>
-      </div>
+      </el-card>
       <div class="dv-foot">
         <el-pagination
           v-model:current-page="monthlyPage"
@@ -209,7 +211,7 @@
           />
         </el-select>
       </div>
-      <div class="dv-table-wrap">
+      <el-card class="dv-table-wrap" shadow="never">
         <el-table
           ref="realtimeTableRef"
           :data="realtimePagedRows"
@@ -229,7 +231,7 @@
             show-overflow-tooltip
           />
         </el-table>
-      </div>
+      </el-card>
       <div class="dv-foot">
         <el-pagination
           v-model:current-page="realtimePage"
@@ -854,23 +856,29 @@ onMounted(() => {
   justify-content: space-between;
   margin-bottom: 8px;
 }
+/* 顶栏：标题 + 标签栏竖排，由容器统一承担节奏；不再画 border-bottom，
+   避免与 Edge 标签 header 自身的 1px 底边叠成双线 */
 .dv-topbar {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
   gap: 8px;
-  border-bottom: 1px solid #ebeef5;
   margin-bottom: 12px;
+  flex: none;
 }
 .dv-title {
-  font-size: 18px;
+  font-size: var(--el-font-size-extra-large);
   font-weight: 600;
   white-space: nowrap;
 }
-.dv-menu {
+/* 卡片式标签页：只取头部（内容区在 tabs 外），
+   由 Edge 标签 header 自身的 1px 底边承担分隔 */
+.dv-tabs {
   width: 100%;
-  border-bottom: none;
+  flex: none;
 }
+.dv-tabs :deep(.el-tabs__header) { margin-bottom: 0; }
+.dv-tabs :deep(.el-tabs__content) { display: none; }
 .dv-pane {
   flex: 1;
   min-height: 0;
@@ -884,12 +892,18 @@ onMounted(() => {
   margin-bottom: 12px;
   flex-wrap: wrap;
 }
-/* 表格撑满内容区：flex:1 + min-height:0 让 el-table 的 height:100% 能解析出确定高度 */
+/* 表格外层卡片：纯容器（无 header/footer），body 沿用 EP 默认 20px padding。
+   flex 高度链需逐层传递到 el-card__body，否则 el-table 的 height:100% 解析不出确定高度。 */
 .dv-table-wrap {
   flex: 1 1 auto;
   min-height: 0;
   display: flex;
   overflow: hidden;
+}
+.dv-table-wrap :deep(.el-card__body) {
+  flex: 1;
+  min-height: 0;
+  display: flex;
 }
 .dv-table-wrap :deep(.el-table) {
   flex: 1;

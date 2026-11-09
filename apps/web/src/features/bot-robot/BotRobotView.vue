@@ -3,7 +3,7 @@
     <h2 class="v-title">凭证配置</h2>
 
     <!-- 凭据分组（机器人 appkey / appsecret） -->
-    <section class="bc-card">
+    <el-card class="bc-card" shadow="never">
       <h3 class="bc-h">
         机器人凭据分组
         <el-button size="small" type="primary" style="margin-left:12px" @click="openCredAdd">新增机器人</el-button>
@@ -51,7 +51,7 @@
       <p class="muted bc-tip">
         每个分组对应一个机器人应用的凭据；机器人实例通过「凭据分组」绑定到某一组，运行时按分组各自建立独立的连接（渠道类型不限于钉钉）。
       </p>
-    </section>
+    </el-card>
 
     <!-- 凭据编辑弹窗 -->
     <el-dialog v-model="credDialog" :title="credEditing ? '编辑机器人：' + credForm.id : '新增机器人'" width="520px">
@@ -109,7 +109,7 @@ onUnmounted(deactivate);
 <style scoped>
 .bc { padding: var(--sp-20); }
 .v-title { margin: 0 0 var(--sp-16); font-size: var(--el-font-size-extra-large); }
-.bc-card { background: var(--surface); border: 1px solid var(--el-border-color); border-radius: var(--r-lg); padding: var(--sp-16) var(--sp-20); margin-bottom: var(--sp-16); }
+.bc-card :deep(.el-card__body) { padding: var(--sp-16) var(--sp-20); }
 .bc-h { margin: 0 0 var(--sp-12); font-size: var(--el-font-size-medium); }
 .bc-table { margin-top: var(--sp-8); }
 .bc-tip { margin-top: var(--sp-8); }

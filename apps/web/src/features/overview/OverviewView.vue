@@ -14,10 +14,10 @@
     <div v-if="loading" class="dv-state"><el-icon class="is-loading"><Loading /></el-icon> 加载中…</div>
     <template v-else>
       <div v-if="totals" class="dv-cards">
-        <div v-for="c in totalCards" :key="c.label" class="dv-card">
+        <el-card v-for="c in totalCards" :key="c.label" class="dv-card" shadow="never">
           <span class="dv-card-num">{{ c.value }}</span>
           <span class="dv-card-label">{{ c.label }}</span>
-        </div>
+        </el-card>
       </div>
       <el-table :data="rows" stripe border class="dv-table" height="520" empty-text="暂无站点数据">
         <el-table-column prop="name" label="站点" min-width="160" fixed />
@@ -31,9 +31,11 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, ref } from 'vue';
+
 import { fetchOverviewSiteOrders } from '../../api/dashboards.js';
-
+
+
 const range = ref([]);
 const data = ref(null);
 const loading = ref(false);
@@ -75,7 +77,7 @@ onMounted(load);
 .dv-range { width: 280px; }
 .dv-bar .sp { flex: 1; }
 .dv-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: var(--sp-12); margin-bottom: var(--sp-16); }
-.dv-card { background: var(--el-bg-color); border: 1px solid var(--el-border-color-lighter); border-radius: var(--el-border-radius-base); padding: var(--sp-16); display: flex; flex-direction: column; gap: 4px; }
+.dv-card :deep(.el-card__body) { display: flex; flex-direction: column; gap: 4px; padding: var(--sp-16); }
 .dv-card-num { font-size: 24px; font-weight: var(--fw-bold); color: var(--el-color-primary); }
 .dv-card-label { font-size: var(--el-font-size-extra-small); color: var(--el-text-color-secondary); }
 .dv-table { border-radius: var(--el-border-radius-base); }

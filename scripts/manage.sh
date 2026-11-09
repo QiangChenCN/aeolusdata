@@ -5,7 +5,7 @@
 # 看门狗以 `watch` 子命令实现（长驻监控循环），由本脚本在 start 时拉起、stop 时一并停掉。
 #
 # 子命令：
-#   start   [svc...] [--force] [--no-watchdog] 启动（顺序 compute→backend→worker→web；已在运行自动跳过）
+#   start   [svc...] [--force] [--no-watchdog] 启动（顺序 compute→backend→web；worker 由后端自动拉起，无需此处管；已在运行自动跳过）
 #   stop    [svc...]                          停止（顺序 web→worker→backend→compute；一并停看门狗）
 #   restart [svc...] [--watchdog]             逐服务「停→起」，自动恢复看门狗原状态
 #   status                                   仅做健康检查并打印四服务状态（不改服务）
@@ -26,7 +26,7 @@
 #     bash scripts/manage.sh restart backend         # 只重启后端（前端/计算不受影响）
 #
 # 说明：
-#   · 启动顺序 compute→backend→worker→web 是依赖顺序（后端要转发给计算，前端只依赖后端）；
+#   · 启动顺序 compute→backend→web（worker 由后端在启动时自动 fork 并看护，manage.sh 不再单独管理，避免双份抢占任务）；
 #   · restart 逐个「停→起」而非整体 stop 再 start，避免后端启动瞬间 8900 未就绪导致的短暂无数据；
 #   · 看门狗在 stop 时会被一并停掉（否则 ~60s 内又把服务拉起），restart 会按原状态恢复。
 
@@ -38,7 +38,7 @@ mkdir -p "$LOGDIR"
 CPORT=8900   # Python 计算服务（gunicorn + uvicorn worker）
 BPORT=8787   # NestJS 后端
 WPORT=5173   # 前端 Vite
-WPAT='dist/src/main-worker$'   # 任务 Worker（无 HTTP 端口，仅按进程判定存活）
+WPAT='dist/src/main-worker'    # 任务 Worker（无 HTTP 端口，仅按进程判定存活；放宽以匹配后端 fork 的 .js 子进程）
 FORCE=0      # 全局：start 时是否强制重启已运行的服务
 
 # ---------------- 看门狗（watch 子命令）相关 ----------------
@@ -50,6 +50,28 @@ probe() { curl -s -o /dev/null -m "$2" "http://127.0.0.1:$1/" >/dev/null 2>&1; }
 
 # ---------------- 启动相关 ----------------
 port_listen() { ss -ltn 2>/dev/null | grep -q ":$1 "; }
+
+# 确保 PostgreSQL 已启动（仅 Debian/Ubuntu 系有效）。
+# WSL/非 systemd 环境 PG 不会自启，start/restart 会先尝试拉起 PG 集群（需 sudo）。
+# 非 Debian 系（macOS/容器）或无 pg_ctlcluster 时直接跳过，不做任何事。
+ensure_pg() {
+  command -v pg_ctlcluster >/dev/null 2>&1 || return 0
+  local line ver name status
+  # 取 pg_lsclusters 第一个集群（通常 main）
+  line=$(pg_lsclusters 2>/dev/null | awk 'NR>1{print; exit}')
+  [ -z "$line" ] && return 0
+  ver=$(echo "$line"   | awk '{print $1}')
+  name=$(echo "$line"  | awk '{print $2}')
+  status=$(echo "$line" | awk '{print $4}')
+  [ "$status" = "online" ] && { echo "  [skip] PostgreSQL 已在运行 ($ver/$name)"; return 0; }
+  echo "  [info] PostgreSQL 集群 $ver/$name 未运行，尝试启动（如需密码会向你索要 sudo）…"
+  if sudo pg_ctlcluster "$ver" "$name" start; then
+    echo "  [ok] PostgreSQL 已启动"
+  else
+    echo "  [warn] 自动启动 PostgreSQL 失败（可能 sudo 需要交互或权限不足）。请手动执行："
+    echo "    sudo pg_ctlcluster $ver $name start"
+  fi
+}
 
 # 等待「端口监听 + HTTP 有响应」；返回 0 表示就绪
 wait_ready() {
@@ -204,7 +226,7 @@ start_watchdog() {
 # ---------------- 停止相关 ----------------
 PAT_WEB='vite --port 5173 --strictPort'
 PAT_BACKEND='dist/src/main$'
-PAT_WORKER='dist/src/main-worker$'
+PAT_WORKER='dist/src/main-worker'
 PAT_COMPUTE='compute_api[.]main:app'
 PAT_WATCHDOG='manage[.]sh .*watch'   # 匹配 `bash .../manage.sh watch` 守护进程
 
@@ -230,11 +252,12 @@ cmd_start() {
       --force) FORCE=1 ;;
       --watchdog) WITH_WATCHDOG=1 ;;
       --no-watchdog) WITH_WATCHDOG=0 ;;
-      compute|backend|web) SERVICES+=("$a") ;;
+      compute|backend|worker|web) SERVICES+=("$a") ;;
       *) echo "用法: bash scripts/manage.sh start [compute|backend|worker|web] [--force] [--no-watchdog]"; exit 1 ;;
     esac
   done
-  [ ${#SERVICES[@]} -eq 0 ] && SERVICES=(compute backend worker web)
+  [ ${#SERVICES[@]} -eq 0 ] && SERVICES=(compute backend web)
+  ensure_pg
   local rc=0
   for s in "${SERVICES[@]}"; do
     start_svc_retry "$s" 3 || rc=1
@@ -271,11 +294,12 @@ cmd_restart() {
   for a in "$@"; do
     case "$a" in
       --watchdog) FORCE_WATCHDOG=1 ;;
-      compute|backend|web) SERVICES+=("$a") ;;
+      compute|backend|worker|web) SERVICES+=("$a") ;;
       *) echo "用法: bash scripts/manage.sh restart [compute|backend|worker|web] [--watchdog]"; exit 1 ;;
     esac
   done
-  [ ${#SERVICES[@]} -eq 0 ] && SERVICES=(compute backend worker web)
+  [ ${#SERVICES[@]} -eq 0 ] && SERVICES=(compute backend web)
+  ensure_pg
 
   # 先记录并停掉 watchdog，避免重启窗口内它抢先拉起服务
   local WD_WAS_RUNNING=0
@@ -331,12 +355,7 @@ cmd_watch() {
         fw=0
       fi
     fi
-    # worker 无 HTTP 端口，仅按进程存活判定
-    if pgrep -f "$PAT_WORKER" >/dev/null 2>&1; then fwk=0
-    else
-      fwk=$((fwk+1)); log "[warn] worker not running (fail $fwk/$MAX_FAIL)"
-      if [ $fwk -ge $MAX_FAIL ]; then pkill -KILL -f "$PAT_WORKER" 2>/dev/null; sleep 1; start_worker; fwk=0; fi
-    fi
+    # 任务 Worker 由后端（WorkerSpawnerService）在启动时自行 fork 并看护，看门狗不再重复管理，避免双份抢占任务
     sleep $PROBE_INTERVAL
   done
 }

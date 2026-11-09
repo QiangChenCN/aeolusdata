@@ -83,8 +83,8 @@
         </el-card>
       </div>
 
-      <!-- 站点明细对比表（列可排序，默认按推配送单量降序） -->
-      <div class="dv-table-wrap">
+      <!-- 站点明细对比表（列可排序，默认按推配送单量降序）；外层 el-card 仅作容器，不带 header/footer -->
+      <el-card class="dv-table-wrap" shadow="never">
       <el-table
         v-loading="loading"
         :data="rows"
@@ -257,7 +257,7 @@
           </el-table-column>
         </el-table-column>
       </el-table>
-      </div>
+      </el-card>
 
       <!-- 站点设置：选择需要在看板展示的站点（持久化） -->
       <el-dialog v-model="cfgVisible" title="站点设置（选择需要在看板展示的站点）" width="440px">
@@ -1155,8 +1155,10 @@ onUnmounted(() => {
 .rt.is-deep { color: var(--danger-deep, #b71c1c); }
 
 .dv-table { border-radius: var(--el-border-radius-base); width: 100%; }
-/* 表格包裹层：占满 .dv 剩余高度，让 el-table(height=100%) 底部贴合视口 */
+/* 表格外层卡片：只作容器（无 #header / #footer），占满 .dv 剩余高度；
+   由 el-card__body 接过原包裹层的 flex 布局，使 el-table(height=100%) 底部贴合视口 */
 .dv-table-wrap { flex: 1; min-height: 0; display: flex; }
+.dv-table-wrap :deep(.el-card__body) { flex: 1; min-height: 0; display: flex; }
 
 /* ── 表头填充主题色（降一级：primary-light-9 + 深蓝文字/箭头保证对比）──── */
 .dv-table :deep(.el-table__header-wrapper th.el-table__cell),

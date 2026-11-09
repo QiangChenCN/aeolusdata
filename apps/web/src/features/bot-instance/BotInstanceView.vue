@@ -8,7 +8,7 @@
     </div>
 
     <div class="bc-grid">
-      <section v-for="row in status.bots" :key="row.botId" class="inst-card">
+      <el-card v-for="row in status.bots" :key="row.botId" class="inst-card" shadow="never">
         <header class="inst-head">
           <span class="inst-name">{{ row.displayName }}</span>
           <el-tag size="small" :type="row.enabled ? 'success' : 'info'">{{ row.enabled ? '启用' : '停用' }}</el-tag>
@@ -46,7 +46,7 @@
           <span v-else class="inst-warn">网关未连接</span>
           <span class="inst-hint">凭据绑定请在「全局配置」中设置</span>
         </footer>
-      </section>
+      </el-card>
     </div>
   </div>
 </template>
@@ -71,7 +71,7 @@ onUnmounted(deactivate);
 .bc-lead b { color: var(--el-text-color-primary); }
 .bc-empty { display: flex; align-items: center; gap: var(--sp-8); padding: var(--sp-24); }
 .bc-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: var(--sp-16); }
-.inst-card { background: var(--surface); border: 1px solid var(--el-border-color); border-radius: var(--r-lg); padding: var(--sp-16) var(--sp-18); display: flex; flex-direction: column; }
+.inst-card :deep(.el-card__body) { display: flex; flex-direction: column; padding: var(--sp-16) var(--sp-18); }
 .inst-head { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-8); margin-bottom: var(--sp-12); }
 .inst-name { font-size: var(--el-font-size-medium); font-weight: var(--fw-semibold); color: var(--el-text-color-primary); }
 .inst-form { flex: 1; }

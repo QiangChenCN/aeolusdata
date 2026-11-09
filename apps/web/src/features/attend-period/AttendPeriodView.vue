@@ -33,14 +33,16 @@
       <!-- ============ 站点看板（四张率值表） ============ -->
       <el-tab-pane label="站点看板" name="station">
           <div v-if="stationCards.length" class="dv-cards">
-            <div v-for="c in stationCards" :key="c.label" class="dv-card">
+            <el-card v-for="c in stationCards" :key="c.label" class="dv-card" shadow="never">
               <span class="dv-card-num">{{ c.value }}</span>
               <span class="dv-card-label">{{ c.label }}</span>
-            </div>
+            </el-card>
           </div>
           <div v-for="(t, i) in stationRateTables" :key="i" class="dv-rate-block">
-            <h4 class="dv-rate-title">{{ t.title }}</h4>
-            <div class="dv-matrix-wrap">
+            <el-card class="dv-rate-card" shadow="never">
+              <template #header>
+                <span class="dv-rate-title">{{ t.title }}</span>
+              </template>
               <el-table v-loading="loading" :data="t.rows" stripe border class="dv-table" empty-text="暂无站点数据" :max-height="520">
                 <el-table-column prop="team_id" label="站点ID" min-width="120" show-overflow-tooltip />
                 <el-table-column prop="team_name" label="站点名称" min-width="220" show-overflow-tooltip />
@@ -72,17 +74,17 @@
                   </template>
                 </el-table-column>
               </el-table>
-            </div>
+            </el-card>
           </div>
       </el-tab-pane>
 
       <!-- ============ 骑手看板 ============ -->
       <el-tab-pane label="骑手看板" name="rider">
           <div v-if="riderCards.length" class="dv-cards">
-            <div v-for="c in riderCards" :key="c.label" class="dv-card">
+            <el-card v-for="c in riderCards" :key="c.label" class="dv-card" shadow="never">
               <span class="dv-card-num">{{ c.value }}</span>
               <span class="dv-card-label">{{ c.label }}</span>
-            </div>
+            </el-card>
           </div>
           <div class="dv-matrix-wrap">
             <el-table v-loading="loading" :data="riderRowsSorted" stripe border class="dv-table" empty-text="暂无骑手数据" :max-height="520">
@@ -143,10 +145,10 @@
       <!-- ============ 骑手时段看板 ============ -->
       <el-tab-pane label="骑手时段看板" name="period">
           <div v-if="tpSummaryCards.length" class="dv-cards">
-            <div v-for="c in tpSummaryCards" :key="c.label" class="dv-card">
+            <el-card v-for="c in tpSummaryCards" :key="c.label" class="dv-card" shadow="never">
               <span class="dv-card-num">{{ c.value }}</span>
               <span class="dv-card-label">{{ c.label }}</span>
-            </div>
+            </el-card>
           </div>
           <el-table v-loading="loading" :data="tpRowsFiltered" stripe border class="dv-table" height="520" empty-text="暂无时段数据">
               <el-table-column prop="time_name" label="时段" min-width="120" fixed />
@@ -536,13 +538,15 @@ onMounted(async () => {
 .dv-bar .sp { flex: 1; }
 .dv-hint { margin-bottom: var(--sp-12); }
 .dv-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: var(--sp-12); margin-bottom: var(--sp-16); }
-.dv-card { background: var(--el-bg-color); border: 1px solid var(--el-border-color-lighter); border-radius: var(--el-border-radius-base); padding: var(--sp-16); display: flex; flex-direction: column; gap: 4px; }
+.dv-card :deep(.el-card__body) { display: flex; flex-direction: column; gap: 4px; padding: var(--sp-16); }
 .dv-card-num { font-size: 24px; font-weight: var(--fw-bold); color: var(--el-color-primary); }
 .dv-card-label { font-size: var(--el-font-size-extra-small); color: var(--el-text-color-secondary); }
 .dv-table { border-radius: var(--el-border-radius-base); }
 .dv-rate-block { margin-bottom: var(--sp-16); }
-.dv-rate-title { margin: 0 0 var(--sp-8); font-size: var(--el-font-size-medium); font-weight: var(--fw-semibold); color: var(--el-text-color-primary); }
+.dv-rate-title { font-size: var(--el-font-size-medium); font-weight: var(--fw-semibold); color: var(--el-text-color-primary); }
 .dv-matrix-wrap { overflow: auto; border-radius: var(--el-border-radius-base); max-height: 560px; }
+/* 站点看板 4 张率值表：每张表格一张 el-card，标题走 #header（无 footer）；
+   header/body 均沿用 Element Plus 默认 padding，故此处不做 :deep 覆盖 */
 
 .dv-cfg-group { display: flex; flex-direction: column; gap: var(--sp-8); }
 .dv-cell { display: flex; flex-direction: column; align-items: center; gap: 2px; line-height: 1.2; }

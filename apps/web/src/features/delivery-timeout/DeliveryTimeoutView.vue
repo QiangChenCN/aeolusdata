@@ -17,11 +17,13 @@
     </el-alert>
     <el-alert v-else-if="dataNote" type="warning" :closable="false" show-icon class="dv-hint">{{ dataNote }}</el-alert>
 
-    <el-menu mode="horizontal" :default-active="activeTab" class="dv-menu" @select="(k) => (activeTab = k)">
-      <el-menu-item index="station">站点数据</el-menu-item>
-      <el-menu-item index="rider">骑手数据</el-menu-item>
-      <el-menu-item index="order">运单明细</el-menu-item>
-    </el-menu>
+    <!-- 卡片式标签页（与标准达成看板同款 Edge 风格）：只用其头部做切换，
+         内容区仍由 .dv-body + v-show 承载，保持 bodyRef 高度测量链不变 -->
+    <el-tabs v-model="activeTab" type="card" class="dv-tabs">
+      <el-tab-pane label="站点数据" name="station" />
+      <el-tab-pane label="骑手数据" name="rider" />
+      <el-tab-pane label="运单明细" name="order" />
+    </el-tabs>
 
     <div ref="bodyRef" class="dv-body">
       <StationPane v-show="activeTab === 'station'" :rows="rows" :loading="loading" @drill="openStation" />
@@ -108,8 +110,12 @@ defineExpose({ reload: load });
 <style scoped>
 .dv { padding: var(--sp-20); display: flex; flex-direction: column; height: 100%; box-sizing: border-box; }
 .dv-hint { margin-bottom: var(--sp-12); }
-/* 顶层横向菜单（顶栏菜单）：站点数据 / 骑手数据 / 运单明细 */
-.dv-menu { border-bottom: 1px solid #ebeef5; margin-top: var(--sp-4); margin-bottom: var(--sp-12); }
+/* 卡片式标签页：与标准达成看板共用 element-overrides.css 里的 Edge 风格
+   （type="card" 自动生效）。这里只取头部做切换，故固定高度、隐藏空 content，
+   间距沿用原菜单的节奏。 */
+.dv-tabs { margin-top: var(--sp-4); flex: none; }
+.dv-tabs :deep(.el-tabs__header) { margin-bottom: var(--sp-12); }
+.dv-tabs :deep(.el-tabs__content) { display: none; }
 /* 内容区：撑满剩余高度，骑手 / 运单表格据此计算固定高度 */
 .dv-body { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 </style>

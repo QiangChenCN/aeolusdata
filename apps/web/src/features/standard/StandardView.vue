@@ -41,18 +41,18 @@
       </template>
     </el-alert>
 
-    <el-tabs v-model="tab" class="dv-tabs">
+    <el-tabs v-model="tab" type="card" class="dv-tabs">
       <el-tab-pane label="站点看板" name="station">
         <div class="dv-filter">
           <span class="dv-filter-count">共 {{ stationRows.length }} 个站点</span>
         </div>
         <div v-if="summaryCards.length" class="dv-cards">
-          <div v-for="c in summaryCards" :key="c.label" class="dv-card">
+          <el-card v-for="c in summaryCards" :key="c.label" class="dv-card" shadow="never">
             <span class="dv-card-num">{{ c.value }}</span>
             <span class="dv-card-label">{{ c.label }}</span>
-          </div>
+          </el-card>
         </div>
-        <div class="dv-table-wrap">
+        <el-card class="dv-table-wrap" shadow="never">
           <el-table v-loading="loading" :data="stationRows" stripe border class="dv-table" height="100%">
             <el-table-column prop="team_name" label="站点" min-width="120" fixed sortable show-overflow-tooltip />
             <el-table-column prop="scale_target" label="天应排" min-width="90" align="center" sortable />
@@ -79,7 +79,7 @@
               <template #default="{ row }"><span :class="rateCls(row.expected_achievable_rate)">{{ fmtPct(row.expected_achievable_rate) }}</span></template>
             </el-table-column>
           </el-table>
-        </div>
+        </el-card>
       </el-tab-pane>
 
       <el-tab-pane label="骑手看板" name="rider">
@@ -109,7 +109,7 @@
             <span class="dv-filter-count">共 {{ riderRowsView.length }} 名骑手</span>
           </div>
           <div class="dv-rider-body">
-            <div class="dv-table-wrap">
+            <el-card class="dv-table-wrap" shadow="never">
               <el-table v-loading="riderLoading" :data="riderPagedRows" stripe border size="large" class="dv-table" height="100%" empty-text="暂无骑手数据" @sort-change="onRiderSort">
                 <el-table-column prop="rider_id" label="骑手ID" :min-width="riderColWidths['rider_id']" fixed sortable="custom" />
                 <el-table-column prop="rider_name" label="骑手姓名" :min-width="riderColWidths['rider_name']" fixed sortable="custom">
@@ -150,7 +150,7 @@
                   <template #default="{ row }"><span :class="{ 'dv-zero-gray': Number(row.reassign_orders) === 0 }">{{ row.reassign_orders }}</span></template>
                 </el-table-column>
               </el-table>
-            </div>
+            </el-card>
             <el-pagination
               class="dv-pager" background layout="total, sizes, prev, pager, next, jumper"
               :total="riderTotal" :page-size="riderPageSize" :current-page="riderPage"
@@ -651,17 +651,17 @@ onUnmounted(() => {
 .dv-bar .sp { flex: 1; }
 .dv-hint { margin-bottom: var(--sp-12); }
 .dv-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: var(--sp-12); margin-bottom: var(--sp-16); }
-.dv-card {
-  background: var(--el-bg-color); border: 1px solid var(--el-border-color-lighter); border-radius: var(--el-border-radius-base);
-  padding: var(--sp-16); display: flex; flex-direction: column; gap: 4px;
-}
+.dv-card :deep(.el-card__body) { display: flex; flex-direction: column; gap: 4px; padding: var(--sp-16); }
 .dv-card-num { font-size: 24px; font-weight: var(--fw-bold); color: var(--el-color-primary); }
 .dv-card-label { font-size: var(--el-font-size-extra-small); color: var(--el-text-color-secondary); }
 /* 表格根元素作为 flex item：min-width:0 破除 flex 默认的 min-width:auto，
    否则内部列宽之和(骑手看板 14 列)会把表格撑出容器，导致两个 tab 宽度不一致 */
 .dv-table { border-radius: var(--el-border-radius-base); width: 100%; min-width: 0; flex: 1; }
-/* 表格包裹层：占满标签页剩余高度，让 el-table(height=100%) 底部贴合视口 */
+/* 表格外层卡片：站点/骑手各一张 el-card（无 header/footer，body 沿用 EP 默认 20px padding）。
+   占满标签页剩余高度；由 el-card__body 接过原包裹层的 flex 布局，min-width:0 需逐层传递，
+   否则骑手看板 14 列会撑出容器；el-table(height=100%) 仍贴合视口、内部滚动 */
 .dv-table-wrap { flex: 1; min-height: 0; display: flex; min-width: 0; overflow: hidden; }
+.dv-table-wrap :deep(.el-card__body) { flex: 1; min-height: 0; display: flex; min-width: 0; }
 /* 骑手看板：表格 + 分页器纵向铺满；min-width:0 防止被超宽分页器撑出容器 */
 .dv-rider-body { flex: 1; min-height: 0; display: flex; flex-direction: column; min-width: 0; }
 .dv-pager { flex: none; padding: var(--sp-12) 0 0; display: flex; justify-content: flex-end; min-width: 0; }

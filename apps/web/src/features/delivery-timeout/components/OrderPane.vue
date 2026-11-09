@@ -1,6 +1,7 @@
 <template>
   <!-- ③ 运单明细：跨所选站点聚合所有超时订单（考核看板高比单T8超时下钻时经 tt=gaobi 过滤，无可见筛选控件） -->
   <div class="dv-pane">
+    <el-card class="dv-table-card" shadow="never">
     <el-table
       v-loading="loading"
       :data="pagedOrderRows"
@@ -41,6 +42,7 @@
       <el-table-column prop="deliver_time" label="骑手送达时间" min-width="170" align="center" sortable="custom" />
       <el-table-column prop="expect_time" label="平台期望时间" min-width="170" align="center" sortable="custom" />
     </el-table>
+    </el-card>
     <div class="dv-pg">
       <el-pagination
         v-model:current-page="orderPage"
@@ -106,7 +108,8 @@ const orderRows = computed(() => {
 const orderPage = ref(1);
 const orderPageSize = ref(25);
 const orderSort = ref({ prop: 'deliver_dur_sec', order: 'descending' });
-const orderH = computed(() => Math.max(200, props.bodyH - 56));
+/* 表格外套 el-card 后，body 默认上下各 20px padding，扣掉 40px 避免撑出内容区 */
+const orderH = computed(() => Math.max(200, props.bodyH - 96));
 const ORDER_NUMERIC = new Set([
   'over_min', 'compound_overtime_sec', 'arrive_dur_sec', 'wait_dur_sec', 'deliver_dur_sec',
 ]);
@@ -145,6 +148,8 @@ watch(() => sortedOrderRows.value.length, () => { orderPage.value = 1; });
 
 <style scoped>
 .dv-pane { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+/* 表格卡片：纯容器（无 header/footer），body 沿用 EP 默认 20px padding */
+.dv-table-card { flex: none; }
 .dv-pg { flex: none; padding-top: var(--sp-12); display: flex; justify-content: flex-end; }
 
 .rt { font-weight: var(--fw-bold); }

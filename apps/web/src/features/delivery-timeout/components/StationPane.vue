@@ -2,11 +2,12 @@
   <!-- ① 站点数据：KPI 汇总 + 站点配送时效对比表（点击站点名下钻看骑手/订单） -->
   <div class="dv-pane">
     <div v-if="cards.length" class="dv-cards">
-      <div v-for="c in cards" :key="c.label" class="dv-card">
+      <el-card v-for="c in cards" :key="c.label" class="dv-card" shadow="never">
         <span class="dv-card-num" :class="c.cls">{{ c.value }}</span>
         <span class="dv-card-label">{{ c.label }}</span>
-      </div>
+      </el-card>
     </div>
+    <el-card class="dv-table-card" shadow="never">
     <el-table
       v-loading="loading"
       :data="rows"
@@ -40,6 +41,7 @@
         </template>
       </el-table-column>
     </el-table>
+    </el-card>
   </div>
 </template>
 
@@ -97,10 +99,13 @@ const cards = computed(() => [
 
 <style scoped>
 .dv-pane { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+/* 表格卡片：纯容器（无 header/footer），body 沿用 EP 默认 20px padding；
+   flex:none 避免固定高度表格被 flex 压缩后裁切 */
+.dv-table-card { flex: none; }
 
 /* ── KPI 汇总卡片 ── */
 .dv-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: var(--sp-12); margin-bottom: var(--sp-16); }
-.dv-card { background: var(--el-bg-color); border: 1px solid var(--el-border-color-lighter); border-radius: var(--el-border-radius-base); padding: var(--sp-16); display: flex; flex-direction: column; gap: 4px; }
+.dv-card :deep(.el-card__body) { display: flex; flex-direction: column; gap: 4px; padding: var(--sp-16); }
 .dv-card-num { font-size: 24px; font-weight: var(--fw-bold); color: var(--el-color-primary); }
 .dv-card-label { font-size: var(--el-font-size-extra-small); color: var(--el-text-color-secondary); }
 .dv-card-num.is-ok { color: var(--ok, #2e7d32); }

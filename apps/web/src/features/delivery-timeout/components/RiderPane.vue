@@ -1,6 +1,7 @@
 <template>
   <!-- ② 骑手数据：跨所选站点聚合所有骑手（准时率未达100%），分页 + 全量排序后再分页 -->
   <div class="dv-pane">
+    <el-card class="dv-table-card" shadow="never">
     <el-table
       v-loading="loading"
       :data="pagedRiderRows"
@@ -25,6 +26,7 @@
         <template #default="{ row }"><span class="rt rt--bad">{{ fmtMin(row.overtime_sec) }}</span></template>
       </el-table-column>
     </el-table>
+    </el-card>
     <div class="dv-pg">
       <el-pagination
         v-model:current-page="riderPage"
@@ -76,7 +78,8 @@ const riderRows = computed(() => {
 const riderPage = ref(1);
 const riderPageSize = ref(25);
 const riderSort = ref({ prop: 'overtime_sec', order: 'descending' });
-const riderH = computed(() => Math.max(200, props.bodyH - 56));
+/* 表格外套 el-card 后，body 默认上下各 20px padding，扣掉 40px 避免撑出内容区 */
+const riderH = computed(() => Math.max(200, props.bodyH - 96));
 
 function onRiderSort({ prop, order }) {
   riderSort.value = { prop, order };
@@ -112,6 +115,8 @@ watch(() => riderRows.value.length, () => { riderPage.value = 1; });
 
 <style scoped>
 .dv-pane { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+/* 表格卡片：纯容器（无 header/footer），body 沿用 EP 默认 20px padding */
+.dv-table-card { flex: none; }
 .dv-pg { flex: none; padding-top: var(--sp-12); display: flex; justify-content: flex-end; }
 
 .rt { font-weight: var(--fw-bold); }
