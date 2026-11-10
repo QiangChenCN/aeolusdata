@@ -46,13 +46,13 @@
               <el-table v-loading="loading" :data="t.rows" stripe border class="dv-table" empty-text="暂无站点数据" :max-height="520">
                 <el-table-column prop="team_id" label="站点ID" min-width="120" show-overflow-tooltip />
                 <el-table-column prop="team_name" label="站点名称" min-width="220" show-overflow-tooltip />
-                <el-table-column label="全天" min-width="150" align="center">
+                <el-table-column :label="t.weightedFull ? '全天加权' : '全天'" :min-width="t.weightedFull ? 120 : 150" align="center">
                   <template #default="{ row }">
                     <div class="dv-cell">
                       <span class="dv-cell-rate" :class="rateClass(row.full.rate)">
                         {{ row.full.rate == null ? '—' : (row.full.rate + '%') }}
                       </span>
-                      <span class="dv-cell-sub">
+                      <span v-if="!t.weightedFull" class="dv-cell-sub">
                         {{ t.numLabel }}{{ row.full.num }} / {{ t.denLabel }}{{ row.full.den }}
                       </span>
                     </div>
@@ -221,6 +221,9 @@ const riderPeriods = computed(() => rider.value.periods || []);
    ② 时段排班有效出勤率 = 有效达成/排班
    ③ 时段出勤满足率 = 时段有单/目标
    ④ 时段排班出勤率 = 时段有单/排班
+   时段列展示原始达成率（不封顶）；
+   ① 的「全天加权」列 = 各时段值（未结束 / 无目标按 100%，其余封顶 100%）按「时段设置」权重加权平均（只显示率值）；
+   ②③④ 的「全天」列沿用后端 metrics['9999'] 原口径并显示分子/分母
 */
 function _num(x) { const n = Number(x); return Number.isFinite(n) ? n : 0; }
 function _pct(n, d) { return d > 0 ? Math.round((n / d) * 1000) / 10 : null; }
@@ -229,8 +232,8 @@ const stationRateTables = computed(() => {
   const periods = (stationPeriods.value || [])
     .filter(p => !p.is_full_day)  // 去掉时段循环里那个"全天"列（已在前方硬编码全天汇总列呈现），避免重复
     .slice().sort((a, b) => Number(a.time_code) - Number(b.time_code));
-  const build = (numKey, denKey, numLabel, denLabel, title) => ({
-    title, numLabel, denLabel, periods,
+  const build = (numKey, denKey, numLabel, denLabel, title, weightedFull = false) => ({
+    title, numLabel, denLabel, periods, weightedFull,
     rows: stationRowsFiltered.value.map(r => {
       const ms = r.metrics || {};
       const cells = {};
@@ -243,18 +246,41 @@ const stationRateTables = computed(() => {
           den: d == null ? '—' : _num(d),
         };
       }
-      // 全天列：直接用 Python 已算好的全天汇总 metrics['9999']（避免把跨时段达标/有单骑手重复累加）。
-      // 口径：有效 = 全天单量达标 且 时长达标（full_day_achieved）；有单 = 全天≥1单（full_day_orders>0）。
-      const fm = ms['9999'] || {};
-      const fn = fm[numKey], fd = fm[denKey];
+      let full;
+      if (weightedFull) {
+        // 仅「时段有效达成率」：各真实时段值按「考核设置 → 时段设置」权重加权平均，只展示率值。
+        // 参与加权的值：未结束的时段、没有目标（分母为 0/缺失）的时段按 100%；
+        // 其余时段用封顶 100% 后的达成率（时段列本身仍展示原始达成率）。
+        // 权重缺省（旧缓存快照）按 100 处理，0 权重时段不参与。
+        let acc = 0;
+        let wsum = 0;
+        for (const p of periods) {
+          const raw = Number(p.weight);
+          const w = p.weight == null || p.weight === '' || !Number.isFinite(raw) ? 100 : raw;
+          if (w <= 0) continue;
+          const c = cells[String(p.time_code)];
+          const value = (p.ended === false || !c || c.rate == null) ? 100 : Math.min(100, c.rate);
+          acc += value * w;
+          wsum += w;
+        }
+        full = { rate: wsum > 0 ? Math.round(acc / wsum * 10) / 10 : null };
+      } else {
+        // 其余三张表：沿用后端已算好的全天汇总 metrics['9999']，并显示分子/分母。
+        const fm = ms['9999'] || {};
+        const fn = fm[numKey], fd = fm[denKey];
+        full = {
+          rate: _pct(_num(fn), _num(fd)),
+          num: fn == null ? '—' : _num(fn),
+          den: fd == null ? '—' : _num(fd),
+        };
+      }
       return {
-        team_id: r.team_id, team_name: r.team_name, cells,
-        full: { rate: _pct(_num(fn), _num(fd)), num: fn == null ? '—' : _num(fn), den: fd == null ? '—' : _num(fd) },
+        team_id: r.team_id, team_name: r.team_name, cells, full,
       };
     }),
   });
   return [
-    build('achieved', 'target', '有效', '目标', '时段有效达成率（有效达成 / 目标）'),
+    build('achieved', 'target', '有效', '目标', '时段有效达成率（有效达成 / 目标）', true),
     build('achieved', 'scheduled', '有效', '排班', '时段排班有效出勤率（有效达成 / 排班）'),
     build('order', 'target', '有单', '目标', '时段出勤满足率（时段有单 / 目标）'),
     build('order', 'scheduled', '有单', '排班', '时段排班出勤率（时段有单 / 排班）'),

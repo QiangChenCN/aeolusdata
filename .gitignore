@@ -169,3 +169,6 @@ apps/api/node_modules/
 
 # 仓库根运行时数据目录（整体忽略未跟踪的刷新产物；已跟踪的 org_tree.json 等不受影响）
 apps/api/runtime/
+
+# 时段设置按月落盘的运行时配置（「考核设置→时段设置」UI 写入，每月一个文件；已跟踪的 2026-09 为初始基线，仍保留）
+services/compute/analytics/core/period_config_*.json

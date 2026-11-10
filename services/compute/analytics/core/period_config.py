@@ -29,11 +29,18 @@
 
 时段权重 weight：百分比系数（0–100），缺省 100，可编辑，须在 0–100 之间。
 
+未保存月份口径（2026-11-10 起，不回落默认）：
+  文件缺失时 load() 返回 periods=[] 且 configured=False；计算侧据此判定「该月未配置时段」，
+  不回落任何内置默认规则，也不静默产出「全时段未配置、达成率 0」的假数据。
+  调用方须显式处理 configured=False / periods 为空，并提示用户到「考核设置 → 时段设置」保存配置。
+
 对外接口：
   current_month()          -> "YYYY-MM"
   list_months()            -> {"months":[...降序], "current":"YYYY-MM"}
-  load(month=None)         -> {schema_version, month, updated_at, periods, editable}
-  save(periods, month=None)-> 校验后落盘；返回完整配置（含 editable）
+  load(month=None)         -> {schema_version, month, updated_at, configured, periods, editable}
+  save(periods, month=None)-> 校验后落盘；返回完整配置
+  unconfigured_note(month, configured=False) -> 无时段规则月份的统一提示文案
+  norm_weight(v)           -> 时段权重归一化（0-100，缺省/非法 100）
 """
 import os
 
@@ -68,14 +75,6 @@ def _path_for(month):
     return os.path.join(_HERE, _PREFIX + month + _SUFFIX)
 
 
-def _hmm_add(hhmm, hours):
-    """HH:MM + 小时数 -> HH:MM（按当天滚动，不跨日显示为次日）。"""
-    h, m = hhmm.split(":")
-    total = int(h) * 60 + int(m) + int(round(hours * 60))
-    total %= 1440
-    return "%02d:%02d" % (total // 60, total % 60)
-
-
 def _duration_h(start, end):
     """左闭右开区间 [start, end) 的时长（小时）= 时段时长，支持跨日。
 
@@ -95,30 +94,31 @@ def _editable_for(month):
     return month >= current_month()
 
 
-def defaults(month=None):
-    """默认 11 个时段（2026-09-11 用户截图，时长要求换算为起止时间）。"""
-    base = [
-        ("00:00", 1.5, "凌晨1", 1),
-        ("02:00", 1.3, "凌晨2", 1),
-        ("04:00", 1.2, "凌晨3", 1),
-        ("06:00", 1.5, "早餐1", 1),
-        ("08:00", 2.0, "早餐2", 1),
-        ("10:30", 2.5, "午高峰", 5),
-        ("13:30", 1.5, "下午茶1", 2),
-        ("15:30", 1.5, "下午茶2", 2),
-        ("17:30", 2.0, "晚高峰", 3),
-        ("20:00", 1.5, "夜宵1", 2),
-        ("22:00", 2.0, "夜宵2", 2),
-    ]
-    out = []
-    for start, dur, name, orders in base:
-        end = _hmm_add(start, dur)
-        pdur = _duration_h(start, end)   # 时段时长 = 结束 − 开始
-        out.append({"start": start, "end": end, "name": name,
-                    "orders": orders, "weight": 100,
-                    "period_duration_h": pdur,
-                    "effective_online_req_h": pdur})  # 有效在线时长要求缺省=时段时长
-    return out
+def unconfigured_note(month, configured=False):
+    """无时段规则月份的统一提示文案（计算侧与接口层共用，避免口径分叉）。
+
+    configured=True 表示用户已显式保存过空配置，文案需区分「没保存」与「保存为空」。
+    """
+    m = str(month)[:7]
+    if configured:
+        return "%s 月份已保存为空配置（无任何时段），如需参与考核请到「考核设置 → 时段设置」添加时段" % m
+    return "%s 月份未配置时段，请到「考核设置 → 时段设置」保存配置后刷新" % m
+
+
+def norm_weight(v):
+    """时段权重归一化（0-100）；缺失 / 非法 / 越界一律回落 100（等价于不降权）。
+
+    配置侧与计算侧共用，避免各模块各写一份兜底逻辑。
+    """
+    try:
+        if v is None or v == "":
+            return 100.0
+        w = float(v)
+        if w < 0 or w > 100:
+            return 100.0
+        return round(w, 2)
+    except (ValueError, TypeError):
+        return 100.0
 
 
 def _read(month):
@@ -149,7 +149,8 @@ def load(month=None):
 
     返回字段：
       month        实际月份
-      periods      时段列表（缺失文件时返回默认 11 段）
+      periods      时段列表（文件缺失 / 损坏时为空列表，不回落任何默认规则）
+      configured   该月是否已保存过配置（文件存在即为 True，即便 periods 为空）
       updated_at   最近更新时间（缺失时为 None）
       editable     该月是否可编辑（month < 当前月 -> False）
 
@@ -160,7 +161,8 @@ def load(month=None):
     month = month or current_month()
     d = _read(month)
     if d is None:
-        periods = defaults(month)
+        # 未保存月份：无默认兜底，直接给空规则；计算侧据此走「未配置」口径。
+        periods = []
         updated_at = None
     else:
         periods = [dict(x) for x in d.get("periods", [])]
@@ -190,6 +192,7 @@ def load(month=None):
         "schema_version": 3,
         "month": month,
         "updated_at": updated_at,
+        "configured": d is not None,
         "periods": periods,
         "editable": _editable_for(month),
     }

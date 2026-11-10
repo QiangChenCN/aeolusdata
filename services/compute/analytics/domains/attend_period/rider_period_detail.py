@@ -37,6 +37,10 @@
 未匹配到规则（排班目标有该时段但 period_config 未配置）时，该时段标记为「未配置规则」，
 骑手在该时段单元格记为 None（无法判定），不计入达成统计。
 
+整月无时段规则（未保存，或已保存为空配置）时的口径：不回落任何默认规则、不拉取实时数据、
+不产出「全时段未配置、达成率 0」的假结果，直接返回 data_status="not_configured" 的空结果，
+由看板显示「请先保存时段设置」提示（见 compute() 步骤 0）。
+
 对外 API：
   compute(team_id, date) -> dict
 """
@@ -120,6 +124,31 @@ def compute(team_id, date):
     """
     team_id = str(team_id)
 
+    # 0) 时段配置（达标规则）。未保存月份 periods 为空：不回落默认规则、不拉实时数据、
+    #    也不产出「全时段未配置、达成率 0」的假结果，直接返回显式的「未配置」空结果。
+    cfg = PC.load(month=str(date)[:7])
+    if not cfg.get("periods"):
+        note = PC.unconfigured_note(date, configured=cfg.get("configured", False))
+        _log(note)
+        return {
+            "ok": True,
+            "team": team_id,
+            "teamName": TEAM_NAMES.get(team_id, "team " + team_id),
+            "date": date,
+            "periods": [],
+            "rows": [],
+            "summary": {
+                "rider_count": 0, "scheduled_total": 0, "achieved_total": 0,
+                "period_count": 0, "configured_periods": 0,
+            },
+            "full_day_schedule": {"predict_num": None, "actual_num": None},
+            "configured": False,
+            "data_status": "not_configured",
+            "data_note": note,
+            "fetched_at": datetime.datetime.now(BJ).isoformat(timespec="seconds"),
+            "source": "none",
+        }
+
     # 1) 排班目标（展平成 站×日期×时段 一行），仅保留真实排班时段。
     #    取数与登录态（含失效重登）均归 Nest 独占，本进程不再持有/触发任何登录逻辑。
     sched_rows = flatten_schedule(fetch_schedule(team_id, date, date))
@@ -130,9 +159,8 @@ def compute(team_id, date):
     fd_sched = next((r for r in sched_rows
                      if str(r.get("time_code")) == DAY_TIME_CODE), None)
 
-    # 2) 时段配置（达标规则）：按名称 / 起止时间 建索引；
+    # 2) 时段配置（已在步骤 0 加载并校验）：按名称 / 起止时间 建索引；
     #    普通时段列顺序须与「时段设置」界面列顺序保持一致（支持手动拖拽排序，顺序以 cfg 数组为准）。
-    cfg = PC.load(month=date[:7])
     cfg_by_name = {p["name"]: p for p in cfg["periods"]}
     cfg_by_time = {(p["start"], p["end"]): p for p in cfg["periods"]}
     # 「全天」行（name=全天 / 00:00-00:00）仅用于全天达标判定，不作为普通时段列参与排序
@@ -204,15 +232,18 @@ def compute(team_id, date):
         if c:
             orders_req = _norm_int(c.get("orders"))
             online_req_h = round(float(c.get("effective_online_req_h") or 0), 2)
+            weight = PC.norm_weight(c.get("weight"))
             configured = True
         else:
             orders_req = 0
             online_req_h = 0.0
+            weight = PC.norm_weight(None)   # 未匹配配置规则的时段不降权
             configured = False
         period_defs.append({
             "time_code": tc, "time_name": name,
             "start_time": start, "end_time": end,
             "orders_req": orders_req, "online_req_h": online_req_h,
+            "weight": weight,
             "configured": configured,
             "actual_num": actual,
             "predict_num": _norm_int(p.get("predict_num")),

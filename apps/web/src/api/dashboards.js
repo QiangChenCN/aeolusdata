@@ -103,6 +103,20 @@ export function saveServiceQualityTargets(body = {}) {
   return request('/service-quality/targets', j(body));
 }
 
+/* ============ 时段设置（考核设置 → 时段设置，按月份整表覆盖） ============ */
+/* GET 返回 {ok, month, configured, editable, updated_at, updated_by, periods}；未保存月份 periods 为空 */
+export function fetchPeriodConfig(month) {
+  const q = month ? '?month=' + encodeURIComponent(month) : '';
+  return request('/attend-period/config' + q);
+}
+export function savePeriodConfig(body = {}) {
+  return request('/attend-period/config', j(body));
+}
+/* 已落盘配置的月份列表（降序）+ 当前月，供「复制其他月份配置」选择 */
+export function fetchPeriodMonths() {
+  return request('/attend-period/months');
+}
+
 /* ============ 时段出勤 ============ */
 /* 站点配置：GET 返回 {teams: 已配置展示站点id, all: 全部可选站点{id,name}}；POST 保存配置 */
 export function fetchAttendTeams() {

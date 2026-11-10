@@ -4,6 +4,7 @@
       <el-menu :default-active="activePath" mode="horizontal" router class="assess-menu">
         <el-menu-item index="/assess/service">服务质量设置</el-menu-item>
         <el-menu-item index="/assess/standard">标准达成设置</el-menu-item>
+        <el-menu-item index="/assess/period">时段设置</el-menu-item>
       </el-menu>
     </div>
     <router-view v-slot="{ Component }">
@@ -21,6 +22,7 @@ const activePath = computed(() => {
   const p = route.path;
   if (p.startsWith('/assess/service')) return '/assess/service';
   if (p.startsWith('/assess/standard')) return '/assess/standard';
+  if (p.startsWith('/assess/period')) return '/assess/period';
   return '/assess/service';
 });
 </script>

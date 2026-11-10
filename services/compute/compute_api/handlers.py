@@ -544,6 +544,15 @@ def _get_ap_valid(self, qs):
     mode, val = self._enforce_team_scope(team)
     if mode == "deny":
         return
+    # 未保存月份口径：与达标计算链路一致，不按默认规则出数。
+    from analytics.core import period_config as PC
+    _cfg = PC.load(month=str(date)[:7])
+    if not _cfg.get("periods"):
+        self._json({"ok": True, "need_refresh": False, "rows": [], "summary": None,
+                    "team": team, "date": date, "source": "none",
+                    "configured": False, "data_status": "not_configured",
+                    "data_note": PC.unconfigured_note(date, configured=_cfg.get("configured", False))})
+        return
     if not refresh:
         self._json({"ok": True, "need_refresh": True, "rows": [],
                     "summary": None, "team": team, "date": date,
@@ -648,7 +657,13 @@ def _get_ap_dataset(self, qs):
     ds = None
     if not refresh:
         # 只读缓存（进程内 / 落盘），绝不实时拉取；未命中返回 need_refresh 提示点刷新。
-        ds = APSRC.get_dataset(team, date, refresh=False)
+        # 例外：未保存月份直接给出完整空 dataset + 「未配置」提示（build_dataset 会短路，
+        # 不拉取实时数据也不落缓存），让用户进页面就知道需要先保存时段设置。
+        from analytics.core import period_config as PC
+        if not PC.load(month=str(date)[:7]).get("periods"):
+            ds = APSRC.get_dataset(team, date, refresh=True)
+        else:
+            ds = APSRC.get_dataset(team, date, refresh=False)
         if ds is None:
             self._json({"ok": True, "need_refresh": True, "dataset": None,
                         "team": team, "date": date, "source": "none",
@@ -671,8 +686,13 @@ def _get_ap_dataset(self, qs):
                     "team": team, "date": date, "source": "none",
                     "data_note": "暂无数据"})
         return
+    # 未配置月份：dataset 仍给完整空结构（前端据此走正常渲染分支），
+    # 由顶层 data_note 触发看板横幅提示，避免被误判成「加载失败」。
     self._json({"ok": True, "team": ds["team"], "date": ds["date"],
                 "fetched_at": ds["fetched_at"], "source": ds["source"],
+                "configured": ds.get("configured", True),
+                "data_status": ds.get("data_status", "ok"),
+                "data_note": ds.get("data_note") or "",
                 "dataset": {"rider_detail": APSRC.to_rider_detail(ds),
                             "station_data": APSRC.to_station_data(ds),
                             "time_period": APSRC.to_time_period(ds)}})

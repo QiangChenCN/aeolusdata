@@ -61,6 +61,11 @@ export const dirs = {
     const base = abs(DIRS.computeStandard);
     return sub ? path.join(base, sub) : base;
   },
+  /** Python 计算侧 analytics/core 目录：时段配置 period_config_YYYY-MM.json 的唯一落盘位置。 */
+  computeAnalyticsCore(sub?: string): string {
+    const base = abs(DIRS.computeAnalyticsCore);
+    return sub ? path.join(base, sub) : base;
+  },
   sharedCache(sub?: string): string {
     const base = abs(DIRS.sharedCache);
     return sub ? path.join(base, sub) : base;

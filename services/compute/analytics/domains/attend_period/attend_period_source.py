@@ -18,11 +18,11 @@
      "fetched_at": ISO 时间戳,
      "source": "live" | "cache",
      "periods": [ {time_code, time_name, start_time, end_time, orders_req,
-                   online_req_h, configured, actual_num, predict_num} ],   # 真实时段（不含 9999/2）
+                   online_req_h, weight, configured, actual_num, predict_num} ],  # 真实时段（不含 9999/2）
      "rider_rows": [ {rider_id, rider_name, team_id, team_name, cells:{tc:{...}},
                       full_day_*, ...} ],                                   # 骑手×时段明细
      "full_day_schedule": {"predict_num", "actual_num"},                   # 排班目标 9999 行
-     "station_rows": [ {team_id, team_name, metrics:{tc:{rate,target,scheduled,achieved,order}, "9999":{...}}} ]
+     "station_rows": [ {team_id, team_name, metrics:{tc:{rate,target,scheduled,achieved,order,weight}, "9999":{...}}} ]
    }
 
 3. 读取 / 更新接口：
@@ -38,9 +38,13 @@
 数据口径（2026-09-13 与用户确认）：
   · 达标 = 单量达标 且 在线时长达标（阈值取 period_config 的 orders + effective_online_req_h），
     与 rider_period_detail.cells[].achieved 完全一致。
-  · 时段达成率 = 达标人数 ÷ 时段目标人数（predict_num），保留 1 位小数（%）。
+  · 时段达成率 = 达标人数 ÷ 时段目标人数（predict_num），保留 1 位小数（%），展示时不封顶。
   · 排班人数 = 排班目标 actual_num；时段排班且有单人数 = 该时段有排班(scheduled) 且 timeFinishOrder > 0。
-  · 全天列：full_day_achieved / full_day_orders 判达标/有单；目标/排班取 full_day_schedule。
+  · 全天列（2026-11-10 起）：仅「时段有效达成率」一张表由前端按各时段值与
+    「考核设置 → 时段设置」的权重加权平均（未结束/无目标按 100%，其余加权时封顶 100%）；
+    另外三张表仍读后端 metrics['9999'] 原口径（full_day_* + full_day_schedule）；
+    其中「有效达成」在投影时按当月全天标准重算，使缓存快照也能即时反映标准变更。
+    各时段列展示原始达成率，不封顶。
 """
 import os
 
@@ -51,6 +55,7 @@ import sys
 import json
 import datetime
 from sources import TEAM_NAMES
+from analytics.core import period_config as PC
 from analytics.domains.attend_period import rider_period_detail as RPD
 from analytics.domains.attend_period import attend_period_teams as APT
 
@@ -100,11 +105,16 @@ def _fmt_dur(sec):
 
 # ----------------------- 投影：站点数据（由 rider_rows 派生） -----------------------
 def _project_team_metrics(rows, periods, fd_sched):
-    """单站：由骑手明细行投影出 时段→{rate,target,scheduled,achieved,order}。
+    """单站：由骑手明细行投影出 时段→{rate,target,scheduled,achieved,order,weight}。
 
     rows      : 该站点的骑手明细列表（compute.rows 子集）
-    periods   : compute.periods（真实时段，每项含 time_code / predict_num / actual_num）
+    periods   : compute.periods（真实时段，含 weight / predict_num / actual_num）
     fd_sched  : compute.full_day_schedule（全天行 predict/actual）
+
+    全天列（9999）保持原有口径：达标/有单取自 full_day_*，目标/排班取
+    full_day_schedule，供「时段排班有效出勤率 / 时段出勤满足率 / 时段排班出勤率」
+    三张表使用。只有「时段有效达成率」的全天列由前端按时段权重加权计算，不读这里。
+    weight 仅透出给前端加权使用，不参与本函数的全天汇总。
     """
     metrics = {}
     for pd in periods:
@@ -121,6 +131,7 @@ def _project_team_metrics(rows, periods, fd_sched):
             "rate": _rate(achieved, target),
             "target": target, "scheduled": scheduled,
             "achieved": achieved, "order": order,
+            "weight": PC.norm_weight(pd.get("weight")),
         }
     # 全天列（9999）：达标/有单取自 full_day_*，目标/排班取自 full_day_schedule
     fd_target = _norm_int(fd_sched.get("predict_num")) if fd_sched else None
@@ -135,8 +146,70 @@ def _project_team_metrics(rows, periods, fd_sched):
     return metrics
 
 
-def _station_periods(periods):
-    """站点卡片时段列顺序：全天(9999) 排第一，真实时段按开始时间升序。"""
+def _full_day_standard(month):
+    """取当月「时段设置」里的全天标准 (单量, 有效在线时长h)；未配置返回 None。"""
+    if not month:
+        return None
+    cfg = PC.load(month=month)
+    fd = next((p for p in cfg.get("periods") or []
+               if p.get("name") == "全天"
+               or (p.get("start"), p.get("end")) == ("00:00", "00:00")), None)
+    if not fd:
+        return None
+    try:
+        return (int(float(fd.get("orders") or 0)),
+                float(fd.get("effective_online_req_h") or 0))
+    except (TypeError, ValueError):
+        return None
+
+
+def _full_day_achieved(riders, std):
+    """按全天标准统计达标人数（与 rider_period_detail 的全天判定同口径）。"""
+    if std is None:
+        return None
+    orders_req, online_req_h = std
+    n = 0
+    for r in riders or []:
+        orders = r.get("full_day_orders") or 0
+        online_h = r.get("full_day_online_h") or 0
+        if (orders_req == 0 or orders >= orders_req) and \
+                (online_req_h == 0 or online_h >= online_req_h):
+            n += 1
+    return n
+
+
+def _station_periods(periods, date=None):
+    """站点卡片时段列顺序：全天(9999) 排第一，真实时段按开始时间升序。
+
+    旧落盘快照（加权口径上线前生成）的 periods 不带 weight：按「时段设置」的
+    名称 / 起止时间回填，让历史缓存无需重新拉取实时数据也能按当前权重加权。
+
+    ended：按北京时间判断该时段是否已结束（历史日期全部已结束、未来日期全部未结束、
+    当天按 end_time 比较；end <= start 视为跨到次日，当天内不算结束）。前端全天列
+    对未结束的时段按 100% 参与加权，避免当天进行中的时段拖低全天达成率。
+    """
+    date_str = str(date or "")[:10]
+    month = date_str[:7] if date_str else None
+    now = datetime.datetime.now(BJ)
+    today = now.strftime("%Y-%m-%d")
+    now_hm = now.hour * 60 + now.minute
+
+    by_name = {}
+    by_time = {}
+    if month:
+        for c in PC.load(month=month).get("periods") or []:
+            w = PC.norm_weight(c.get("weight"))
+            by_name.setdefault(c.get("name"), w)
+            by_time.setdefault((c.get("start"), c.get("end")), w)
+
+    def _weight_of(p):
+        if p.get("weight") is not None:
+            return PC.norm_weight(p.get("weight"))
+        w = by_name.get(p.get("time_name"))
+        if w is None:
+            w = by_time.get((p.get("start_time"), p.get("end_time")))
+        return 100.0 if w is None else w
+
     def _hm(s):
         if not s or ":" not in str(s):
             return 9999
@@ -145,13 +218,30 @@ def _station_periods(periods):
             return int(a) * 60 + int(b)
         except Exception:
             return 9999
+
+    def _ended(p):
+        if not date_str or date_str < today:
+            return True
+        if date_str > today:
+            return False
+        s, e = _hm(p.get("start_time")), _hm(p.get("end_time"))
+        if s == 9999 or e == 9999:
+            return True
+        if e <= s:                 # 跨日时段（如 22:00-00:00）：当天内视为未结束
+            return False
+        return now_hm >= e
+
     real = [{
         "time_code": str(p.get("time_code")),
         "time_name": p.get("time_name"),
         "is_full_day": False,
+        "weight": _weight_of(p),
+        "ended": _ended(p),
+        "end_time": p.get("end_time"),
     } for p in periods]
     real.sort(key=lambda p: _hm(p.get("time_name")))   # time_name 形如 "10:30-13:30"，按起始排序；回退用 start_time 亦可
-    return [{"time_code": DAY_TIME_CODE, "time_name": "全天", "is_full_day": True}] + real
+    return [{"time_code": DAY_TIME_CODE, "time_name": "全天",
+             "is_full_day": True, "weight": None, "ended": True}] + real
 
 
 # ----------------------- 构建唯一真相源 -----------------------
@@ -171,8 +261,14 @@ def build_dataset(team, date, teams=None):
     station_rows = []
     periods_tpl = None
     fd_sched_tpl = None
+    config_flags = []
+    config_note = None
     for tid in teams:
         res = RPD.compute(tid, date)
+        # 未保存月份：RPD.compute 直接返回 not_configured 空结果，此处汇总为数据集级状态。
+        config_flags.append(res.get("configured", True))
+        if res.get("data_note") and not config_note:
+            config_note = res["data_note"]
         rows = res.get("rows") or []
         pers = res.get("periods") or []
         rider_rows.extend(rows)
@@ -188,16 +284,20 @@ def build_dataset(team, date, teams=None):
 
     if periods_tpl is None:
         periods_tpl = []
+    configured = all(config_flags) if config_flags else True
     _log("统一数据集构建完成：%s，%d 名骑手，%d 站" % (team, len(rider_rows), len(station_rows)))
     return {
         "team": team,
         "date": date,
         "fetched_at": datetime.datetime.now(BJ).isoformat(timespec="seconds"),
-        "source": "live",
+        "source": "live" if configured else "none",
         "periods": periods_tpl,
         "rider_rows": rider_rows,
         "full_day_schedule": fd_sched_tpl or {"predict_num": None, "actual_num": None},
         "station_rows": station_rows,
+        "configured": configured,
+        "data_status": "ok" if configured else "not_configured",
+        "data_note": config_note,
     }
 
 
@@ -249,8 +349,11 @@ def get_dataset(team, date, refresh, teams=None):
             return ds
         return None
     ds = build_dataset(team, date, teams=teams)
-    _DS_CACHE[key] = ds
-    _save_ds_disk(str(team), date, ds)
+    # 未配置月份不落缓存：避免「未配置」空快照被当成有效数据长期展示；
+    # 用户保存配置后点刷新即可重建。
+    if ds.get("data_status") != "not_configured":
+        _DS_CACHE[key] = ds
+        _save_ds_disk(str(team), date, ds)
     return ds
 
 
@@ -277,13 +380,36 @@ def to_rider_detail(ds):
         "summary": summary,
         "fetched_at": ds.get("fetched_at"),
         "source": ds.get("source"),
+        "configured": ds.get("configured", True),
+        "data_status": ds.get("data_status", "ok"),
+        "data_note": ds.get("data_note") or "",
     }
 
 
 def to_station_data(ds):
-    """投影为「站点数据」接口返回结构（4 张卡片数据源）。"""
+    """投影为「站点数据」接口返回结构（4 张卡片数据源）。
+
+    全天列「有效达成」按当月「时段设置」的全天标准判定：缓存快照可能生成于
+    全天标准配置之前（full_day_achieved 全为 None），这里用骑手明细的
+    full_day_orders / full_day_online_h 按当前标准重算，无需重新拉取实时数据。
+    只有「时段排班有效出勤率」用到该分子，另两张表用「有单人数」不受影响。
+    """
     station_rows = ds.get("station_rows") or []
-    periods = _station_periods(ds.get("periods") or [])
+    rider_rows = ds.get("rider_rows") or []
+    std = _full_day_standard(str(ds.get("date") or "")[:7])
+    if std is not None:
+        for sr in station_rows:
+            cell = (sr.get("metrics") or {}).get(DAY_TIME_CODE)
+            if not isinstance(cell, dict):
+                continue
+            riders = [r for r in rider_rows
+                      if str(r.get("team_id")) == str(sr.get("team_id"))]
+            n = _full_day_achieved(riders, std)
+            if n is None:
+                continue
+            cell["achieved"] = n
+            cell["rate"] = _rate(n, cell.get("target"))
+    periods = _station_periods(ds.get("periods") or [], str(ds.get("date") or ""))
     return {
         "ok": True,
         "team": ds.get("team"),
@@ -295,6 +421,9 @@ def to_station_data(ds):
         "need_refresh": False,
         "source": ds.get("source"),
         "fetched_at": ds.get("fetched_at"),
+        "configured": ds.get("configured", True),
+        "data_status": ds.get("data_status", "ok"),
+        "data_note": ds.get("data_note") or "",
     }
 
 
@@ -400,6 +529,9 @@ def to_time_period(ds):
         "need_refresh": False,
         "source": ds.get("source"),
         "fetched_at": ds.get("fetched_at"),
+        "configured": ds.get("configured", True),
+        "data_status": ds.get("data_status", "ok"),
+        "data_note": ds.get("data_note") or "",
     }
 
 

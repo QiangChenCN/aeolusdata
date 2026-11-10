@@ -16,6 +16,9 @@ import { RawCacheService } from '../../infra/fetch/storage/raw-cache.service';
  *
  * 落盘路径刻意与 Python 一致（不搬文件，避免改动 Python 计算侧的读取路径）：
  *   · 标准类配置 → `<root>/services/compute/dashboard/standard/*.json`
+ *   · 时段配置（按月） → `<root>/services/compute/analytics/core/period_config_YYYY-MM.json`
+ *     （Python `analytics.core.period_config.PC.load` 按此目录读，读写必须同源）
+ *     未保存月份返回空 periods，不回落任何内置默认规则（与 Python 计算侧口径一致）
  *   · 服务质量考核目标 → `<root>/apps/api/runtime/.service_quality_targets.json`
  * 其中 `<root>` = PROJECT_ROOT（默认仓库根，与 Python 的 `_ROOT` 同源）。
  *
@@ -416,14 +419,6 @@ export class ConfigService {
   }
 
   // ================================================================== period_config
-  private periodHmmAdd(hhmm: string, hours: number): string {
-    const [h, m] = hhmm.split(':').map(Number);
-    let total = h * 60 + m + Math.round(hours * 60);
-    total = ((total % 1440) + 1440) % 1440;
-    const hh = Math.floor(total / 60);
-    const mm = total % 60;
-    return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
-  }
   private periodDurationH(start: string, end: string): number {
     const [sh, sm] = start.split(':').map(Number);
     const [eh, em] = end.split(':').map(Number);
@@ -434,29 +429,12 @@ export class ConfigService {
   private periodEditableFor(month: string): boolean {
     return month >= currentMonth();
   }
-  private periodDefaults(): any[] {
-    const base: [string, number, string, number][] = [
-      ['00:00', 1.5, '凌晨1', 1],
-      ['02:00', 1.3, '凌晨2', 1],
-      ['04:00', 1.2, '凌晨3', 1],
-      ['06:00', 1.5, '早餐1', 1],
-      ['08:00', 2.0, '早餐2', 1],
-      ['10:30', 2.5, '午高峰', 5],
-      ['13:30', 1.5, '下午茶1', 2],
-      ['15:30', 1.5, '下午茶2', 2],
-      ['17:30', 2.0, '晚高峰', 3],
-      ['20:00', 1.5, '夜宵1', 2],
-      ['22:00', 2.0, '夜宵2', 2],
-    ];
-    return base.map(([start, dur, name, orders]) => {
-      const end = this.periodHmmAdd(start, dur);
-      const pdur = this.periodDurationH(start, end);
-      return { start, end, name, orders, weight: 100, period_duration_h: pdur, effective_online_req_h: pdur };
-    });
+  /** 时段配置的唯一落盘位置：Python 计算侧 analytics/core（PC.load 按此目录读文件）。 */
+  private periodPath(month: string): string {
+    return dirs.computeAnalyticsCore(`period_config_${month}.json`);
   }
   private periodRead(month: string): any | null {
-    const p = this.stdPath(`period_config_${month}.json`);
-    const d = this.readJson(p);
+    const d = this.readJson(this.periodPath(month));
     if (!d || !Array.isArray(d.periods)) return null;
     return d;
   }
@@ -465,12 +443,15 @@ export class ConfigService {
     const d = this.periodRead(month);
     let periods: any[];
     let updatedAt: string | null;
+    let updatedBy = '';
     if (d === null) {
-      periods = this.periodDefaults();
+      // 未保存月份：无默认兜底，返回空规则；计算侧据此走「未配置」口径。
+      periods = [];
       updatedAt = null;
     } else {
       periods = d.periods.map((x: any) => ({ ...x }));
       updatedAt = d.updated_at;
+      updatedBy = d.updated_by || '';
     }
     for (const p of periods) {
       try {
@@ -495,9 +476,13 @@ export class ConfigService {
       }
     }
     return {
+      ok: true,
       schema_version: 3,
       month,
+      /** 该月是否已保存过（false = 从未配置，前端据此提示）。 */
+      configured: d !== null,
       updated_at: updatedAt,
+      updated_by: updatedBy,
       periods,
       editable: this.periodEditableFor(month),
     };
@@ -533,14 +518,27 @@ export class ConfigService {
       effective_online_req_h: Math.round(req * 100) / 100,
     };
   }
-  private periodSave(periods: unknown, month?: string) {
+  private async periodSave(periods: unknown, month: string | undefined, user: string): Promise<unknown> {
     month = month || currentMonth();
-    if (month < currentMonth()) throw new Error(`历史月份（${month}）不可编辑`);
-    if (!Array.isArray(periods)) throw new Error('periods 须为数组');
-    const normed = (periods as unknown[]).map((x) => this.periodNormPeriod(x));
-    const data = { schema_version: 3, month, updated_at: nowIso(), periods: normed };
-    this.atomicWrite(this.stdPath(`period_config_${month}.json`), data);
-    return data;
+    if (!/^\d{4}-\d{2}$/.test(month)) return { ok: false, error: 'month 须为 YYYY-MM 格式' };
+    if (month < currentMonth()) return { ok: false, error: `历史月份（${month}）不可编辑` };
+    if (!Array.isArray(periods)) return { ok: false, error: 'periods 须为数组' };
+    let normed: any[];
+    try {
+      normed = (periods as unknown[]).map((x) => this.periodNormPeriod(x));
+    } catch (e) {
+      return { ok: false, error: (e as Error).message };
+    }
+    const data = {
+      schema_version: 3, month, updated_at: nowIso(), updated_by: user || '', periods: normed,
+    };
+    try {
+      this.atomicWrite(this.periodPath(month), data);
+      await this.rawCache.invalidateAll();
+      return { ok: true, ...(this.periodLoad(month) as Record<string, unknown>) };
+    } catch (e) {
+      return { ok: false, error: `写入失败：${(e as Error).message}` };
+    }
   }
 
   // ============================================================ attend_period_teams
@@ -634,6 +632,7 @@ export class ConfigService {
       '/api/standard/grade-global',
       '/api/service-quality/targets',
       '/api/attend-period/config',
+      '/api/attend-period/months',
       '/api/attend-period/teams',
       '/api/delivery-timeout/teams',
       '/api/assessment/teams',
@@ -661,7 +660,9 @@ export class ConfigService {
           ? this.getStandardGradeSettings(q('month'))
           : this.saveStandardGradeSettings(body, user);
       case '/api/attend-period/config':
-        return method === 'GET' ? this.periodConfigGet(q('month')) : this.periodConfigPost(body);
+        return method === 'GET' ? this.periodConfigGet(q('month')) : this.periodConfigPost(body, user);
+      case '/api/attend-period/months':
+        return method === 'GET' ? this.periodMonthsGet() : { ok: false, error: '不支持的方法' };
       case '/api/attend-period/teams':
         return method === 'GET' ? this.apTeamsGet(allowed) : this.apTeamsPost(body);
       case '/api/assessment/teams':
@@ -679,12 +680,25 @@ export class ConfigService {
   periodConfigGet(month?: string): unknown {
     return this.periodLoad(month);
   }
-  periodConfigPost(body: any): unknown {
+  async periodConfigPost(body: any, user: string): Promise<unknown> {
+    return this.periodSave(body && body.periods, body && body.month, user);
+  }
+  /** 已落盘配置的月份（降序）+ 当前月；与 Python PC.list_months() 同形，但不依赖 8900 在线。 */
+  periodMonthsGet(): unknown {
+    let files: string[] = [];
     try {
-      return this.periodSave(body && body.periods, body && body.month);
-    } catch (e) {
-      return { ok: false, error: `${(e as Error).name}: ${(e as Error).message}` };
+      files = fs.readdirSync(dirs.computeAnalyticsCore());
+    } catch {
+      files = [];
     }
+    const months: string[] = [];
+    for (const f of files) {
+      const m = /^period_config_(\d{4}-\d{2})\.json$/.exec(f);
+      if (m) months.push(m[1]);
+    }
+    const cur = currentMonth();
+    if (!months.includes(cur)) months.push(cur);
+    return { ok: true, months: [...new Set(months)].sort().reverse(), current: cur };
   }
 
   async apTeamsGet(allowed: Allowed): Promise<unknown> {
