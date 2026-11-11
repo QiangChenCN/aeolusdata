@@ -1,56 +1,37 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import * as crypto from 'crypto';
 import * as fs from 'fs';
-import * as path from 'path';
 import { Client as MinioClient } from 'minio';
+import { MinioConfigService, MinioCfg } from './minio-config.service';
 
 /**
  * MinIO 图床（移植自 common/minio_common.py）。
  *
  * 对象名统一为「业务前缀 + 图片内容 SHA256 前 16 位」，天然幂等：
  * 同一张图永远同一对象名（重复上传只覆盖、不堆积），不同内容必得不同名（不会串图）。
+ *
+ * 配置来源：「系统设置 → MinIO 设置」UI 维护的 apps/api/runtime/minio_config.json
+ * （见 MinioConfigService）。每次取配置都重新读文件并按指纹重建客户端，
+ * 故 UI 保存后立即热生效，无需重启。
  */
-interface MinioCfg {
-  endpoint: string;
-  port?: number;
-  access_key: string;
-  secret_key: string;
-  bucket: string;
-  /** 公网直链基址；URL = public_base + '/' + obj，obj 已含 prefix，故此处需带上 bucket 段（如 https://s3.xxx.com/mybucket）。 */
-  public_base: string;
-  secure?: boolean;
-}
-
 @Injectable()
 export class MinioService {
   private readonly logger = new Logger(MinioService.name);
-  private readonly cfgPath: string;
   private client: MinioClient | null = null;
-  private cfg: MinioCfg | null = null;
+  private clientKey = '';
   private bucketEnsured = false;
 
-  constructor(private readonly config: ConfigService) {
-    const root = path.resolve(
-      this.config.get<string>('PROJECT_ROOT') || path.resolve(process.cwd(), '..'),
-    );
-    this.cfgPath = path.join(root, 'apps', 'api', 'config', 'minio_config.json');
-  }
-
-  private loadCfg(): MinioCfg {
-    if (this.cfg) return this.cfg;
-    if (!fs.existsSync(this.cfgPath)) {
-      throw new Error(
-        '未找到 apps/api/config/minio_config.json，请先配置 MinIO 凭据（endpoint/access_key/secret_key/bucket/public_base）',
-      );
-    }
-    this.cfg = JSON.parse(fs.readFileSync(this.cfgPath, 'utf-8')) as MinioCfg;
-    return this.cfg;
-  }
+  constructor(private readonly cfgSvc: MinioConfigService) {}
 
   private getClient(): { client: MinioClient; cfg: MinioCfg } {
-    const cfg = this.loadCfg();
-    if (!this.client) {
+    const cfg = this.cfgSvc.read();
+    if (!cfg) {
+      throw new Error(
+        'MinIO 尚未配置：请到「系统设置 → MinIO 设置」填写并保存（apps/api/runtime/minio_config.json）',
+      );
+    }
+    const key = JSON.stringify(cfg);
+    if (!this.client || key !== this.clientKey) {
       this.client = new MinioClient({
         endPoint: cfg.endpoint,
         port: cfg.port ?? 9000,
@@ -58,6 +39,9 @@ export class MinioService {
         secretKey: cfg.secret_key,
         useSSL: cfg.secure !== false,
       });
+      this.clientKey = key;
+      // 配置变了，bucket 状态需重新确认
+      this.bucketEnsured = false;
     }
     return { client: this.client, cfg };
   }

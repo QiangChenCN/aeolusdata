@@ -63,6 +63,7 @@ const navItems = computed(() => {
     sysSubs.push(
       { type: 'leaf', kind: 'sys-dingtalk', id: '', name: '钉钉设置', icon: 'ChatDotRound' },
       { type: 'leaf', kind: 'sys-aeolus', id: '', name: '风神设置', icon: 'Key' },
+      { type: 'leaf', kind: 'sys-minio', id: '', name: 'MinIO 设置', icon: 'Picture' },
       { type: 'leaf', kind: 'rbac', id: '', name: '权限管理', icon: 'Tools' },
       { type: 'leaf', kind: 'bots', id: '', name: '调度设置', icon: 'ChatDotRound' },
       { type: 'leaf', kind: 'operationLog', id: '', key: 'operationLog', name: '操作日志', icon: 'Document' },

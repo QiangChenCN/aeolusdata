@@ -112,7 +112,7 @@ aeolusdata/
         → 服务器 git pull + bash deploy/update.sh → systemd 重启服务
 ```
 
-- 凭据类文件（根 `.env`、`cookie.txt`、`minio_config.json`、`db_config.json` 等 `.gitignore` 项）**不进 git**，由人工带外传输，Actions / `update.sh` 无法部署。
+- 凭据类文件（根 `.env`、`cookie.txt`、`db_config.json` 等 `.gitignore` 项）**不进 git**，由人工带外传输，Actions / `update.sh` 无法部署。例外：MinIO 图床配置（`apps/api/runtime/minio_config.json`）已改为「系统设置 → MinIO 设置」页面维护（热生效），**无需带外传输**，重装后页面重填即可。
 
 ---
 

@@ -17,6 +17,13 @@
         </div>
         <el-icon class="card-arw"><ArrowRight /></el-icon>
       </RouterLink>
+      <RouterLink to="/settings/minio" class="card">
+        <div>
+          <div class="card-t">MinIO 设置</div>
+          <div class="card-d">MinIO 图床连接配置（endpoint / bucket / 密钥），保存后热生效，支持连通性验证</div>
+        </div>
+        <el-icon class="card-arw"><ArrowRight /></el-icon>
+      </RouterLink>
       <RouterLink to="/settings/rbac" class="card">
         <div>
           <div class="card-t">权限管理</div>

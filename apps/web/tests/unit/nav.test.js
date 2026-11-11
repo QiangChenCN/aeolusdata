@@ -27,6 +27,7 @@ describe('navTo', () => {
     ['syscfg', '/settings'],
     ['sys-dingtalk', '/settings/dingtalk'],
     ['sys-aeolus', '/settings/aeolus'],
+    ['sys-minio', '/settings/minio'],
   ];
 
   it.each(cases)('kind=%s -> %s', (kind, expected) => {

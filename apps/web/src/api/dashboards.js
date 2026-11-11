@@ -272,3 +272,10 @@ export function logoutAeolus() { return request('/fetch/settings/aeolus/logout',
 export function testAeolusCreds({ account, password } = {}) {
   return request('/fetch/settings/aeolus/test', j({ account, password }));
 }
+
+/* ============ MinIO 图床设置 ============ */
+export function fetchMinioConfig() { return request('/media/minio'); }
+// 保存：secret_key 留空 = 沿用原值；access_key 留空同理
+export function saveMinioConfig(payload = {}) { return request('/media/minio', j(payload)); }
+// 连通性验证：真实连一次 MinIO，确认 bucket 可访问并应用 public-read 策略
+export function testMinioConfig() { return request('/media/minio/test', j({})); }

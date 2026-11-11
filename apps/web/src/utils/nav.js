@@ -30,6 +30,7 @@ export function navTo(it) {
     case 'syscfg': return '/settings';
     case 'sys-dingtalk': return '/settings/dingtalk';
     case 'sys-aeolus': return '/settings/aeolus';
+    case 'sys-minio': return '/settings/minio';
     case 'operationLog': return '/operation-log';
     case 'botcfg': return '/bot/' + it.id;
     default: return '/';
