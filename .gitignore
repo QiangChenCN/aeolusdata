@@ -122,6 +122,10 @@ apps/api/runtime/.service_quality_targets.json
 sniff_delivery_*.json
 _sniff/
 
+# 迁 PG 后遗留的业务数据 / 旧样本（代码与测试零引用；本地历史数据，不进版本控制）
+services/compute/analytics/实时运单明细.json
+services/compute/analytics/*_sample_*.json
+
 # 运行时本地状态（dataperm.py 生成的数据权限状态，每人/每月不同，不提交）
 apps/api/runtime/.data_perms.json
 # 看板实时配置（考核目标，本地状态，不提交）
@@ -158,6 +162,9 @@ apps/api/runtime/jobs/**/out/
 # ===== pnpm / Turborepo =====
 # 后端依赖目录（pnpm hoisted 后在 apps/api 下仅留软链，整目录忽略）
 apps/api/node_modules/
+# @aeolus/shared 的构建产物：CI/部署流程会先跑 `pnpm --filter @aeolus/shared build`
+# 现场产出，不再跟踪（曾因 CI 不经 turbo、依赖不到 ^build 才被迫提交，2026-11-11 改正）
+packages/shared/dist/
 # pnpm 内容寻址存储与 turbo 缓存（运行期生成，不提交）
 .pnpm-store/
 .turbo/

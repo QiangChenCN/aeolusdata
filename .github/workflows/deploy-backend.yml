@@ -65,6 +65,12 @@ jobs:
       - name: Install dependencies (frozen)
         run: pnpm install --frozen-lockfile
 
+      # 先构建 workspace 共享包：下面的 build 都是 `pnpm --filter <pkg> build` 直调 pnpm、
+      # 不经过 turbo，`dependsOn: ["^build"]` 不会生效，shared 必须显式先建，
+      # 否则 api/web 解析 @aeolus/shared 时用的是仓库里（已不再提交）的过期 dist。
+      - name: Build shared package
+        run: pnpm --filter @aeolus/shared build
+
       # ---------- 部署前校验（失败即中止，不进入部署步骤）----------
       # main 推送只跑本 workflow（ci.yml 已改为不监听 main），安全网不能丢：
       # 工具函数 / store / 组件渲染单测，秒级反馈。

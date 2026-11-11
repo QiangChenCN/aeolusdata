@@ -52,6 +52,11 @@ jobs:
       - name: Install dependencies (frozen)
         run: pnpm install --frozen-lockfile
 
+      # 先构建 workspace 共享包（本文件所有 build 均直调 pnpm、不经 turbo，
+      # `dependsOn: ["^build"]` 不生效；dist 已不进 git，必须在此现场产出）
+      - name: Build shared package
+        run: pnpm --filter @aeolus/shared build
+
       # ---------- Backend (NestJS) ----------
       - name: Build backend
         run: pnpm --filter aeolus-workbench-backend build
