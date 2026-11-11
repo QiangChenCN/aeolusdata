@@ -102,6 +102,10 @@ export class CronSchedulerService implements OnModuleInit {
     const st = this.registry.linkState(taskId);
     if (st !== 'ok') {
       await this.store.markSkipped(iid, due, `关联任务${st === 'missing' ? '已不存在' : '已禁用'}，已跳过本次`);
+      // 必须推进：否则重复事项的 remind_at 冻结在本次 due，findRun 永远命中这条
+      // skipped 记录，事项从此静默卡死、再也不会触发（实际踩过）。
+      // 重复事项推进到下次 remind_times；一次性事项无下次则置为 done。
+      await this.settle(iid, false);
       this.emit('skipped', iid, `关联任务${st === 'missing' ? '已不存在' : '已禁用'}，本次未执行`);
       return;
     }

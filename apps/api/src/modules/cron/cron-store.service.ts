@@ -261,7 +261,15 @@ export class CronStoreService implements OnModuleInit {
     let arr: unknown[];
     if (Array.isArray(raw)) arr = raw;
     else if (typeof raw === 'string' && raw.trim()) {
-      try { arr = JSON.parse(raw); } catch { return []; }
+      const s = raw.trim();
+      try { arr = JSON.parse(s); } catch {
+        // 兼容 PostgreSQL 数组字面量 {"14:30:00","21:00:00"}：SQLite→PG 迁移时 pg 驱动
+        // 把 JS 数组转成 PG 数组格式落库，JSON.parse 会失败（实际踩过，导致提醒时点
+        // 列表丢失、重复事项退化为「每天同一时刻」推进）。
+        if (/^\{.*\}$/.test(s)) {
+          arr = [...s.matchAll(/"((?:[^"\\]|\\.)*)"/g)].map((m) => m[1]);
+        } else return [];
+      }
     } else return [];
     if (!Array.isArray(arr)) return [];
     return arr
@@ -696,10 +704,23 @@ export class CronStoreService implements OnModuleInit {
       const now = new Date();
       if (fromDue) {
         const sorted = times.slice().sort();
+        // 候选起始日不早于今天：remind_at 落后当下多天时（断服漏跑、曾卡死等），
+        // 旧逻辑只在 remind_at 当天找时点，全部过期后从「remind_at+1 天」起算，
+        // 会把今天剩余时点整体跳过（实际踩过）。周重复还要求当天在 by 集合内。
+        const today0 = new Date(); today0.setHours(0, 0, 0, 0);
+        const fromDay0 = new Date(fromDue); fromDay0.setHours(0, 0, 0, 0);
+        const startDay = fromDay0 > today0 ? fromDay0 : today0;
+        const weeklyDays = rule.type === 'weekly'
+          ? (rule.by || '').split(',').map((x) => parseInt(x, 10)).filter((x) => x >= 1 && x <= 7)
+          : null;
+        const dayOk = (d: Date): boolean =>
+          !weeklyDays || !weeklyDays.length || weeklyDays.includes(((d.getDay() + 6) % 7) + 1);
         let next: Date | null = null;
-        for (const t of sorted) {
-          const cand = this.mkDayTime(fromDue, t);
-          if (cand > now) { next = cand; break; }
+        if (dayOk(startDay)) {
+          for (const t of sorted) {
+            const cand = this.mkDayTime(startDay, t);
+            if (cand > now) { next = cand; break; }
+          }
         }
         if (!next) {
           const baseDay = new Date(fromDue);
