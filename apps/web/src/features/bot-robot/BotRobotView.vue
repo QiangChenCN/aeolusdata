@@ -2,7 +2,7 @@
   <div class="bc">
     <h2 class="v-title">凭证配置</h2>
 
-    <!-- 凭据分组（机器人 appkey / appsecret） -->
+    <!-- 凭据分组（机器人 AppKey / AppSecret） -->
     <el-card class="bc-card" shadow="never">
       <h3 class="bc-h">
         机器人凭据分组
@@ -16,7 +16,7 @@
             <el-tag size="small" :type="row.type === 'wecom' ? 'warning' : 'success'">{{ typeLabel(row.type) }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="clientId" label="Client ID（应用标识）" min-width="200" />
+        <el-table-column prop="clientId" label="AppKey" min-width="200" />
         <el-table-column label="AppSecret" width="110">
           <template #default="{ row }">
             <el-tag v-if="row.hasSecret" size="small" type="success">已配置</el-tag>
@@ -69,13 +69,13 @@
           </el-select>
           <span class="muted" style="margin-left:8px">机器人所属平台；企微等渠道推送需后端另行支持</span>
         </el-form-item>
-        <el-form-item label="Client ID（应用标识）">
-          <el-input v-model="credForm.clientId" placeholder="应用 Client ID" />
+        <el-form-item label="AppKey">
+          <el-input v-model="credForm.clientId" placeholder="应用 AppKey" />
         </el-form-item>
-        <el-form-item label="Secret（应用密钥）">
+        <el-form-item label="AppSecret">
           <el-input
             v-model="credForm.secret" type="password" show-password
-            :placeholder="credEditing && credForm.hasSecret ? '已配置（留空表示不修改）' : '应用 Client Secret'" />
+            :placeholder="credEditing && credForm.hasSecret ? '已配置（留空表示不修改）' : '应用 AppSecret'" />
         </el-form-item>
         <el-form-item label="AI 卡片打字效果">
           <el-switch v-model="credForm.aiCardTyping" />
