@@ -62,15 +62,19 @@ export PATH="$HOME/.local/bin:$PATH"
 command -v uv >/dev/null 2>&1 || curl -LsSf https://astral.sh/uv/install.sh | sh
 (cd services/compute && uv sync --frozen --no-dev)
 
+# 4.4) 安装 workspace 依赖（pnpm 工作区一次性装齐 api / web / shared，版本以 pnpm-lock.yaml 为准）
+#      必须在下面构建之前：全新机器既没有 node_modules 也没有 tsc，不装则 shared 构建报 tsc not found
+pnpm install --frozen-lockfile
+
 # 4.5) 构建 workspace 共享包 @aeolus/shared（dist 不进 git，全新 clone 没有；
 #      api / web 的构建都依赖它，不先建则第 5/6 步报找不到 @aeolus/shared）
 pnpm --filter @aeolus/shared build
 
 # 5) 前端构建（dist 被 .gitignore 忽略，需每次构建；构建在 ECS 上完成）
-cd apps/web && pnpm install && pnpm --filter aeolus-workbench-web build && cd ..
+pnpm --filter aeolus-workbench-web build
 
 # 6) 后端构建（NestJS：TypeScript → apps/api/dist，systemd 里直接 node dist/src/main）
-cd apps/api && pnpm install --frozen-lockfile && pnpm --filter aeolus-workbench-backend build && cd ..
+pnpm --filter aeolus-workbench-backend build
 
 # 7) 生成环境文件骨架（.env 被 gitignore，全新部署需从模板生成；密钥项稍后补全）
 #    单一配置来源 = 仓库根 .env（/opt/aeolusdata/.env）：systemd 的 EnvironmentFile 注入同一份，
