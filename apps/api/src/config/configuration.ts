@@ -41,10 +41,8 @@ export const envValidationSchema = Joi.object({
     .valid('development', 'production', 'test')
     .default('development'),
   AUTH_TOKEN: Joi.string().required(),
-  // 默认取 python：代理端点（standard / attend-period / overview / assessment / groups …）
-  // 依赖 Python 生态，node 模式下它们恒定返回 NEED_PYTHON，默认值取 node 会误导。
-  COMPUTE_PROVIDER: Joi.string().valid('node', 'python').default('python'),
-  PYTHON_COMPUTE_URL: Joi.string().uri().optional(),
+  // FastAPI 计算服务（8900）基址；缺省即本机 8900
+  PYTHON_COMPUTE_URL: Joi.string().uri().default('http://127.0.0.1:8900'),
   // 项目根（jobs/、common/ 所在）：后端默认在上层目录
   PROJECT_ROOT: Joi.string().optional(),
   // 任务注册表目录（tasks.json / runs / data）
@@ -60,7 +58,6 @@ export interface AppConfig {
   port: number;
   nodeEnv: string;
   authToken: string;
-  computeProvider: 'node' | 'python';
   pythonComputeUrl?: string;
   projectRoot: string;
   workbenchDir: string;
@@ -73,7 +70,6 @@ export function loadAppConfig(): AppConfig {
     port: Number(process.env.PORT) || 8787,
     nodeEnv: process.env.NODE_ENV || 'development',
     authToken: process.env.AUTH_TOKEN || '',
-    computeProvider: (process.env.COMPUTE_PROVIDER as 'node' | 'python') || 'python',
     pythonComputeUrl: process.env.PYTHON_COMPUTE_URL,
     projectRoot,
     workbenchDir: process.env.WORKBENCH_DIR || path.join(projectRoot, 'apps', 'api'),

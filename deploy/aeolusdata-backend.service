@@ -11,7 +11,7 @@ ExecStart=/usr/bin/node dist/src/main
 ExecStop=/bin/kill -TERM $MAINPID
 TimeoutStopSec=15
 Environment=NODE_ENV=production
-# 端口 / AUTH_TOKEN / COMPUTE_PROVIDER / PYTHON_COMPUTE_URL 等见仓库根 .env（/opt/aeolusdata/.env）
+# 端口 / AUTH_TOKEN / PYTHON_COMPUTE_URL 等见仓库根 .env（/opt/aeolusdata/.env）
 # —— 这是唯一配置来源：Nest 显式读它，Python 计算服务回读它兜底；这里 EnvironmentFile 注入同一份。
 EnvironmentFile=/opt/aeolusdata/.env
 Restart=always

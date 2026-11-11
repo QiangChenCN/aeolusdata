@@ -115,7 +115,10 @@ backend/
 ## 6. 可插拔计算边界（源自 ADR-2026-09-20，强制）
 
 - 所有计算逻辑**只**存在于 `modules/compute/` 之下，经 `ComputePort` 暴露。
-- 当前默认实现 `NodeComputeAdapter`；当某计算在 Python 生态明显占优时，新增 `PythonComputeAdapter`（HTTP 对接 FastAPI 或 `child_process` 调 Python），由 `COMPUTE_PROVIDER` 环境变量在 DI 层切换。
+- 唯一实现 `PythonComputeAdapter`（HTTP 对接 FastAPI）：重计算一律转发 8900 计算服务；
+  Nest 侧只做取数 / 轻计算 / 编排 / 权限闸门。历史上有 `NodeComputeAdapter` +
+  `COMPUTE_PROVIDER` 环境变量做 DI 切换，因 node 模式对 proxy 端点只会报 NEED_PYTHON、
+  run() 通道零调用点，已于 2026-11-11 移除（线上还曾因 .env 残留 COMPUTE_PROVIDER=node 翻车）。
 - `TasksModule` / 其他模块**只依赖 `ComputePort` 接口**，不感知具体实现；切换实现时调用方零改动。
 - 触发条件与拆分方式见 ADR。
 

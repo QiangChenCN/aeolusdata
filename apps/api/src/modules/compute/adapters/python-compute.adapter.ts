@@ -8,8 +8,8 @@ import {
 } from '../compute.port';
 
 /**
- * 未来实现：对接独立 FastAPI 计算服务（来自 ADR-2026-09-20 的"Python 接管"路线）。
- * 当 COMPUTE_PROVIDER=python 时由 ComputeModule 在 DI 层注入本类，调用方无感切换。
+ * 计算端口的唯一实现：HTTP 转发独立 FastAPI 计算服务（ADR-2026-09-20 的"Python 接管"路线）。
+ * 重计算一律下沉 8900；Nest 侧只做取数/轻计算/编排/权限闸门。
  */
 @Injectable()
 export class PythonComputeAdapter implements ComputePort {

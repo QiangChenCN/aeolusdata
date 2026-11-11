@@ -35,5 +35,5 @@ export interface ComputePort {
   proxy(req: ProxyRequest): Promise<ComputeResult>;
 }
 
-/** DI Token：运行时按 COMPUTE_PROVIDER 切换 Node / Python 实现。 */
+/** DI Token：计算端口实现（唯一实现 = PythonComputeAdapter，转发 8900 计算服务）。 */
 export const COMPUTE_PORT = 'COMPUTE_PORT';
