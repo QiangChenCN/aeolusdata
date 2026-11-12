@@ -1,6 +1,6 @@
 <template>
   <div class="param-form">
-    <el-form label-position="top" v-if="params.length">
+    <el-form :label-position="labelPosition" :label-width="labelWidth" v-if="params.length">
       <el-form-item v-for="p in params" :key="p.flag">
         <template #label>
           <span class="pf-label">
@@ -49,6 +49,9 @@ const props = defineProps({
   task: { type: Object, required: true },
   form: { type: Object, required: true },
   params: { type: Array, default: () => [] },
+  /** label 布局：'top'（默认，label 在输入框上方）或 'left'（label 与输入框同行）。 */
+  labelPosition: { type: String, default: 'top' },
+  labelWidth: { type: String, default: '' },
 });
 
 const tasks = useTasksStore();

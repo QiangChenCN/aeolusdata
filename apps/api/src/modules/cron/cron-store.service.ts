@@ -464,6 +464,10 @@ export class CronStoreService implements OnModuleInit {
       repeatEnd: row['repeat_end'] || '',
       repeatLabel: this.describeRule(this.ruleOf(row)),
       taskId: row['task_id'] || '',
+      // 任务参数覆盖（JSON 文本列；解析失败时回退空对象，避免坏数据炸掉整页）
+      taskArgs: (() => {
+        try { return JSON.parse(String(row['task_args'] || '{}') || '{}'); } catch { return {}; }
+      })(),
       autoRun: !!row['auto_run'],
       queueRun: !!row['queue_run'],
       lastRunAt: row['last_run_at'] || '',

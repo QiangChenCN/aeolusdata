@@ -221,10 +221,11 @@ export class ReportRenderService {
       y += cardH + cardGap;
     }
 
-    // 三站合计卡片（品牌色强调）
+    // 合计卡片（品牌色强调）：标题按所选站点数量动态生成（N 站合计）
+    const totalLabel = teamItems.length ? `${teamItems.length} 站合计` : '合计';
     const tRate = fmtRate(tot[1], tot[0]);
     roundRect(ctx, padX, y, imgW - padX * 2, cardH, 10, { fill: C.BRAND_TINT, stroke: C.BRAND, lineWidth: 1 });
-    drawLeft(ctx, padX + 14, y + (cardH - 18) / 2, '三站合计', siteF, C.BRAND);
+    drawLeft(ctx, padX + 14, y + (cardH - 18) / 2, totalLabel, siteF, C.BRAND);
     const tParts: [string, string][] = [
       ['排班 ', C.TEXT_SECONDARY],
       [String(tot[0]), C.TEXT_PRIMARY],
@@ -239,7 +240,7 @@ export class ReportRenderService {
       ['   背单 ', C.TEXT_SECONDARY],
       [String(tot[4] + tot[5]), C.TEXT_PRIMARY],
     ];
-    let tx = padX + 14 + textW(ctx, '三站合计', siteF) + 18;
+    let tx = padX + 14 + textW(ctx, totalLabel, siteF) + 18;
     for (const [txt, col] of tParts) {
       drawLeft(ctx, tx, y + (cardH - 16) / 2, txt, statF, col);
       tx += textW(ctx, txt, statF);

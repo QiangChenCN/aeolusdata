@@ -50,13 +50,18 @@
     <div v-else class="auto-state auto-empty">还没有自动任务，点击右上角「新建任务」开始。</div>
 
     <!-- 新建 / 编辑任务 -->
-    <el-dialog v-model="dlg" :title="form.id ? '编辑自动任务' : '新建自动任务'" width="520px">
+    <el-dialog v-model="dlg" :title="form.id ? '编辑自动任务' : '新建自动任务'" width="640px">
       <el-form label-width="92px">
-        <el-form-item label="绑定手动任务" required>
+        <el-form-item label="绑定任务" required>
           <el-select v-model="form.taskId" clearable filterable placeholder="选择已创建的手动任务（必选，任务名即取自它）" style="width:100%">
             <el-option v-for="t in tasks.tasks" :key="t.id" :label="t.name" :value="t.id" />
           </el-select>
-          <div class="form-hint">任务名称自动取所选手动任务的名称；绑定后由调度器到点自动执行。</div>
+        </el-form-item>
+        <el-form-item v-if="argParams.length" label="任务参数">
+          <div class="arg-wrap">
+            <ParamForm :task="argTask" :form="taskArgForm" :params="argParams"
+              label-position="left" label-width="110px" />
+          </div>
         </el-form-item>
         <el-form-item label="重复">
           <div class="repeat">
@@ -77,11 +82,10 @@
               </span>
             </template>
           </div>
-          <div class="form-hint">关闭则为「一次性任务」，需填写开始日期；开启后按所选周期重复执行。</div>
         </el-form-item>
         <el-form-item label="开始日期">
           <el-date-picker v-model="form.startDate" type="date" value-format="YYYY-MM-DD"
-            placeholder="首次执行的日期（一次性任务必填）" style="width:100%" />
+            placeholder="请选择开始日期" style="width:100%" />
         </el-form-item>
         <el-form-item label="执行时间">
           <div class="times">
@@ -91,14 +95,7 @@
               <el-button size="small" text type="danger" :disabled="form.times.length <= 1"
                 @click="form.times.splice(i, 1)"><el-icon><Delete /></el-icon></el-button>
             </div>
-            <el-button size="small" @click="form.times.push('09:00:00')"><el-icon><Plus /></el-icon> 添加时间</el-button>
-          </div>
-          <div class="form-hint">
-            {{ !form.repeatEnabled
-              ? '一次性任务将在开始日期的执行时间运行一次。'
-              : form.repeatType === 'custom'
-                ? '「每 N 小时」模式以首个时间为起点，多时间设置不生效。'
-                : '可设置多个执行时间（如 09:00、13:00、20:00）；每日 / 每周 / 每月在每个时间点各执行一次。' }}
+            <el-button @click="form.times.push('09:00:00')"><el-icon><Plus /></el-icon> 添加时间</el-button>
           </div>
         </el-form-item>
 
@@ -123,19 +120,13 @@
         </el-form-item>
         <el-form-item label="自动运行">
           <el-switch v-model="form.autoRun" />
-          <span class="form-hint">开启后调度器到点自动执行（需已绑定手动任务）。</span>
         </el-form-item>
         <el-form-item label="排队执行">
           <el-switch v-model="form.queueRun" />
-          <span class="form-hint">开启后，若上一次执行仍未结束，本次到点仍会执行（进入串行队列排队）。</span>
         </el-form-item>
         <el-form-item label="超时时长">
           <el-input-number v-model="form.timeout" :min="0" :max="600" :step="5" />
           <span class="repeat-unit">分钟</span>
-          <div class="form-hint">超过该时长自动停止任务；0 = 使用任务默认超时（10 分钟）。</div>
-        </el-form-item>
-        <el-form-item label="备注">
-          <el-input v-model="form.note" type="textarea" :rows="2" placeholder="可选" />
         </el-form-item>
       </el-form>
       <template #footer>
@@ -147,10 +138,11 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import { Plus, Edit, Delete, Loading, StarFilled } from '@element-plus/icons-vue';
 import { useAppStore } from '../../stores/app.js';
 import { useTasksStore } from '../../stores/tasks.js';
+import ParamForm from '../../components/tasks/ParamForm.vue';
 import { fetchCron, postCronItem, setCronAutoPaused } from '../../api/dashboards.js';
 
 const app = useAppStore();
@@ -177,6 +169,44 @@ function emptyForm() {
     repeatInterval: 1, repeatWeekdays: [1, 2, 3, 4, 5],
     repeatMonthDay: 1, repeatMonthLast: false, repeatEnd: '',
   };
+}
+
+/* ---------------- 任务参数（task_args） ---------------- */
+// 所绑手动任务的 params（tasks.json 声明），剔除 --begin/--end 节点区间（与任务中心配置一致）
+const argTask = computed(() => tasks.taskById(form.value.taskId));
+const argParams = computed(() =>
+  ((argTask.value && argTask.value.params) || [])
+    .filter((p) => p.flag !== '--begin' && p.flag !== '--end'));
+const taskArgForm = ref({});
+// 编辑时暂存已保存的参数：仅当所选任务与保存时是同一个任务才回显
+let savedArgsRef = null;
+
+function buildArgs(saved) {
+  const f = {};
+  argParams.value.forEach((p) => {
+    const v = saved && saved[p.flag] !== undefined ? saved[p.flag] : p.default;
+    if (p.type === 'switch') f[p.flag] = !!v;
+    else if (p.type === 'multi-team') f[p.flag] = v ? String(v).split(',').filter(Boolean) : [];
+    else f[p.flag] = v == null ? '' : String(v);
+  });
+  taskArgForm.value = f;
+}
+
+watch(() => form.value.taskId, (tid) => {
+  const saved = savedArgsRef;
+  buildArgs(saved && saved.taskId === tid ? saved.args : null);
+});
+
+function collectArgs() {
+  const out = {};
+  argParams.value.forEach((p) => {
+    let v = taskArgForm.value[p.flag];
+    if (p.type === 'multi-team') v = (v || []).join(',');
+    if (p.type === 'switch') v = !!v;
+    else v = v == null ? '' : String(v);
+    out[p.flag] = v;
+  });
+  return out;
 }
 
 /**
@@ -252,6 +282,7 @@ async function load() {
   loading.value = true;
   try {
     if (!tasks.loaded) await tasks.loadState();
+    if (!tasks.teams || !(tasks.teams.teams || []).length) tasks.loadTeams(); // 站点多选参数需要站点列表
     const res = await fetchCron();
     items.value = (res && res.cron && res.cron.items) || [];
     autoRunEnabled.value = !(res && res.cron && res.cron.scheduler && res.cron.scheduler.auto_paused);
@@ -263,6 +294,8 @@ async function load() {
 }
 
 function openCreate(it) {
+  // 先暂存已保存的任务参数（仅在同任务时回显），再赋 form 触发 taskId watcher 重建参数表单
+  savedArgsRef = it && it.taskId ? { taskId: it.taskId, args: it.taskArgs || {} } : null;
   form.value = it
     ? {
       id: it.id, taskId: it.taskId || null, note: it.note || '',
@@ -305,6 +338,7 @@ async function save() {
       queue_run: form.value.queueRun ? 1 : 0,
       timeout: form.value.timeout * 60,
       task_id: form.value.taskId,
+      task_args: collectArgs(),
     };
     if (form.value.id) payload.id = form.value.id;
     await postCronItem(op, payload);
@@ -359,4 +393,14 @@ onMounted(load);
 .auto-empty { border: 1px dashed var(--el-border-color); border-radius: var(--el-border-radius-base); }
 .times { display: flex; flex-direction: column; gap: var(--sp-6); }
 .time-row { display: flex; align-items: center; gap: var(--sp-6); }
+.arg-wrap { width: 100%; }
+.arg-wrap :deep(.el-form-item) { margin-bottom: 22px; }
+/* 统一参数 label 的纵向对齐：与输入框垂直居中，不再随控件高度（textarea/多行）上下漂移 */
+.arg-wrap :deep(.el-form-item__label) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start; /* label 左对齐（默认右对齐贴输入框） */
+  min-height: 32px;
+  line-height: 1.4;
+}
 </style>
