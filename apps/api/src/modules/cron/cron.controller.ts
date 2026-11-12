@@ -102,6 +102,7 @@ export class CronController {
           (data['remind_times'] as string[]) || [],
           Number(data['timeout']) || 0,
           data['queue_run'] as number,
+          (data['start_date'] as string) || '',
         );
         this.broadcast();
         return { ok: true, item: await this.itemOut(r) };
@@ -110,7 +111,7 @@ export class CronController {
         if (!data['id']) return { ok: false, error: '缺少 id' };
         const kw: Record<string, unknown> = {};
         for (const k of ['title', 'note', 'remind_at', 'list_id', 'task_id', 'task_args',
-          'auto_run', 'flag', 'status', 'remind_times', 'timeout', 'queue_run']) {
+          'auto_run', 'flag', 'status', 'remind_times', 'timeout', 'queue_run', 'start_date']) {
           if (k in data) kw[k] = data[k];
         }
         // task_args 以 JSON 文本落库（前端传对象，这里统一序列化，pg 驱动才不会按其默认规则序列化）

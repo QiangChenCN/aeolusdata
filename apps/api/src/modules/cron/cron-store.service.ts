@@ -84,6 +84,8 @@ CREATE INDEX IF NOT EXISTS idx_item_remind ON cron_item(remind_at);
 CREATE INDEX IF NOT EXISTS idx_run_item ON cron_run(item_id, due_at DESC);
 CREATE INDEX IF NOT EXISTS idx_run_open ON cron_run(status)
   WHERE status IN ('running','retrying');
+-- 开始日期（用户在编辑界面填的原始值，可与 remind_at 独立）：旧库补列
+ALTER TABLE cron_item ADD COLUMN IF NOT EXISTS start_date TEXT NOT NULL DEFAULT '';
 `;
 
 /** 工作内容 PostgreSQL 持久层（移植自 workbench/todo_store.py，去掉 SQLite 迁移脚手架）。 */
@@ -455,6 +457,8 @@ export class CronStoreService implements OnModuleInit {
       doneAt: row['done_at'] || '',
       doneCount: parseInt(String(row['done_count'] || '0'), 10),
       flag: !!row['flag'],
+      // 开始日期：用户原始输入（可为空）；remind_at 是调度锚点（会被顺延），两者独立存
+      startDate: String(row['start_date'] || ''),
       remindAt: row['remind_at'] || '',
       remindTimes: this.parseTimes(row['remind_times']),
       timeout: parseInt(String(row['timeout'] || '0'), 10),
@@ -482,19 +486,28 @@ export class CronStoreService implements OnModuleInit {
   async createItem(
     title: string, listId: string, note = '', remindAt = '', flag = 0,
     repeat: unknown = {}, taskId = '', autoRun = 0, taskArgs: unknown = {},
-    remindTimes: string[] = [], timeout = 0, queueRun = 0,
+    remindTimes: string[] = [], timeout = 0, queueRun = 0, startDate = '',
   ): Promise<Row | null> {
     const now = this.nowStr();
     const { type, interval, by, end } = this.normalizeRule(repeat);
+    // 重复 + 多时点事项：remind_at 重算为下一个未来时点（前端固定传「开始日期+第一个时点」，
+    // 该时点可能已过期——落库后会白记 missed 或立即补跑，与预期「到点才跑」不符）。
+    let remindAtEff = remindAt || '';
+    const rule0 = { type, interval, by, end };
+    const times0 = this.parseTimes(remindTimes || []);
+    if (rule0.type !== 'none' && rule0.type !== 'custom' && times0.length) {
+      const nxt = this.nextSlotFor(rule0, times0, this.parseDt(remindAtEff) || new Date());
+      if (nxt) remindAtEff = this.fmtLocal(nxt) || remindAtEff;
+    }
     const iid = this.uid('i_');
     await this.run(
       'INSERT INTO cron_item(id,list_id,title,note,status,flag,remind_at,' +
         ' repeat_type,repeat_interval,repeat_by,repeat_end,' +
-        ' task_id,task_args,auto_run,remind_times,timeout,queue_run,created_at,updated_at)' +
-        ' VALUES($1,$2,$3,$4,\'open\',$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)',
-      iid, listId, title || '未命名', note || '', flag ? 1 : 0, remindAt || '',
+        ' task_id,task_args,auto_run,remind_times,timeout,queue_run,start_date,created_at,updated_at)' +
+        ' VALUES($1,$2,$3,$4,\'open\',$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)',
+      iid, listId, title || '未命名', note || '', flag ? 1 : 0, remindAtEff,
       type, interval, by, end, taskId || '',
-      JSON.stringify(taskArgs || {}), autoRun ? 1 : 0, JSON.stringify(remindTimes || []), Number(timeout) || 0, queueRun ? 1 : 0, now, now,
+      JSON.stringify(taskArgs || {}), autoRun ? 1 : 0, JSON.stringify(remindTimes || []), Number(timeout) || 0, queueRun ? 1 : 0, startDate || '', now, now,
     );
     return this.getItem(iid);
   }
@@ -504,7 +517,7 @@ export class CronStoreService implements OnModuleInit {
     if (!row) return null;
     const fields: Record<string, unknown> = {};
     for (const k of ['title', 'note', 'remind_at', 'list_id', 'done_at', 'last_run_at',
-      'last_run_status', 'task_id', 'task_args', 'remind_times', 'timeout', 'queue_run']) {
+      'last_run_status', 'task_id', 'task_args', 'remind_times', 'timeout', 'queue_run', 'start_date']) {
       if (k in kw && kw[k] != null) fields[k] = kw[k];
     }
     if ('flag' in kw && kw['flag'] != null) fields['flag'] = kw['flag'] ? 1 : 0;
@@ -519,6 +532,18 @@ export class CronStoreService implements OnModuleInit {
       fields['repeat_interval'] = interval;
       fields['repeat_by'] = by;
       fields['repeat_end'] = end;
+    }
+    // 编辑了重复计划（repeat 或 remind_times）：remind_at 重算为下一个未来时点。
+    // 前端保存固定传「开始日期 + 第一个时点」，若该时点已过、且它此前的运行记录还在，
+    // 调度器会命中「该 due 已处理」分支静默返回——事项从此卡死不再触发（实际踩过）。
+    if ('repeat_type' in fields || 'remind_times' in fields) {
+      const merged = { ...row, ...fields } as Record<string, unknown>;
+      const rule = this.ruleOf(merged);
+      const times = this.parseTimes(merged['remind_times']);
+      if (rule.type !== 'none' && rule.type !== 'custom' && times.length) {
+        const nxt = this.nextSlotFor(rule, times, this.parseDt(String(merged['remind_at'] || '')));
+        if (nxt) fields['remind_at'] = this.fmtLocal(nxt);
+      }
     }
     if (!Object.keys(fields).length) return row;
     fields['updated_at'] = this.nowStr();
@@ -704,48 +729,52 @@ export class CronStoreService implements OnModuleInit {
     const rule = this.ruleOf(row);
     const times = this.parseTimes(row['remind_times']);
     if (rule.type !== 'custom' && times.length) {
-      const fromDue = this.parseDt(String(row['remind_at'] || ''));
-      const now = new Date();
-      if (fromDue) {
-        const sorted = times.slice().sort();
-        // 候选起始日不早于今天：remind_at 落后当下多天时（断服漏跑、曾卡死等），
-        // 旧逻辑只在 remind_at 当天找时点，全部过期后从「remind_at+1 天」起算，
-        // 会把今天剩余时点整体跳过（实际踩过）。周重复还要求当天在 by 集合内。
-        const today0 = new Date(); today0.setHours(0, 0, 0, 0);
-        const fromDay0 = new Date(fromDue); fromDay0.setHours(0, 0, 0, 0);
-        const startDay = fromDay0 > today0 ? fromDay0 : today0;
-        const weeklyDays = rule.type === 'weekly'
-          ? (rule.by || '').split(',').map((x) => parseInt(x, 10)).filter((x) => x >= 1 && x <= 7)
-          : null;
-        const dayOk = (d: Date): boolean =>
-          !weeklyDays || !weeklyDays.length || weeklyDays.includes(((d.getDay() + 6) % 7) + 1);
-        let next: Date | null = null;
-        if (dayOk(startDay)) {
-          for (const t of sorted) {
-            const cand = this.mkDayTime(startDay, t);
-            if (cand > now) { next = cand; break; }
-          }
+      const next = this.nextSlotFor(rule, times, this.parseDt(String(row['remind_at'] || '')));
+      if (!next) {
+        if (rule.type === 'none') {
+          return this.updateItem(iid, { status: STATUS_DONE, done_at: this.nowStr(), remind_at: null });
         }
-        if (!next) {
-          const baseDay = new Date(fromDue);
-          baseDay.setDate(baseDay.getDate() + 1);
-          baseDay.setHours(0, 0, 0, 0);
-          next = this.computeNextDue(rule, this.fmtLocal(this.mkDayTime(baseDay, sorted[0])) || this.nowStr(), now);
-        }
-        if (!next) {
-          if (rule.type === 'none') {
-            return this.updateItem(iid, { status: STATUS_DONE, done_at: this.nowStr(), remind_at: null });
-          }
-          return row;
-        }
-        return this.updateItem(iid, { remind_at: this.fmtLocal(next) });
+        return row;
       }
+      return this.updateItem(iid, { remind_at: this.fmtLocal(next) });
     }
     if (rule.type !== 'none') {
       const nxt = this.computeNextDue(rule, String(row['remind_at'] || this.nowStr()), new Date());
       return this.updateItem(iid, { remind_at: nxt ? this.fmtLocal(nxt) : row['remind_at'] });
     }
     return row;
+  }
+
+  /** 重复 + 多时点事项的下一个触发时刻：从今天（不早于 fromDue 当天）找第一个未来时点，
+   *  今天全部已过期则按重复规则从次日起算。找不到 → null（调用方决定收尾方式）。
+   *  候选起始日不早于今天：remind_at 落后当下多天时（断服漏跑、曾卡死等），
+   *  只在 remind_at 当天找时点会把今天剩余时点整体跳过（实际踩过）。周重复还要求当天在 by 集合内。 */
+  private nextSlotFor(
+    rule: { type: string; interval: number; by: string; end: string },
+    times: string[],
+    fromDue: Date | null,
+  ): Date | null {
+    if (!fromDue) return null;
+    const sorted = times.slice().sort();
+    const now = new Date();
+    const today0 = new Date(); today0.setHours(0, 0, 0, 0);
+    const fromDay0 = new Date(fromDue); fromDay0.setHours(0, 0, 0, 0);
+    const startDay = fromDay0 > today0 ? fromDay0 : today0;
+    const weeklyDays = rule.type === 'weekly'
+      ? (rule.by || '').split(',').map((x) => parseInt(x, 10)).filter((x) => x >= 1 && x <= 7)
+      : null;
+    const dayOk = (d: Date): boolean =>
+      !weeklyDays || !weeklyDays.length || weeklyDays.includes(((d.getDay() + 6) % 7) + 1);
+    if (dayOk(startDay)) {
+      for (const t of sorted) {
+        const cand = this.mkDayTime(startDay, t);
+        if (cand > now) return cand;
+      }
+    }
+    const baseDay = new Date(fromDue);
+    baseDay.setDate(baseDay.getDate() + 1);
+    baseDay.setHours(0, 0, 0, 0);
+    return this.computeNextDue(rule, this.fmtLocal(this.mkDayTime(baseDay, sorted[0])) || this.nowStr(), now);
   }
 
   async settleSuccess(iid: string): Promise<Row | null> {

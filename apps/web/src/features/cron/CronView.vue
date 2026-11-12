@@ -300,7 +300,8 @@ function openCreate(it) {
     ? {
       id: it.id, taskId: it.taskId || null, note: it.note || '',
       autoRun: !!it.autoRun, queueRun: !!it.queueRun, timeout: Math.round((Number(it.timeout) || 0) / 60),
-      startDate: it.remindAt ? it.remindAt.slice(0, 10) : '',
+      // 开始日期：优先读持久化的 startDate（可为空）；旧数据无该列值时回退从 remindAt 反推
+      startDate: it.startDate ? it.startDate : (it.remindAt ? it.remindAt.slice(0, 10) : ''),
       times: (it.remindTimes && it.remindTimes.length)
         ? it.remindTimes.slice().map(padSec)
         : (it.remindAt ? [padSec(it.remindAt.slice(11, 19))] : ['09:00:00']),
@@ -331,6 +332,8 @@ async function save() {
       title: taskName(form.value.taskId),
       note: form.value.note,
       list_id: '',
+      // 开始日期原样持久化（可空）；remind_at 是调度锚点（重复任务后端会重算为下一个未来时点）
+      start_date: form.value.startDate || '',
       remind_at: remindAt,
       remind_times: times,
       repeat: form.value.repeatEnabled ? buildRepeat() : { type: 'none', interval: 1, by: '', end: '' },

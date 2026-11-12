@@ -112,7 +112,20 @@ export class CronSchedulerService implements OnModuleInit {
     // 全局「自动执行」主开关关闭时，静默跳过（不记 skipped，避免每个 tick 刷库）；
     // 恢复后若仍在补跑宽限内会自动补火，超窗则记为 missed（暂停不延长窗口）。
     if (await this.store.isAutoPaused()) return;
-    if (await this.store.findRun(iid, due)) return; // 同一 due 本轮已处理，不重复点火
+    const existing = await this.store.findRun(iid, due);
+    if (existing) {
+      // 同一 due 已有记录：正在跑 / 待重试则不动。已终结且 due 已成过去时，说明事项被
+      // 卡在过期的 remind_at 上（如编辑保存把「开始日期+第一个时点」写回过去，实际踩过），
+      // 推进到下一次，避免从此静默不再触发。
+      const st = String(existing['status']);
+      if (st === RUN_RUNNING || st === RUN_RETRYING) return;
+      const dueDt = this.store.parseDt(due);
+      if (!dueDt || dueDt.getTime() > now.getTime()) return; // manual: 前缀解析为 null，不推进
+      const repeating = String(item['repeat_type'] || 'none') !== 'none'
+        || this.store.parseTimes(item['remind_times']).length > 0;
+      if (repeating) await this.settle(iid, false);
+      return;
+    }
     // 排队执行：开启后不因「上一次还没跑完」而跳过，本次照常入队（TaskRunner 串行队列会排队）
     if (!item['queue_run'] && (await this.store.openRunOf(iid))) return; // 未开排队：上一次还没跑完则跳过
 
