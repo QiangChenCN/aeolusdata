@@ -28,7 +28,7 @@ export interface DeliveryColumn {
 
 /**
  * 分页/导出两套取数现已**统一字段名**：2026-10-27 起 CN2EN 的英文侧已对齐风神
- * queryTracking 的真实字段名（`infra/fetch/storage/delivery-columns.ts` 的 `FIELD_ORDER`），
+ * queryTracking 的真实字段名（与分页接口 `DeliveryQueryService` 返回键一致），
  * 与分页接口返回键完全一致。因此不再需要「分页键 → 导出键」的反向桥接，PAGE_ALIAS 留空。
  * 列取值仍按 `keys` 顺序回落（英文真名优先 + 中文表头兜底），两种取数来源天然兼容。
  */

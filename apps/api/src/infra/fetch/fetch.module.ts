@@ -11,12 +11,8 @@ import { AeolusCredentialsService } from './creds/aeolus-credentials.service';
 import { OrdersFetchService } from './sources/orders-fetch.service';
 import { RefreshAllService } from './runners/refresh-all.service';
 import { FetchController } from './fetch.controller';
-import { RushFetchService } from './sources/rush-fetch.service';
 import { OrangeStormFetchService } from './sources/orange-storm-fetch.service';
 import { RuledocFetchService } from './sources/ruledoc-fetch.service';
-import { DeliveryRawService } from './sources/delivery-raw.service';
-import { DeliveryDbService } from './storage/delivery-db.service';
-import { DeliveryCsvService } from './sources/delivery-csv.service';
 import { BoardFetchService } from './sources/board-fetch.service';
 import { ViolationFetchService } from './sources/violation-fetch.service';
 import { ViolationListFetchService } from './sources/violation-list-fetch.service';
@@ -66,12 +62,8 @@ import { RawCacheService } from './storage/raw-cache.service';
     AeolusCredentialsService,
     OrdersFetchService,
     RefreshAllService,
-    RushFetchService,
     OrangeStormFetchService,
     RuledocFetchService,
-    DeliveryRawService,
-    DeliveryDbService,
-    DeliveryCsvService,
     BoardFetchService,
     ViolationFetchService,
     AttendanceFetchService,
@@ -97,12 +89,8 @@ import { RawCacheService } from './storage/raw-cache.service';
     AeolusCredentialsService,
     OrdersFetchService,
     RefreshAllService,
-    RushFetchService,
     OrangeStormFetchService,
     RuledocFetchService,
-    DeliveryRawService,
-    DeliveryDbService,
-    DeliveryCsvService,
     BoardFetchService,
     ViolationFetchService,
     AttendanceFetchService,

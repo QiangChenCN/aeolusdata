@@ -9,15 +9,12 @@ import { TaskRunnerService } from './task-runner.service';
 import { TaskRegistryService } from './task-registry.service';
 import { TaskHandlersService } from './task-handlers.service';
 import { TasksController } from './tasks.controller';
-import { JidanFetchPipeline } from './pipelines/jidan-fetch.pipeline';
 import { OrangeStormPipeline } from './pipelines/orange-storm.pipeline';
 import { RuleDocPipeline } from './pipelines/rule-doc.pipeline';
-import { DeliveryPipeline } from './pipelines/delivery-pipeline.pipeline';
 import { TaskBoardPipeline } from './pipelines/task-board.pipeline';
 import { AppealReminderPipeline } from './pipelines/appeal-reminder.pipeline';
 import { AttendancePipeline } from './pipelines/attendance.pipeline';
 import { TaskEquipmentPipeline } from './pipelines/task-equipment.pipeline';
-import { UnsatRunPipeline } from './pipelines/unsat-run.pipeline';
 
 @Module({
   imports: [
@@ -33,15 +30,12 @@ import { UnsatRunPipeline } from './pipelines/unsat-run.pipeline';
     TaskRunnerService,
     TaskRegistryService,
     TaskHandlersService,
-    JidanFetchPipeline,
     OrangeStormPipeline,
     RuleDocPipeline,
-    DeliveryPipeline,
     TaskBoardPipeline,
     AppealReminderPipeline,
     AttendancePipeline,
     TaskEquipmentPipeline,
-    UnsatRunPipeline,
   ],
   exports: [TaskRunnerService, TaskRegistryService, TaskHandlersService],
 })
