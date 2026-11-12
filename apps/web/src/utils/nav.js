@@ -19,6 +19,7 @@ export function navTo(it) {
     case 'assessService': return '/assess/service';
     case 'assessStandard': return '/assess/standard';
     case 'assessPeriod': return '/assess/period';
+    case 'assessWeather': return '/assess/weather';
     case 'assess': return '/assess';
     case 'rbac-users': return '/settings/rbac/users';
     case 'rbac-roles': return '/settings/rbac/roles';
@@ -58,7 +59,7 @@ export function navIsActive(it) {
   if (it.kind === 'assess') {
     const r = useRoute();
     const k = r.meta && r.meta.kind;
-    return k === 'assess' || k === 'assessService' || k === 'assessStandard' || k === 'assessPeriod';
+    return k === 'assess' || k === 'assessService' || k === 'assessStandard' || k === 'assessPeriod' || k === 'assessWeather';
   }
   // 机器人配置（侧栏叶子项，位于系统设置下）：其下任一 botcfg 子页命中即高亮
   if (it.kind === 'bots') {

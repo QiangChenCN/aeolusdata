@@ -243,54 +243,84 @@ def _weather_grade(o):
     return 0
 
 
-def weather_level(orders):
-    """考核单位当天天气等级（分层口径，业务定义 2026-10-14）：
+def _weather_cmp(v, cmp_, threshold):
+    """占比 v（小数）与阈值 comparator 比较：cmp_ ∈ lte/lt/gte/gt。"""
+    if cmp_ == "lte":
+        return v <= threshold
+    if cmp_ == "lt":
+        return v < threshold
+    if cmp_ == "gte":
+        return v >= threshold
+    if cmp_ == "gt":
+        return v > threshold
+    return False
 
-      正常天   ：当天 1/2/3/4 级恶劣天气接单量占比 ≤ 10%
-      轻微恶天 ：1234 级占比 > 10% 且 2/3/4 级占比 ≤ 10%
-      一般恶天 ：234 级占比 > 10% 且 3/4 级占比 < 35%
-      严重恶天 ：34 级占比 ≥ 35%
 
-    占比 = 对应档位运单数 / 全部运单（与「取到的全部运单」口径同源）。
-    全部为正常（无恶劣天气）即 正常天；分母为 0 时也返回 正常天。
+def weather_level(orders, date=None):
+    """考核单位当天天气分层（按「考核设置 → 天气分层设置」的判定链判定）：
+
+    判定链按严重度升序（service_quality.weather_tiers(month)），每层为
+    {name, logic, conditions:[{tags, names, grades, cmp, value}]}：tags 为勾选的天气标签
+    （「天气标签设置」里的 1级/2级…），names 为其对应的天气等级，占比 = 命中运单数 / 全部运单；
+    logic 为 and（满足全部条件，默认）/ or（满足任一条件）；
+    判定按列表顺序逐层进行，首个命中即止；全部未命中归入最后一层（兜底）。
+    该月**未配置**时返回 None（看板天气等级显示为空，评分按不区分天气处理），不回落业务默认。
+    date 用于确定取哪个月份的配置（缺省当前北京时间月）。
+    占比分母为当天全部运单（与「取到的全部运单」口径同源）；分母为 0 时返回首层。
     """
-    total = 0
-    c1234 = c234 = c34 = 0
+    tiers = SQ.weather_tiers(SQ.month_of(date))
+    if not tiers:
+        return None
+    rows = []
     for o in (orders or []):
-        total += 1
-        g = _weather_grade(o)
-        if g >= 1:
-            c1234 += 1
-        if g >= 2:
-            c234 += 1
-        if g >= 3:
-            c34 += 1
+        raw = OR.order_val(o, WEATHER_LEVEL_KEYS)
+        rows.append((_weather_grade(o), str(raw).strip() if raw is not None else ""))
+    total = len(rows)
     if total == 0:
-        return "正常天"
-    r1234 = c1234 / total
-    r234 = c234 / total
-    r34 = c34 / total
-    if r1234 <= 0.10:
-        return "正常天"
-    if r234 <= 0.10:
-        return "轻微恶天"
-    if r34 < 0.35:
-        return "一般恶天"
-    return "严重恶天"
+        return tiers[0]["name"]
+
+    def _ratio(cond):
+        """占比 = 命中该条件的运单数 / 全部运单。
+
+        命中口径：运单 weatherGradeName 命中勾选的天气标签 / 标签对应的天气等级，
+        或（兼容旧口径）命中勾选的等级序号。
+        """
+        names = set(cond.get("names") or []) | set(cond.get("tags") or [])
+        sevs = set(cond.get("grades") or [])
+        for nm in names:
+            s = _weather_grade({"weatherGradeName": nm})
+            if s:
+                sevs.add(s)
+        hit = 0
+        for g, raw in rows:
+            if (raw and raw in names) or (g in sevs):
+                hit += 1
+        return hit / total
+
+    for t in tiers:
+        conds = t.get("conditions") or []
+        if not conds:
+            continue
+        hits = [_weather_cmp(_ratio(c), c["cmp"], c["value"] / 100.0) for c in conds]
+        ok = any(hits) if t.get("logic") == "or" else all(hits)
+        if ok:
+            return t["name"]
+    return tiers[-1]["name"]
 
 
-# 看板天气档位（中文标签）→ 服务质量配置的 weather 键（normal/light/moderate/severe）。
-_WEATHER_KEY_MAP = {
-    "正常天": "normal",
-    "轻微恶天": "light",
-    "一般恶天": "moderate",
-    "严重恶天": "severe",
-}
+# 服务质量配置的 weather 键（normal/light/moderate/severe），按天气等级严重度升序映射：
+# 等级列表第 i 级 → WEATHER_KEYS[min(i, 3)]；等级名未知/缺失回落 normal。
+def weather_key(level_label, month=None):
+    """把 weather_level() 的中文档位映射成配置 weather 键；未知/缺失回落 normal（不区分天气）。
 
-
-def weather_key(level_label):
-    """把 weather_level() 的中文档位映射成配置 weather 键；未知/缺失回落 normal。"""
-    return _WEATHER_KEY_MAP.get(level_label, "normal")
+    等级列表来自「考核设置 → 天气设置」该月配置；等级数量不足/超出 4 个时按序号钳制映射；
+    该月未配置（tiers 为空）或 label 为 None 时回落 normal。
+    """
+    tiers = SQ.weather_tiers(month)
+    for i, t in enumerate(tiers):
+        if t["name"] == str(level_label):
+            return SQ.WEATHER_KEYS[min(i, len(SQ.WEATHER_KEYS) - 1)]
+    return "normal"
 
 
 def _tiers_or_empty(cell):
@@ -313,7 +343,8 @@ def _compute_scores(result, orders, date):
     month = SQ.month_of(date)
     settings = SQ.quality_settings(month)
     date_type = SQ.resolve_date_type(date, settings.get("date_overrides"))
-    wx = weather_key(weather_level(orders))
+    wx_label = weather_level(orders, date)
+    wx = weather_key(wx_label, date)
     raw = {
         "ontime_rate": result.get("t8_ontime_rate"),
         "delivery_rate": result.get("fulfillment_rate"),
@@ -465,6 +496,7 @@ def build_one(team_id, date=None):
             "pushed_order_volume": None,
             "delivery_completed": None,
             "weather_level": None,
+            "weather_key": None,
             "adverse_ratio": None,
             "total_score": None,
             "t8_ontime_score": None,
@@ -493,6 +525,7 @@ def build_one(team_id, date=None):
     t8_timeout = count_t8_timeout(orders, date, all_dates=True)
     gaobi_order = count_gaobi_orders(orders, date, all_dates=True)
     comp = COMP.analyze_daily(orders, date)
+    _wx_label = weather_level(orders, date)
     result = {
         "team_id": team_id,
         "team_name": TEAM_NAMES.get(team_id, team_id),
@@ -501,7 +534,9 @@ def build_one(team_id, date=None):
         "data_note": None,
         "pushed_order_volume": pushed,
         "delivery_completed": completed,
-        "weather_level": weather_level(orders),
+        "weather_level": _wx_label,
+        # 等级 → 服务质量配置 weather 键（按等级序号映射），供前端直接取分层目标，免再维护标签映射
+        "weather_key": weather_key(_wx_label, date),
         "adverse_ratio": adverse_ratio(orders),
         "total_score": None,
         "t8_ontime_score": None,

@@ -102,6 +102,15 @@ export function fetchServiceQualityTargets(month) {
 export function saveServiceQualityTargets(body = {}) {
   return request('/service-quality/targets', j(body));
 }
+/* 天气设置（考核设置 → 天气设置）：天气标签判定等级列表 {name,metric,cmp,value}[] +
+   独立的天气等级标签库（gradeTags: string[]），按月份独立配置 */
+export function fetchWeatherLayering(month) {
+  const q = month ? '?month=' + encodeURIComponent(month) : '';
+  return request('/service-quality/weather' + q);
+}
+export function saveWeatherLayering(month, tiers, gradeTags = [], tags = []) {
+  return request('/service-quality/weather', j({ month, tiers, grade_tags: gradeTags, tags }));
+}
 
 /* ============ 时段设置（考核设置 → 时段设置，按月份整表覆盖） ============ */
 /* GET 返回 {ok, month, configured, editable, updated_at, updated_by, periods}；未保存月份 periods 为空 */

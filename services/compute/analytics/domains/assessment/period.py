@@ -122,8 +122,11 @@ def _cell_scores(pooled_orders, pooled_violations, team_id, date_type, settings,
     unsat = RV.unsat_rate(complaint, bad_review, claim, pushed)
     compound_overtime = comp.get("avg_sec")
 
-    weather_label = RTB.weather_level(pooled_orders) if pooled_orders else "正常天"
-    wx = RTB.weather_key(weather_label)
+    weather_label = (
+        RTB.weather_level(pooled_orders, settings.get("month"))
+        if pooled_orders else None
+    )
+    wx = RTB.weather_key(weather_label, settings.get("month"))
 
     raw = {
         "ontime_rate": ontime,
@@ -240,7 +243,7 @@ def build_period(team_id: str, start: str, end: str) -> dict:
             continue
 
         date_type = SQ.resolve_date_type(d, settings.get("date_overrides"))
-        wx_label = RTB.weather_level(delivery_rows) if delivery_rows else "正常天"
+        wx_label = RTB.weather_level(delivery_rows, d) if delivery_rows else None
         key = (date_type, wx_label)
         bucket = cells.setdefault(
             key, {"orders": [], "violations": []}
@@ -303,7 +306,7 @@ def build_period(team_id: str, start: str, end: str) -> dict:
             agg[k] = round(agg[k] / vol_total, 2)
         # 计数保持跨日/跨格求和，不除体积
 
-    weather_level = dominant["weather_label"] if dominant else "正常天"
+    weather_level = dominant["weather_label"] if dominant else None
     adverse = (agg["gaobi_cancel_liable"] + agg["false_report_slow_unfinished"])
     adverse_ratio = round(adverse / agg["pushed"] * 100, 2) if agg["pushed"] else 0.0
     fulfillment_rate = (
@@ -351,7 +354,7 @@ def build_period(team_id: str, start: str, end: str) -> dict:
     }
     # 三项无实时数据指标：补率值 + 得分 + tiers（展示用；复用已算的 extra_values，不重复查库）。
     _dt = dominant["date_type"] if dominant else SQ.resolve_date_type(end, settings.get("date_overrides"))
-    _wx = dominant["weather"] if dominant else RTB.weather_key("正常天")
+    _wx = dominant["weather"] if dominant else RTB.weather_key(None)
     RTB.attach_extra_metrics(result, team_id, start, end, settings, _dt, _wx, rates=extra_values)
     return result
 
@@ -362,7 +365,7 @@ def _empty_period(team_id, start, end, settings, extra_values):
         "team_name": TC.TEAM_NAMES.get(team_id, team_id),
         "pushed_order_volume": 0,
         "delivery_completed": 0,
-        "t8": 0, "gaobi": 0, "weather_level": "正常", "adverse_ratio": 0.0,
+        "t8": 0, "gaobi": 0, "weather_level": None, "adverse_ratio": 0.0,
         "complaint": 0, "bad_review": 0, "claim": 0, "cancel_liable": 0,
         "early_delivered": 0, "gaobi_cancel_liable": 0,
         "false_report_slow_unfinished": 0,
@@ -385,7 +388,7 @@ def _empty_period(team_id, start, end, settings, extra_values):
     }
     # 三项无实时数据指标：即便运单明细未落库，也按已有率值补得分+tiers（展示用）。
     _dt = SQ.resolve_date_type(end, settings.get("date_overrides"))
-    RTB.attach_extra_metrics(result, team_id, start, end, settings, _dt, RTB.weather_key("正常天"), rates=extra_values)
+    RTB.attach_extra_metrics(result, team_id, start, end, settings, _dt, RTB.weather_key(None), rates=extra_values)
     return result
 
 

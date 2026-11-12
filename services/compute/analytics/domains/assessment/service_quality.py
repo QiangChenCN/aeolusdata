@@ -75,6 +75,158 @@ SQ_LAYERING = [
 _LAYERING_KEYS = set(x["key"] for x in SQ_LAYERING)
 DEFAULT_LAYERING = "date_weather"
 
+# 天气分层：「考核设置 → 天气设置」页**按月份**维护分层判定链（Nest 写
+# months["<YYYY-MM>"].weather_layering.tiers，每层 {name, logic,
+# conditions:[{tags, cmp, value}]}，tags 为勾选的天气标签（同月 weather_layering.tags
+# 里的 label，如 1级/2级…），value 为百分比 0~100，logic 为 and/or）。
+# **不做业务默认兜底**：该月未配置时返回空列表，看板不判定天气分层
+# （weather_level → None），评分按 normal 档取阈值。
+
+# 天气等级（运单 weatherGradeName，1~4 级）与比较符
+WEATHER_GRADES = (1, 2, 3, 4)
+WEATHER_CMP = ("lte", "lt", "gte", "gt")
+# 历史固定口径（metric 字符串）→ 等级组合，仅用于兼容旧数据
+METRIC_GRADES = {"r1234": [1, 2, 3, 4], "r234": [2, 3, 4], "r34": [3, 4], "r4": [4]}
+# 天气等级（按严重度升序）→ 服务质量配置 weather 键的映射（索引钳制到 0~3）
+WEATHER_KEYS = ("normal", "light", "moderate", "severe")
+
+
+def _norm_grades(v):
+    """把等级组合归一化成升序去重的整数列表（只保留 1~4）；无效返回 []。"""
+    out = []
+    if isinstance(v, (list, tuple)):
+        for g in v:
+            try:
+                n = int(g)
+            except (TypeError, ValueError):
+                continue
+            if n in WEATHER_GRADES and n not in out:
+                out.append(n)
+    return sorted(out)
+
+
+def _norm_tags(v):
+    """天气标签归一化：去空、去重、限长 20；无效返回 []。"""
+    out = []
+    if isinstance(v, (list, tuple)):
+        for x in v:
+            s = str(x or "").strip()
+            if s and len(s) <= 20 and s not in out:
+                out.append(s)
+    return out
+
+
+def _tag_map(wl):
+    """该月「天气标签设置」的 标签→天气等级 映射；无 tags 时回落到 tiers 里的 label/name。"""
+    out = {}
+    raw = wl.get("tags")
+    if isinstance(raw, list):
+        for t in raw:
+            if not isinstance(t, dict):
+                continue
+            lb = str(t.get("label") or "").strip()
+            nm = str(t.get("name") or "").strip()
+            if lb and lb not in out:
+                out[lb] = nm or lb
+    if not out:
+        for t in (wl.get("tiers") or []):
+            if not isinstance(t, dict):
+                continue
+            lb = str(t.get("label") or "").strip()
+            nm = str(t.get("name") or "").strip()
+            if lb and lb not in out:
+                out[lb] = nm or lb
+    return out
+
+
+def _tier_conditions(t, tag_map=None):
+    """把一条天气分层配置归一化成条件列表：
+
+    [{tags:[天气标签], names:[标签对应的天气等级], grades:[旧口径序号], cmp, value}]
+    （value 为百分比 0~100）。新格式 conditions 为条件数组，条件是「天气标签组合 + 判定符 + 阈值」；
+    旧格式（grades 序号 / metric 固定口径 / 单条件平铺）继续兼容。脏值逐项剔除，全部无效返回 []。
+    """
+    tag_map = tag_map or {}
+
+    def _one(c):
+        if not isinstance(c, dict):
+            return None
+        tags = _norm_tags(c.get("tags"))
+        grades = _norm_grades(c.get("grades"))
+        if not grades:
+            grades = METRIC_GRADES.get(c.get("metric"), [])
+        cmp_ = c.get("cmp")
+        value = _num(c.get("value"))
+        if not tags and not grades:
+            return None
+        if cmp_ not in WEATHER_CMP:
+            return None
+        if value is None or not (0 <= value <= 100):
+            return None
+        names = []
+        for lb in tags:
+            nm = tag_map.get(lb) or lb
+            if nm not in names:
+                names.append(nm)
+        return {"tags": tags, "names": names, "grades": grades, "cmp": cmp_, "value": value}
+
+    raw = t.get("conditions")
+    conds = []
+    if isinstance(raw, list):
+        for c in raw:
+            one = _one(c)
+            if one:
+                conds.append(one)
+    if not conds:
+        # 旧格式兼容：单条件直接平铺在 tier 上
+        one = _one(t)
+        if one:
+            conds.append(one)
+    return conds
+
+
+def weather_tags(month=None):
+    """该月「天气标签设置」的标签行：[{label, name}]（label 手工标签，name 天气等级）。"""
+    month = month or current_month()
+    all_ = _read_all()
+    months = all_.get("months") if isinstance(all_.get("months"), dict) else {}
+    entry = months.get(month) if isinstance(months.get(month), dict) else {}
+    wl = entry.get("weather_layering") if isinstance(entry.get("weather_layering"), dict) else {}
+    return [{"label": lb, "name": nm} for lb, nm in _tag_map(wl).items()]
+
+
+def weather_tiers(month=None):
+    """按月份读取天气分层判定链：[{name, logic, conditions:[{tags, names, grades, cmp, value}]}]。
+
+    条件里勾选的是「天气标签设置」的天气标签（tags），names 为其对应的天气等级，
+    占比 = 勾选标签对应运单数 / 当天全部运单；value 为百分比 0~100；
+    logic 为 "and"（满足全部条件，默认）/ "or"（满足任一条件）。
+    读取 months["<YYYY-MM>"].weather_layering.tiers（Nest「考核设置 → 天气设置」页写入）；
+    该月未保存/条目脏值逐项剔除，全部无效时返回 []（不回落业务默认），绝不抛异常打断看板。
+    判定口径（board.py weather_level）：按列表顺序逐层判定，首个命中即止，全部未命中归入最后一层。
+    """
+    month = month or current_month()
+    all_ = _read_all()
+    months = all_.get("months") if isinstance(all_.get("months"), dict) else {}
+    entry = months.get(month) if isinstance(months.get(month), dict) else {}
+    wl = entry.get("weather_layering") if isinstance(entry.get("weather_layering"), dict) else {}
+    tag_map = _tag_map(wl)
+    raw = wl.get("tiers")
+    out = []
+    if isinstance(raw, list):
+        for t in raw:
+            if not isinstance(t, dict):
+                continue
+            name = str(t.get("name") or "").strip()
+            if not name:
+                continue
+            conds = _tier_conditions(t, tag_map)
+            if not conds:
+                continue
+            logic = "or" if t.get("logic") == "or" else "and"
+            out.append({"name": name, "logic": logic, "conditions": conds})
+    return out
+
 _TIERS = ("t0", "t60", "t100")
 
 # 特殊日期覆盖表的日期键格式（YYYY-MM-DD）。

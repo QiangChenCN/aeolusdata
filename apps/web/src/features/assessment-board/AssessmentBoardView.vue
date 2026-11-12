@@ -667,7 +667,9 @@ function scoreBgStyle(v) {
   return { background: c };
 }
 
-/* 天气等级列：标签配色 + 排序（严重度递增，null 沉底） */
+/* 天气等级列：标签配色 + 排序（严重度递增，null 沉底）。
+   天气等级在「考核设置 → 天气分层设置」按月份自定义，故非默认四级名称回落 info 配色；
+   严重度以后端随行返回的 weather_key（等级序号映射）为准，旧缓存行无该字段时回落固定映射。 */
 const WEATHER_TAG = {
   '正常天': 'success',
   '轻微恶天': 'info',
@@ -675,9 +677,15 @@ const WEATHER_TAG = {
   '严重恶天': 'danger',
 };
 const WEATHER_RANK = { '正常天': 0, '轻微恶天': 1, '一般恶天': 2, '严重恶天': 3 };
+const WEATHER_SEVERITY = ['normal', 'light', 'moderate', 'severe'];
 function weatherTagType(v) { return WEATHER_TAG[v] || 'info'; }
+function weatherRank(r) {
+  const fixed = WEATHER_RANK[r.weather_level];
+  if (fixed != null) return fixed;
+  return WEATHER_SEVERITY.indexOf(r.weather_key);
+}
 function weatherSort(a, b) {
-  const ra = WEATHER_RANK[a.weather_level], rb = WEATHER_RANK[b.weather_level];
+  const ra = weatherRank(a), rb = weatherRank(b);
   if (ra == null && rb == null) return 0;
   if (ra == null) return 1;
   if (rb == null) return -1;
@@ -740,13 +748,11 @@ function targetCls(value, tiers, direction) {
 /* ── 分层目标（考核设置：日期类型 × 天气）前端取数 ───────────────────────────
    表格列用后端随行返回的命中目标线(row.*_tiers)；顶部卡片是全站/多站聚合值，
    后端不按聚合算目标，故前端持有一份目标配置自行取格比较。
-   口径与 Python 侧对应（board._WEATHER_KEY_MAP / resolve_date_type），改一边必须同步改另一边。 */
+   天气键以后端随行返回的 row.weather_key 为准（与 board.py weather_key 一致）。 */
 const sqTargets = ref(null);      // targets[metric][date_type][weather] = {t0,t60,t100}
 const sqDateOverrides = ref({});  // 特殊日期覆盖表 { 'YYYY-MM-DD': 'weekday'|'weekend' }
-/* 看板天气档位（中文标签）→ 配置 weather 键（与 board.py _WEATHER_KEY_MAP 一致） */
+/* 旧缓存行无 weather_key 时的固定标签映射回落（默认四级） */
 const WEATHER_KEY_MAP = { 正常天: 'normal', 轻微恶天: 'light', 一般恶天: 'moderate', 严重恶天: 'severe' };
-/* 天气档位严重度升序（聚合时取所展示站点中最严档位） */
-const WEATHER_SEVERITY = ['normal', 'light', 'moderate', 'severe'];
 /* 日型：周六/周日 → weekend，其余 weekday；再套特殊日期覆盖表（与后端 resolve_date_type 一致） */
 function resolveDateType(dateStr) {
   const ov = sqDateOverrides.value[dateStr];
@@ -768,7 +774,7 @@ function metricTiers(metric, dateType, weather) {
 function worstWeatherKey() {
   let w = 'normal';
   for (const r of rows.value) {
-    const k = WEATHER_KEY_MAP[String(r.weather_level || '')];
+    const k = r.weather_key || WEATHER_KEY_MAP[String(r.weather_level || '')];
     if (k && WEATHER_SEVERITY.indexOf(k) > WEATHER_SEVERITY.indexOf(w)) w = k;
   }
   return w;

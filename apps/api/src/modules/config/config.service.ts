@@ -631,6 +631,7 @@ export class ConfigService {
     return [
       '/api/standard/grade-global',
       '/api/service-quality/targets',
+      '/api/service-quality/weather',
       '/api/attend-period/config',
       '/api/attend-period/months',
       '/api/attend-period/teams',
@@ -671,6 +672,10 @@ export class ConfigService {
         return method === 'GET'
           ? this.serviceQualityTargetsGet(q('month'))
           : this.serviceQualityTargetsPost(user, body);
+      case '/api/service-quality/weather':
+        return method === 'GET'
+          ? this.weatherLayeringGet(q('month'))
+          : this.weatherLayeringPost(user, body);
       default:
         return { ok: false, error: '未知配置端点' };
     }
@@ -932,6 +937,237 @@ export class ConfigService {
       this.atomicWrite(this.sqPath(), all);
       await this.rawCache.invalidateAll();
       return { ok: true, ...(this.serviceQualityTargetsGet(month) as Record<string, unknown>) };
+    } catch (e) {
+      return { ok: false, error: `写入失败：${(e as Error).message}` };
+    }
+  }
+
+  // ============================================================ 天气分层（考核设置 → 天气分层设置）
+  // 考核看板当天天气分层由**用户自定义的判定链**判定：每层
+  // {name, logic, conditions:[{grades, cmp, value}]}，grades 为勾选的恶劣天气等级组合
+  // （如 [1,2] / [3,4] / [4]，占比 = 勾选等级运单数 / 全部运单，不再限定固定四种口径），
+  // logic 为 and（满足全部）/ or（满足任一）。
+  // 判定按列表顺序（严重度升序）逐层进行，首个命中即止，全部未命中兜底最后一层。
+  // Python board.py weather_level() 按同一列表判定；层序号映射服务质量配置的
+  // weather 键（normal/light/moderate/severe，序号钳制 0~3）。
+  // 落盘：.service_quality_targets.json 的 months["<YYYY-MM>"].weather_layering.tiers
+  // （按月份独立，与服务质量设置同文件同月份键），另存 grade_tags（独立天气等级标签库）
+  // 与 tags（天气标签行 [{label,name}]）——二者均不参与判定，三块数据互不联动；
+  // updated_at/updated_by 只写在 weather_layering 内部。
+  // 该月未配置时计算侧**不判定天气分层**（weather_level 为空、评分按 normal 档取阈值）。
+  private static readonly WL_GRADES = [1, 2, 3, 4];
+  private static readonly WL_CMP = ['lte', 'lt', 'gte', 'gt'];
+  /** 历史固定口径（metric 字符串）→ 等级组合，仅用于兼容旧数据。 */
+  private static readonly WL_METRIC_GRADES: Record<string, number[]> = {
+    r1234: [1, 2, 3, 4],
+    r234: [2, 3, 4],
+    r34: [3, 4],
+    r4: [4],
+  };
+  private static readonly WL_CMP_SIGNS: Record<string, string> = { lte: '≤', lt: '<', gte: '≥', gt: '>' };
+  /** 数值归一化：须为 0~100 的有限数字，否则 null。 */
+  private wlNorm(v: unknown): number | null {
+    const n = Number(v);
+    return Number.isFinite(n) && n >= 0 && n <= 100 ? n : null;
+  }
+  /** 等级组合归一化：升序去重，只保留 1~4；无效返回 []（兼容旧配置的序号口径）。 */
+  private wlGrades(v: unknown): number[] {
+    const out: number[] = [];
+    if (Array.isArray(v)) {
+      for (const g of v) {
+        const n = Number(g);
+        if (ConfigService.WL_GRADES.includes(n) && !out.includes(n)) out.push(n);
+      }
+    }
+    return out.sort((a, b) => a - b);
+  }
+  /** 天气标签归一化：去空、去重、限长 20；无效返回 []。 */
+  private wlTags(v: unknown): string[] {
+    const out: string[] = [];
+    if (Array.isArray(v)) {
+      for (const t of v) {
+        const s = String(t ?? '').trim();
+        if (!s || s.length > 20 || out.includes(s)) continue;
+        out.push(s);
+      }
+    }
+    return out;
+  }
+  /** 单条分层的判定条件归一化：[{tags, grades, cmp, value}]；兼容旧格式（序号 / 固定口径 / 单条件平铺）。 */
+  private wlTierConditions(t: any): Array<Record<string, unknown>> {
+    const out: Array<Record<string, unknown>> = [];
+    const one = (c: any): Record<string, unknown> | null => {
+      if (!c || typeof c !== 'object') return null;
+      const tags = this.wlTags(c.tags);
+      const grades = this.wlGrades(c.grades).length
+        ? this.wlGrades(c.grades)
+        : (ConfigService.WL_METRIC_GRADES[String(c.metric ?? '')] || []);
+      const cmp = String(c.cmp ?? '');
+      const value = this.wlNorm(c.value);
+      if ((!tags.length && !grades.length) || !ConfigService.WL_CMP.includes(cmp) || value === null) return null;
+      return { tags, grades, cmp, value };
+    };
+    const raw = Array.isArray(t && t.conditions) ? t.conditions : [];
+    for (const c of raw) {
+      const o = one(c);
+      if (o) out.push(o);
+    }
+    if (!out.length) {
+      const o = one(t);
+      if (o) out.push(o);
+    }
+    return out;
+  }
+  /** 该月已落盘的配置（脏条目剔除）：tiers = 判定链，tags = 天气标签行，grade_tags = 等级标签库。 */
+  private wlMonthTiers(month: string): {
+    tiers: Array<Record<string, unknown>>;
+    tags: Array<Record<string, unknown>>;
+    gradeTags: string[];
+    updated_at: string;
+    updated_by: string;
+  } {
+    const all = this.sqLoadAll();
+    const months = all.months && typeof all.months === 'object' ? all.months : {};
+    const entry = months[month] && typeof months[month] === 'object' ? months[month] : {};
+    const wl = entry.weather_layering && typeof entry.weather_layering === 'object' ? entry.weather_layering : {};
+    const raw = Array.isArray(wl.tiers) ? wl.tiers : [];
+    const tiers: Array<Record<string, unknown>> = [];
+    for (const t of raw) {
+      if (!t || typeof t !== 'object') continue;
+      const name = String((t as any).name ?? '').trim();
+      if (!name) continue;
+      // 判定条件：新格式为条件数组，旧格式（单条件平铺 metric/cmp/value）自动包成一条
+      const conditions = this.wlTierConditions(t);
+      if (!conditions.length) continue;
+      const logic = String((t as any).logic ?? '') === 'or' ? 'or' : 'and';
+      tiers.push({ name, logic, conditions });
+    }
+    // 天气标签行（与判定链互不影响）：{label 手工标签, name 天气等级}
+    const tags: Array<Record<string, unknown>> = [];
+    if (Array.isArray(wl.tags)) {
+      for (const t of wl.tags) {
+        if (!t || typeof t !== 'object') continue;
+        const label = String((t as any).label ?? '').trim();
+        const name = String((t as any).name ?? '').trim();
+        if (!label || label.length > 20 || !name || name.length > 20) continue;
+        tags.push({ label, name });
+      }
+    } else {
+      // 兼容旧数据：历史上标签与判定链混存在 tiers（label 字段），此时按 tiers 还原一份标签行
+      for (const t of raw) {
+        if (!t || typeof t !== 'object') continue;
+        const name = String((t as any).name ?? '').trim();
+        if (!name) continue;
+        const label = String((t as any).label ?? '').trim() || name;
+        if (label.length > 20 || name.length > 20) continue;
+        tags.push({ label, name });
+      }
+    }
+    // 天气等级标签库：与上面两块互不影响，仅作独立维护的标签清单
+    const gradeTags: string[] = [];
+    const rawTags = Array.isArray(wl.grade_tags) ? wl.grade_tags : [];
+    for (const g of rawTags) {
+      const n = String(g ?? '').trim();
+      if (!n || n.length > 20 || gradeTags.includes(n)) continue;
+      gradeTags.push(n);
+    }
+    return {
+      tiers,
+      tags,
+      gradeTags,
+      updated_at: (wl && wl.updated_at) || '',
+      updated_by: (wl && wl.updated_by) || '',
+    };
+  }
+  weatherLayeringGet(month?: string): unknown {
+    const m = /^\d{4}-\d{2}$/.test(month || '') ? month as string : currentMonth();
+    const st = this.wlMonthTiers(m);
+    return {
+      ok: true,
+      month: m,
+      tiers: st.tiers,
+      tags: st.tags,
+      grade_tags: st.gradeTags,
+      configured: st.tiers.length > 0,
+      updated_at: st.updated_at,
+      updated_by: st.updated_by,
+    };
+  }
+  weatherLayeringPost(user: string, body: any): unknown {
+    const month = body && body.month;
+    const m = /^\d{4}-\d{2}$/.test(month || '') ? month as string : currentMonth();
+    const in0 = Array.isArray(body && body.tiers) ? body.tiers : [];
+    const out: Array<Record<string, unknown>> = [];
+    const errors: string[] = [];
+    const seen = new Set<string>();
+    for (let i = 0; i < in0.length; i++) {
+      const t = in0[i] || {};
+      const name = String(t.name ?? '').trim();
+      if (!name) { errors.push(`天气分层第 ${i + 1} 条：请填写天气分层名称`); continue; }
+      if (name.length > 20) { errors.push(`天气分层第 ${i + 1} 条：分层名称过长（≤20 字）`); continue; }
+      if (seen.has(name)) { errors.push(`天气分层「${name}」重复`); continue; }
+      seen.add(name);
+      const logic = String(t.logic ?? '') === 'or' ? 'or' : 'and';
+      // 条件数组；兼容旧前端传来的单条件平铺字段
+      const rawConds: any[] = Array.isArray(t.conditions)
+        ? t.conditions
+        : (t.metric || t.cmp || t.value !== undefined ? [{ metric: t.metric, cmp: t.cmp, value: t.value }] : []);
+      if (!rawConds.length) { errors.push(`天气分层第 ${i + 1} 条（${name}）：至少配置一个判定条件`); continue; }
+      if (rawConds.length > 10) { errors.push(`天气分层第 ${i + 1} 条（${name}）：判定条件最多 10 个`); continue; }
+      const conditions: Array<Record<string, unknown>> = [];
+      let bad = false;
+      for (let j = 0; j < rawConds.length; j++) {
+        const c = rawConds[j] || {};
+        const tags = this.wlTags(c.tags);
+        const grades = this.wlGrades(c.grades).length
+          ? this.wlGrades(c.grades)
+          : (ConfigService.WL_METRIC_GRADES[String(c.metric ?? '')] || []);
+        const cmp = String(c.cmp ?? '');
+        const value = this.wlNorm(c.value);
+        if (!tags.length && !grades.length) { errors.push(`天气分层第 ${i + 1} 条（${name}）第 ${j + 1} 个条件：请勾选天气标签`); bad = true; break; }
+        if (!ConfigService.WL_CMP.includes(cmp)) { errors.push(`天气分层第 ${i + 1} 条（${name}）第 ${j + 1} 个条件：判定符无效`); bad = true; break; }
+        if (value === null) { errors.push(`天气分层第 ${i + 1} 条（${name}）第 ${j + 1} 个条件：阈值须为 0~100 的数字`); bad = true; break; }
+        conditions.push({ tags, grades, cmp, value });
+      }
+      if (bad) continue;
+      out.push({ name, logic, conditions });
+    }
+    // 天气标签行（独立于判定链）：{label 手工标签, name 天气等级}，允许为空
+    const inTagRows = Array.isArray(body && body.tags) ? body.tags : [];
+    const tagRows: Array<Record<string, unknown>> = [];
+    for (let i = 0; i < inTagRows.length; i++) {
+      const t = inTagRows[i] || {};
+      const label = String(t.label ?? '').trim();
+      const name = String(t.name ?? '').trim();
+      if (!label) { errors.push(`天气标签第 ${i + 1} 行：天气标签不能为空`); continue; }
+      if (label.length > 20) { errors.push(`天气标签「${label}」过长（≤20 字）`); continue; }
+      if (!name) { errors.push(`天气标签「${label}」：未选择天气等级`); continue; }
+      if (name.length > 20) { errors.push(`天气标签「${label}」：天气等级名称过长（≤20 字）`); continue; }
+      tagRows.push({ label, name });
+    }
+    // 天气等级标签库（独立标签清单）：仅校验名称，允许为空
+    const inTags = Array.isArray(body && body.grade_tags) ? body.grade_tags : [];
+    const tags: string[] = [];
+    for (let i = 0; i < inTags.length; i++) {
+      const n = String(inTags[i] ?? '').trim();
+      if (!n) continue;
+      if (n.length > 20) { errors.push(`天气等级「${n}」名称过长（≤20 字）`); continue; }
+      if (tags.includes(n)) { errors.push(`天气等级「${n}」重复`); continue; }
+      tags.push(n);
+    }
+    if (errors.length) return { ok: false, error: errors[0], errors };
+    // 允许保存空列表：等于清空该月的天气等级配置（前端「没设置就不要有数据」，
+    // 计算侧 weather_tiers() 读到空列表时回落业务默认四级，看板不至于无档位可用）。
+    const all = this.sqLoadAll();
+    all.months = all.months && typeof all.months === 'object' ? all.months : {};
+    const entry = all.months[m] && typeof all.months[m] === 'object' ? all.months[m] : {};
+    all.months[m] = {
+      ...entry,
+      weather_layering: { tiers: out, tags: tagRows, grade_tags: tags, updated_at: nowStamp(), updated_by: user || '' },
+    };
+    try {
+      this.atomicWrite(this.sqPath(), all);
+      return { ok: true, ...(this.weatherLayeringGet(m) as Record<string, unknown>) };
     } catch (e) {
       return { ok: false, error: `写入失败：${(e as Error).message}` };
     }

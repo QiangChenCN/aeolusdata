@@ -39,6 +39,7 @@ export const GET_ROUTE_PERMS: Record<string, string> = {
   '/api/policy': 'admin:policy',
   '/api/data-perms': 'admin:data-perm',
   '/api/service-quality/targets': 'view',
+  '/api/service-quality/weather': 'view',
   '/api/delivery-timeout/teams': 'config:write',
   '/api/im-contact/teams': 'config:write',
   '/api/bot/config': 'admin:bot',
@@ -105,6 +106,7 @@ export const POST_ROUTE_PERMS: Record<string, string> = {
   // 钉钉 SSO 配置保存（系统设置页）：限管理员机器人配置权限
   '/api/auth/dingtalk/sso-config': 'admin:bot',
   '/api/service-quality/targets': 'config:write',
+  '/api/service-quality/weather': 'config:write',
   '/api/account/change-pw': 'self',
 };
 

@@ -10,6 +10,7 @@ import StandardView from '../features/standard/StandardView.vue';
 import AssessServiceView from '../features/assess-service/AssessServiceView.vue';
 import AssessStandardView from '../features/assess-standard/AssessStandardView.vue';
 import AssessPeriodView from '../features/assess-period/AssessPeriodView.vue';
+import AssessWeatherView from '../features/assess-weather/AssessWeatherView.vue';
 import AssessView from '../features/assess/AssessView.vue';
 import AttendPeriodView from '../features/attend-period/AttendPeriodView.vue';
 import OverviewView from '../features/overview/OverviewView.vue';
@@ -55,6 +56,7 @@ const routes = [
           { path: 'service', name: 'assess-service', component: AssessServiceView, meta: { title: '服务质量设置', kind: 'assessService', id: '' } },
           { path: 'standard', name: 'assess-standard', component: AssessStandardView, meta: { title: '标准达成设置', kind: 'assessStandard', id: '' } },
           { path: 'period', name: 'assess-period', component: AssessPeriodView, meta: { title: '时段设置', kind: 'assessPeriod', id: '' } },
+          { path: 'weather', name: 'assess-weather', component: AssessWeatherView, meta: { title: '天气设置', kind: 'assessWeather', id: '' } },
         ] },
       { path: 'standard', name: 'standard', component: StandardView, meta: { title: '标准达成', kind: 'standard', id: '' } },
       { path: 'attend-period', name: 'attend-period', component: AttendPeriodView, meta: { title: '时段出勤', kind: 'attendPeriod', id: '' } },
