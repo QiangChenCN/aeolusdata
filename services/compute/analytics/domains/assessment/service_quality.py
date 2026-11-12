@@ -28,8 +28,8 @@
 未保存过的月份 configured=False，且所有阈值/权重为 None —— 调用方须显式处理「未配置」，
 本模块**不回落任何默认目标值**（与页面「没保存就提示」的口径一致）。
 
-天气维度说明：数据侧目前**不采集天气**，调用方拿不到真实天气时通常按 'normal' 取值；
-保留 4 档是为了配置与业务口径对齐，不代表已有天气数据源。
+天气维度说明：天气档位按「天气设置」该月天气分层动态取（weather_cols），
+未配置时回落默认四级 SQ_WEATHER；调用方拿不到真实天气时通常按 'normal' 取值。
 """
 
 from analytics.core.paths import ROOT, PY_HOME, _ROOT, dirs# noqa: E402,F401 <<<
@@ -54,6 +54,8 @@ SQ_METRICS = [
     {"key": "im_reply_rate",     "name": "IM及时回复率", "direction": "pos", "unit": "%"},
     {"key": "visit_rate",        "name": "新专送拜访",   "direction": "pos", "unit": "%"},
 ]
+SQ_METRIC_DIR = {m["key"]: m["direction"] for m in SQ_METRICS}
+SQ_METRIC_UNIT = {m["key"]: m["unit"] for m in SQ_METRICS}
 SQ_DATE_TYPES = [{"key": "weekday", "name": "周中"}, {"key": "weekend", "name": "周末"}]
 SQ_WEATHER = [
     {"key": "normal",   "name": "正常天"},
@@ -61,8 +63,6 @@ SQ_WEATHER = [
     {"key": "moderate", "name": "一般恶天"},
     {"key": "severe",   "name": "严重恶天"},
 ]
-SQ_METRIC_DIR = {m["key"]: m["direction"] for m in SQ_METRICS}
-SQ_METRIC_UNIT = {m["key"]: m["unit"] for m in SQ_METRICS}
 
 # 考核项是否分层：三档阈值在「日期类型 / 天气」两维上的区分粒度。
 #   none 不分层 / date 日期分层 / weather 天气分层 / date_weather 日期天气分层（默认）
@@ -233,6 +233,23 @@ _TIERS = ("t0", "t60", "t100")
 _RE_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 
+def weather_cols(month=None):
+    """该月服务质量配置的天气列（key + 名称）：按「考核设置 → 天气设置」该月
+    天气分层判定链的分层名展示（列表顺序即严重度）。
+
+    键映射与 board.py weather_key 同规则：前 4 档沿用 WEATHER_KEYS
+    （normal/light/moderate/severe），第 5 档起用 wx4/wx5/…（序号一一对应，不钳制）；
+    该月未配置天气分层时回落默认四级。
+    """
+    names = [t.get("name") for t in weather_tiers(month) if t.get("name")]
+    if not names:
+        return [dict(w) for w in SQ_WEATHER]
+    return [
+        {"key": WEATHER_KEYS[i] if i < len(WEATHER_KEYS) else f"wx{i}", "name": nm}
+        for i, nm in enumerate(names)
+    ]
+
+
 def current_month():
     """当前北京时间月份 YYYY-MM。"""
     return _dt.datetime.now(_dt.timezone(_dt.timedelta(hours=8))).strftime("%Y-%m")
@@ -246,8 +263,13 @@ def month_of(date_str=None):
     return current_month()
 
 
+def metrics_list():
+    """考核项清单：固定 7 项（SQ_METRICS）的只读副本。"""
+    return [dict(m) for m in SQ_METRICS]
+
+
 def metric_direction(metric):
-    """'pos'（越高越好）/ 'neg'（越低越好）；未知指标返回 None。"""
+    """'pos'（越高越好）/ 'neg'（越低越好）；未在考核项清单中的指标返回 None。"""
     return SQ_METRIC_DIR.get(str(metric))
 
 
@@ -368,10 +390,11 @@ def compute_team_scores(raw, settings, date_type, weather):
     """
     scores = {}
     for metric, value in raw.items():
-        if metric not in SQ_METRIC_DIR:
+        direction = metric_direction(metric)
+        if direction is None:
             continue
         cell = metric_tiers(settings, metric, date_type, weather)
-        sc = score_metric(value, cell, SQ_METRIC_DIR.get(metric))
+        sc = score_metric(value, cell, direction)
         scores[metric] = None if sc is None else round(sc, 2)
     kinds = settings.get("kinds") if isinstance(settings.get("kinds"), dict) else {}
     weights = settings.get("weights") if isinstance(settings.get("weights"), dict) else {}
@@ -437,7 +460,8 @@ def quality_settings(month=None):
     ranges = {}
     kinds = {}
     layering = {}
-    for m in SQ_METRICS:
+    metrics = metrics_list()
+    for m in metrics:
         w = weights_raw.get(m["key"])
         # 兼容早期按 {weekday, weekend} 分开存的形态：取周中优先，其次周末
         if isinstance(w, dict):
@@ -451,13 +475,14 @@ def quality_settings(month=None):
         layering[m["key"]] = lv if lv in _LAYERING_KEYS else DEFAULT_LAYERING
 
     targets = {}
-    for m in SQ_METRICS:
+    wx_cols = weather_cols(month)
+    for m in metrics:
         per_metric = {}
         m_src = entry.get(m["key"]) if isinstance(entry.get(m["key"]), dict) else {}
         for dt in SQ_DATE_TYPES:
             per_wx = {}
             dt_src = m_src.get(dt["key"]) if isinstance(m_src.get(dt["key"]), dict) else {}
-            for wx in SQ_WEATHER:
+            for wx in wx_cols:
                 cell = dt_src.get(wx["key"]) if isinstance(dt_src.get(wx["key"]), dict) else {}
                 per_wx[wx["key"]] = {t: _num(cell.get(t)) for t in _TIERS}
             per_metric[dt["key"]] = per_wx
@@ -490,8 +515,8 @@ def target_rows(month=None):
     s = quality_settings(month)
     rows = []
     for dt in SQ_DATE_TYPES:
-        for wx in SQ_WEATHER:
-            for m in SQ_METRICS:
+        for wx in weather_cols(month):
+            for m in metrics_list():
                 cell = s["targets"][m["key"]][dt["key"]][wx["key"]]
                 rg = s["ranges"].get(m["key"]) or {}
                 rows.append({

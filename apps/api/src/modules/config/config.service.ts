@@ -785,11 +785,12 @@ export class ConfigService {
     const all = this.sqLoadAll();
     const months = all.months && typeof all.months === 'object' ? all.months : {};
     const entry = months[month] && typeof months[month] === 'object' ? months[month] : {};
+    const wxCols = this.sqWeatherCols(month);
     for (const m of RT_METRICS) {
       const perMetric: Record<string, Record<string, { t0: number | null; t60: number | null; t100: number | null }>> = {};
       for (const dt of RT_DATE_TYPES) {
         const perWx: Record<string, { t0: number | null; t60: number | null; t100: number | null }> = {};
-        for (const wx of RT_WEATHER) {
+        for (const wx of wxCols) {
           const cell = entry[m.key] && entry[m.key][dt.key] ? entry[m.key][dt.key] : {};
           perWx[wx.key] = this.sqNormTiers(cell[wx.key], m.key);
         }
@@ -823,6 +824,20 @@ export class ConfigService {
     const entry = months[month] && typeof months[month] === 'object' ? months[month] : {};
     return this.sqNormDateOverrides(entry.date_overrides, month);
   }
+  /** 该月服务质量页的天气列：按「天气设置 → 天气分层设置」该月配置的分层名展示（列表顺序即严重度）。
+   *  键映射与评分侧 board.py weather_key 同规则：前 4 档沿用 normal/light/moderate/severe，
+   *  第 5 档起用 wx4/wx5/…（评分侧按层级序号一一对应）；该月未配置时回落默认四级。 */
+  private sqWeatherCols(month: string): Array<{ key: string; name: string }> {
+    const names = this.wlMonthTiers(month)
+      .tiers
+      .map((t) => String((t as any).name ?? '').trim())
+      .filter(Boolean);
+    if (!names.length) return RT_WEATHER.map((w) => ({ ...w }));
+    return names.map((name, i) => ({
+      key: i < RT_WEATHER.length ? RT_WEATHER[i].key : `wx${i}`,
+      name,
+    }));
+  }
   serviceQualityTargetsGet(month?: string): unknown {
     month = month || currentMonth();
     const all = this.sqLoadAll();
@@ -834,7 +849,7 @@ export class ConfigService {
       configured: !!months[month],
       metrics: RT_METRICS,
       date_types: RT_DATE_TYPES,
-      weather: RT_WEATHER,
+      weather: this.sqWeatherCols(month),
       targets: this.sqMonthCells(month),
       weights: this.sqMonthWeights(month),
       ranges: this.sqMonthRanges(month),
@@ -852,6 +867,7 @@ export class ConfigService {
     if (!/^\d{4}-\d{2}$/.test(month)) return { ok: false, error: 'month 须为 YYYY-MM 格式' };
     const incoming = (body && body.targets) || {};
     const errors: string[] = [];
+    const wxCols = this.sqWeatherCols(month);
     const out: Record<string, Record<string, Record<string, { t0: number | null; t60: number | null; t100: number | null }>>> = {};
     for (const m of RT_METRICS) {
       const perMetric: Record<string, Record<string, { t0: number | null; t60: number | null; t100: number | null }>> = {};
@@ -859,7 +875,7 @@ export class ConfigService {
       for (const dt of RT_DATE_TYPES) {
         const perWx: Record<string, { t0: number | null; t60: number | null; t100: number | null }> = {};
         const srcDt = src[dt.key] && typeof src[dt.key] === 'object' ? src[dt.key] : {};
-        for (const wx of RT_WEATHER) {
+        for (const wx of wxCols) {
           const tiers = this.sqNormTiers(srcDt[wx.key], m.key);
           const bad = this.sqValidateTiers(tiers, m.direction);
           if (bad) errors.push(`${m.name} / ${dt.name} / ${wx.name}：${bad}`);
@@ -918,7 +934,7 @@ export class ConfigService {
         return [dt, wx];
       };
       for (const dt of RT_DATE_TYPES) {
-        for (const wx of RT_WEATHER) {
+        for (const wx of wxCols) {
           const [rDt, rWx] = rep(dt.key, wx.key);
           if (rDt === dt.key && rWx === wx.key) continue;
           out[m.key][dt.key][wx.key] = { ...out[m.key][rDt][rWx] };
@@ -930,7 +946,14 @@ export class ConfigService {
     const all = this.sqLoadAll();
     all.version = 1;
     all.months = all.months && typeof all.months === 'object' ? all.months : {};
-    all.months[month] = { ...out, weights, ranges, kinds, layering, date_overrides: dateOverrides };
+    // 该月条目按本次保存重建，但保留同月并存的其他设置块
+    // （如天气分层 weather_layering —— 与「天气设置」页共用同一条目，不能被服务质量保存抹掉）。
+    const prev = all.months[month] && typeof all.months[month] === 'object' ? all.months[month] : {};
+    all.months[month] = {
+      ...out, weights, ranges, kinds, layering, date_overrides: dateOverrides,
+      ...(prev.weather_layering && typeof prev.weather_layering === 'object'
+        ? { weather_layering: prev.weather_layering } : {}),
+    };
     all.updated_at = nowStamp();
     all.updated_by = user || '';
     try {

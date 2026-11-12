@@ -678,11 +678,19 @@ const WEATHER_TAG = {
 };
 const WEATHER_RANK = { '正常天': 0, '轻微恶天': 1, '一般恶天': 2, '严重恶天': 3 };
 const WEATHER_SEVERITY = ['normal', 'light', 'moderate', 'severe'];
+/* 严重度序号：前 4 档固定键按 WEATHER_SEVERITY 排，第 5 档起 wx4/wx5/…（与 board.py
+   weather_key 的「分层次序一一映射」同规则，序号 = 4 + n）；未知键 -1（null 沉底）。 */
+function weatherSeverityRank(key) {
+  const i = WEATHER_SEVERITY.indexOf(key);
+  if (i >= 0) return i;
+  const m = /^wx(\d+)$/.exec(String(key || ''));
+  return m ? 4 + Number(m[1]) : -1;
+}
 function weatherTagType(v) { return WEATHER_TAG[v] || 'info'; }
 function weatherRank(r) {
   const fixed = WEATHER_RANK[r.weather_level];
   if (fixed != null) return fixed;
-  return WEATHER_SEVERITY.indexOf(r.weather_key);
+  return weatherSeverityRank(r.weather_key);
 }
 function weatherSort(a, b) {
   const ra = weatherRank(a), rb = weatherRank(b);
@@ -773,9 +781,11 @@ function metricTiers(metric, dateType, weather) {
    避免把恶天订单按正常天目标过严评判（各站同城同日，通常档位一致）。 */
 function worstWeatherKey() {
   let w = 'normal';
+  let wr = weatherSeverityRank(w);
   for (const r of rows.value) {
     const k = r.weather_key || WEATHER_KEY_MAP[String(r.weather_level || '')];
-    if (k && WEATHER_SEVERITY.indexOf(k) > WEATHER_SEVERITY.indexOf(w)) w = k;
+    const kr = weatherSeverityRank(k);
+    if (k && kr > wr) { w = k; wr = kr; }
   }
   return w;
 }

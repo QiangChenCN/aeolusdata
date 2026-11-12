@@ -308,18 +308,19 @@ def weather_level(orders, date=None):
     return tiers[-1]["name"]
 
 
-# 服务质量配置的 weather 键（normal/light/moderate/severe），按天气等级严重度升序映射：
-# 等级列表第 i 级 → WEATHER_KEYS[min(i, 3)]；等级名未知/缺失回落 normal。
+# 服务质量配置的 weather 键，按天气分层严重度升序一一映射：
+# 前 4 档 → normal/light/moderate/severe，第 5 档起 → wx4/wx5/…（与 service_quality.weather_cols 同规则）；
+# 分层名未知/缺失回落 normal。
 def weather_key(level_label, month=None):
     """把 weather_level() 的中文档位映射成配置 weather 键；未知/缺失回落 normal（不区分天气）。
 
-    等级列表来自「考核设置 → 天气设置」该月配置；等级数量不足/超出 4 个时按序号钳制映射；
-    该月未配置（tiers 为空）或 label 为 None 时回落 normal。
+    分层列表来自「考核设置 → 天气设置」该月配置；第 i 层 → 第 i 个天气键（序号一一对应，不钳制，
+    键表见 SQ.weather_cols）；该月未配置（tiers 为空）或 label 为 None 时回落 normal。
     """
-    tiers = SQ.weather_tiers(month)
-    for i, t in enumerate(tiers):
+    keys = [c["key"] for c in SQ.weather_cols(month)]
+    for i, t in enumerate(SQ.weather_tiers(month)):
         if t["name"] == str(level_label):
-            return SQ.WEATHER_KEYS[min(i, len(SQ.WEATHER_KEYS) - 1)]
+            return keys[i] if i < len(keys) else "normal"
     return "normal"
 
 
