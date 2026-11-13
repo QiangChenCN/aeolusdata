@@ -16,7 +16,12 @@ export const VIOLATION_LIST_URL =
 export class ViolationListFetchService {
   constructor(private readonly cookies: AeolusCookieService) {}
 
-  /** 分页查询违规处罚明细，返回上游 result（含 data 列表与分页信息）。 */
+  /**
+   * 分页查询违规处罚明细，返回上游 result（含 data 列表与分页信息）。
+   * 会话失效（HTTP 401 / 业务 code=401 / 未登录、会话失效文案）→ 强制重登后重试一次，
+   * 与 BoardFetchService / DeliveryExportService 的 401 自愈口径一致：
+   * ensure() 的探针有 60s 信任窗口，窗口内 cookie 被顶掉时探针拦不住，必须靠这里的重试兜底。
+   */
   async queryList(
     startMs: number,
     endMs: number,
@@ -25,19 +30,48 @@ export class ViolationListFetchService {
     cookie?: string,
   ): Promise<any> {
     const ck = cookie || (await this.cookies.ensure());
+    try {
+      return await this.doQuery(ck, startMs, endMs, pageNo, pageSize);
+    } catch (e) {
+      if (e instanceof ViolationApiError && this.isAuthError(e) && !cookie) {
+        const fresh = await this.cookies.relogin();
+        return await this.doQuery(fresh, startMs, endMs, pageNo, pageSize);
+      }
+      throw e;
+    }
+  }
+
+  /** 是否会话失效类错误（code=401 / validToken / 未登录 / 会话失效文案）。 */
+  private isAuthError(e: ViolationApiError): boolean {
+    return /(^|\D)401(\D|$)/.test(e.code) || /validToken|未登录|会话失效|登录失败|顶号/i.test(e.message);
+  }
+
+  /** 单次请求（不含重试），成功返回上游 result。 */
+  private async doQuery(
+    ck: string,
+    startMs: number,
+    endMs: number,
+    pageNo: number,
+    pageSize: number,
+  ): Promise<any> {
     const body = JSON.stringify({
       params: { request: { violationStartTime: startMs, violationEndTime: endMs, pageNo, pageSize } },
     });
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), 30000);
+    let res: Response;
     let j: any;
     try {
-      const res = await fetch(VIOLATION_LIST_URL, {
+      res = await fetch(VIOLATION_LIST_URL, {
         method: 'POST',
         headers: { accept: 'application/json, text/plain, */*', ...STATIC_HEADERS, cookie: ck },
         body,
         signal: ctrl.signal,
       });
+      if (res.status === 401) {
+        // HTTP 层直接 401（响应体可能不是 JSON）：按会话失效抛出，交由上层重登重试
+        throw new ViolationApiError('违规处罚明细列表接口 HTTP 401（未登录）', '401');
+      }
       j = await res.json();
     } finally {
       clearTimeout(timer);
