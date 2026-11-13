@@ -94,28 +94,27 @@
         class="dv-table"
         :empty-text="isHistory ? '该区间暂无历史数据（历史明细自启用日起按日落库累积）' : '暂无实时数据'"
         height="100%"
-        :default-sort="{ prop: 'pushed_order_volume', order: 'descending' }"
       >
         <el-table-column prop="team_name" label="站点" :min-width="teamNameMinWidth" fixed sortable className="dv-col-team" />
-        <el-table-column prop="pushed_order_volume" label="推配送单量" sortable>
+        <el-table-column prop="pushed_order_volume" label="推配送单量" sortable className="dv-hd-theme">
           <template #default="{ row }">
             <el-text :class="{ 'dv-zero': num(row.pushed_order_volume) === 0 }">{{ row.pushed_order_volume }}</el-text>
           </template>
         </el-table-column>
-        <el-table-column prop="delivery_completed" label="配送完成单" sortable>
+        <el-table-column prop="delivery_completed" label="配送完成单" sortable className="dv-hd-theme">
           <template #default="{ row }">
             <el-text :class="{ 'dv-zero': num(row.delivery_completed) === 0 }">{{ row.delivery_completed }}</el-text>
           </template>
         </el-table-column>
-        <el-table-column prop="weather_level" label="天气等级" sortable :sort-method="weatherSort" min-width="110">
+        <el-table-column prop="weather_level" label="天气等级" sortable :sort-method="weatherSort" min-width="110" className="dv-hd-theme">
           <template #default="{ row }">
             <el-tag v-if="row.weather_level" :type="weatherTagType(row.weather_level)" size="small" effect="light">{{ row.weather_level }}</el-tag>
             <span v-else class="dv-muted">—</span>
           </template>
         </el-table-column>
-        <el-table-column prop="adverse_ratio" label="恶单占比" sortable min-width="100" className="dv-grp-end">
+        <el-table-column prop="adverse_ratio" label="恶单占比" sortable min-width="100" className="dv-grp-end dv-hd-theme">
           <template #default="{ row }">
-            <span v-if="row.adverse_ratio != null" :class="adverseRatioCls(row.adverse_ratio)">{{ row.adverse_ratio }}%</span>
+            <span v-if="row.adverse_ratio != null" :class="adverseRatioCls(row.adverse_ratio)">{{ fmtRatio(row.adverse_ratio) }}%</span>
             <span v-else class="dv-muted">—</span>
           </template>
         </el-table-column>
@@ -169,7 +168,7 @@
               <span class="rt" :class="targetCls(row.t8_ontime_rate, row.t8_ontime_tiers, 'pos', row.tier_scores && row.tier_scores.ontime_rate)">{{ fmtRate(row.t8_ontime_rate, 2) }}</span>
             </template>
           </el-table-column>
-          <el-table-column label="物流妥投率" align="center" sortable :sort-method="rateSort('fulfillment_rate')" className="dv-g-rate">
+          <el-table-column label="物流妥投率" align="center" sortable :sort-method="rateSort('fulfillment_rate')" min-width="96" className="dv-g-rate dv-nowrap">
             <template #default="{ row }">
               <span class="rt" :class="targetCls(row.fulfillment_rate, row.fulfillment_tiers, 'pos', row.tier_scores && row.tier_scores.delivery_rate)">{{ fmtRate(row.fulfillment_rate) }}</span>
             </template>
@@ -700,6 +699,12 @@ function weatherSort(a, b) {
   if (rb == null) return -1;
   return ra - rb;
 }
+/* 恶单占比展示：保留小数点后 2 位 */
+function fmtRatio(v) {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return v;
+  return n.toFixed(2);
+}
 /* 恶单占比：>10% 即脱离正常天进入恶天判定区间（高亮）；≥35% 命中严重恶天（更醒目） */
 function adverseRatioCls(v) {
   if (v >= 35) return 'dv-ratio-danger';
@@ -1183,19 +1188,16 @@ onUnmounted(() => {
 .dv-ratio-ok { color: var(--el-text-color-regular); }
 .dv-ratio-warn { color: var(--el-color-warning); font-weight: var(--fw-semibold); }
 .dv-ratio-danger { color: var(--el-color-danger); font-weight: var(--fw-semibold); }
-/* 三组指标分组区分：组头用不同强调色 + 3px 粗下边框；组边界列加竖向分隔线 */
-.dv-table :deep(.dv-grp-score) .cell { color: var(--el-color-primary); font-weight: 700; }
-.dv-table :deep(.dv-grp-rate) .cell { color: #1a9e6f; font-weight: 700; }
-.dv-table :deep(.dv-grp-other) .cell { color: var(--el-text-color-regular); font-weight: 700; }
+/* 三组指标分组区分：组边界列加竖向分隔线；一级表头为主题色实底（见下方表头背景规则），文字改白 */
+.dv-table :deep(.dv-grp-score) .cell { color: #fff; font-weight: 700; }
+.dv-table :deep(.dv-grp-rate) .cell { color: #fff; font-weight: 700; }
+.dv-table :deep(.dv-grp-other) .cell { color: #fff; font-weight: 700; }
 /* 整组纵向色带：表头用更明显的"内容对应色"，数据行用更浅的同色，滚动也能一眼分块
    注意：表头选择器加 tr 提升特异度，压过其后定义的全局 light-9 表头背景规则 */
-/* —— 表头（内容对应色，明显一档） —— */
-.dv-table :deep(.el-table__header-wrapper tr th.dv-g-score),
-.dv-table :deep(.el-table__header-wrapper tr th.dv-grp-score) { background-color: color-mix(in srgb, var(--el-color-primary) 16%, #fff); }
-.dv-table :deep(.el-table__header-wrapper tr th.dv-g-rate),
-.dv-table :deep(.el-table__header-wrapper tr th.dv-grp-rate) { background-color: color-mix(in srgb, #1a9e6f 16%, #fff); }
-.dv-table :deep(.el-table__header-wrapper tr th.dv-g-other),
-.dv-table :deep(.el-table__header-wrapper tr th.dv-grp-other) { background-color: color-mix(in srgb, #909399 16%, #fff); }
+/* —— 二级表头（内容对应色，明显一档） —— */
+.dv-table :deep(.el-table__header-wrapper tr th.dv-g-score) { background-color: color-mix(in srgb, var(--el-color-primary) 16%, #fff); }
+.dv-table :deep(.el-table__header-wrapper tr th.dv-g-rate) { background-color: color-mix(in srgb, #1a9e6f 16%, #fff); }
+.dv-table :deep(.el-table__header-wrapper tr th.dv-g-other) { background-color: color-mix(in srgb, #909399 16%, #fff); }
 /* —— 数据行（更浅的同色） —— */
 .dv-table :deep(.el-table__body-wrapper td.dv-g-score) { background-color: color-mix(in srgb, var(--el-color-primary) 7%, #fff); }
 /* 总分列：去除本来的 .dv-g-score 浅底（避免与下方色阶背景叠加），仅保留定位与文字居中 */
@@ -1234,6 +1236,36 @@ onUnmounted(() => {
 .dv-table :deep(.el-table__header .sort-caret.ascending) { border-bottom-color: var(--el-color-primary); }
 .dv-table :deep(.el-table__header .sort-caret.descending) { border-top-color: var(--el-color-primary); }
 
+/* ── 指定列表头（站点/推配送单量/配送完成单/天气等级/恶单占比）与一级表头（预估得分/达成率/违规运单）：
+      背景改为主题色实底，文字与排序箭头改白保证对比 ── */
+.dv-table :deep(.el-table__header-wrapper tr th.el-table__cell.dv-hd-theme),
+.dv-table :deep(.el-table__fixed-header-wrapper tr th.el-table__cell.dv-hd-theme),
+.dv-table :deep(.el-table__header-wrapper tr th.el-table__cell.dv-col-team),
+.dv-table :deep(.el-table__fixed-header-wrapper tr th.el-table__cell.dv-col-team),
+.dv-table :deep(.el-table__header-wrapper tr th.dv-grp-score),
+.dv-table :deep(.el-table__header-wrapper tr th.dv-grp-rate),
+.dv-table :deep(.el-table__header-wrapper tr th.dv-grp-other) {
+  background-color: var(--el-color-primary);
+}
+.dv-table :deep(th.el-table__cell.dv-hd-theme .cell),
+.dv-table :deep(th.el-table__cell.dv-col-team .cell),
+/* 一级表头（组头）：需带 .el-table__header-wrapper 提升特异度，压过下方通用表头的主色文字规则 */
+.dv-table :deep(.el-table__header-wrapper tr th.dv-grp-score .cell),
+.dv-table :deep(.el-table__header-wrapper tr th.dv-grp-rate .cell),
+.dv-table :deep(.el-table__header-wrapper tr th.dv-grp-other .cell) {
+  color: #fff;
+}
+.dv-table :deep(th.el-table__cell.dv-hd-theme .sort-caret.ascending),
+.dv-table :deep(th.el-table__cell.dv-col-team .sort-caret.ascending),
+.dv-table :deep(tr th.dv-grp-score .sort-caret.ascending),
+.dv-table :deep(tr th.dv-grp-rate .sort-caret.ascending),
+.dv-table :deep(tr th.dv-grp-other .sort-caret.ascending) { border-bottom-color: #fff; }
+.dv-table :deep(th.el-table__cell.dv-hd-theme .sort-caret.descending),
+.dv-table :deep(th.el-table__cell.dv-col-team .sort-caret.descending),
+.dv-table :deep(tr th.dv-grp-score .sort-caret.descending),
+.dv-table :deep(tr th.dv-grp-rate .sort-caret.descending),
+.dv-table :deep(tr th.dv-grp-other .sort-caret.descending) { border-top-color: #fff; }
+
 /* 默认隐藏排序图标及占位，仅当前排序列展示 */
 .dv-table :deep(.caret-wrapper) { display: none; }
 .dv-table :deep(th.ascending .caret-wrapper),
@@ -1259,6 +1291,11 @@ onUnmounted(() => {
   white-space: normal;
   word-break: break-all;
   line-height: 1.3;
+}
+/* 比率数值列不换行：如「物流妥投率」的 97.654% 被压行影响读数，强制单行展示 */
+.dv-table :deep(.el-table__body-wrapper td.dv-nowrap .cell),
+.dv-table :deep(.el-table__fixed-body-wrapper td.dv-nowrap .cell) {
+  white-space: nowrap;
 }
 
 .dv-refresh-btn { min-width: 92px; }
