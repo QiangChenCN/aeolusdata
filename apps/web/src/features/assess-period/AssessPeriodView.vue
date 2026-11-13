@@ -95,6 +95,7 @@
 
 <script setup>
 import { onMounted, ref } from 'vue';
+import { ElMessageBox } from 'element-plus';
 import {
   fetchPeriodConfig, savePeriodConfig,
 } from '../../api/dashboards.js';
@@ -251,21 +252,32 @@ function prevMonthOf(ym) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 }
 
-/** 复制上月配置：载入上月已保存的时段列表，点「保存设置」后写入当前月。 */
+/** 复制上月配置：确认后载入上月已保存的时段列表，点「保存设置」后写入当前月。 */
 async function copyPrevMonth() {
   if (!editable.value) return;
   const src = prevMonthOf(month.value);
+  let res;
   try {
-    const res = await fetchPeriodConfig(src);
-    if (!res || !res.configured || !Array.isArray(res.periods) || !res.periods.length) {
-      ElMessage.warning(`${src}（上月）尚未保存过配置，无可复制`);
-      return;
-    }
-    fillRows(res.periods);
-    ElMessage.success(`已载入 ${src}（上月）的配置，点击「保存设置」后生效`);
+    res = await fetchPeriodConfig(src);
   } catch (e) {
-    ElMessage.error(e.message || '复制上月配置失败');
+    ElMessage.error(e.message || '读取上月配置失败');
+    return;
   }
+  if (!res || !res.configured || !Array.isArray(res.periods) || !res.periods.length) {
+    ElMessage.warning(`${src}（上月）尚未保存过配置，无可复制`);
+    return;
+  }
+  try {
+    await ElMessageBox.confirm(
+      `将用 ${src}（上月）的 ${res.periods.length} 个时段覆盖当前编辑内容，覆盖后需点击「保存设置」才会生效。是否继续？`,
+      '复制上月配置',
+      { type: 'warning', confirmButtonText: '复制', cancelButtonText: '取消' },
+    );
+  } catch (e) {
+    return; // 取消
+  }
+  fillRows(res.periods);
+  ElMessage.success(`已载入 ${src}（上月）的配置，点击「保存设置」后生效`);
 }
 
 function addRow() {
