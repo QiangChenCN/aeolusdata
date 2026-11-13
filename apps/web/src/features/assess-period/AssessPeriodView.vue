@@ -87,7 +87,7 @@
       </el-table>
 
       <div class="apv-actions">
-        <el-button size="small" :disabled="!editable" @click="addRow">+ 添加时段</el-button>
+        <el-button type="primary" :disabled="!editable" @click="addRow">+ 添加时段</el-button>
       </div>
     </el-card>
   </div>
