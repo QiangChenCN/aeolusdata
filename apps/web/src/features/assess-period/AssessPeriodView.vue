@@ -15,13 +15,10 @@
     <el-card class="apv-card" shadow="never">
       <template #header>
         <span class="apv-card-h">考核时段（{{ rows.length }} 个）</span>
-        <span v-if="!configured" class="apv-warn">{{ month }} 月份尚未保存过配置，请添加时段或复制其他月份配置，保存后生效</span>
+        <span v-if="!configured" class="apv-warn">{{ month }} 月份尚未保存过配置，请添加时段或复制上月配置，保存后生效</span>
         <span v-if="!editable" class="apv-warn">历史月份只读，不可修改</span>
         <div class="apv-tools">
-          <el-select v-model="copyFrom" placeholder="选择已配置月份" class="apv-copy-sel" clearable>
-            <el-option v-for="m in months" :key="m" :label="m" :value="m" />
-          </el-select>
-          <el-button size="small" :disabled="!editable || !copyFrom" @click="copyMonth">复制该月配置</el-button>
+          <el-button size="small" :disabled="!editable" @click="copyPrevMonth">复制上月配置</el-button>
           <el-button size="small" :disabled="!editable" @click="clearRows">恢复默认</el-button>
         </div>
       </template>
@@ -101,13 +98,11 @@
 import { onMounted, ref } from 'vue';
 import { ElMessageBox } from 'element-plus';
 import {
-  fetchPeriodConfig, savePeriodConfig, fetchPeriodMonths,
+  fetchPeriodConfig, savePeriodConfig,
 } from '../../api/dashboards.js';
 
 const month = ref(currentMonth());
 const rows = ref([]);
-const months = ref([]);
-const copyFrom = ref('');
 const configured = ref(false);
 const editable = ref(true);
 const updatedAt = ref('');
@@ -179,18 +174,6 @@ function fillRows(list) {
   savedInfo.value = false;
 }
 
-async function loadMonths() {
-  try {
-    const mo = await fetchPeriodMonths();
-    months.value = (mo && mo.months) || [];
-  } catch (e) {
-    months.value = [];
-  }
-  if (!months.value.includes(copyFrom.value) || copyFrom.value === month.value) {
-    copyFrom.value = months.value.find((m) => m !== month.value) || '';
-  }
-}
-
 async function load() {
   savedInfo.value = false;
   try {
@@ -199,12 +182,11 @@ async function load() {
     editable.value = !res || res.editable !== false;
     updatedAt.value = fmtTime(res && res.updated_at);
     updatedBy.value = (res && res.updated_by) || '';
-    // 未保存过的月份不预填任何默认时段：从空列表开始，或复制其他月份配置。
+    // 未保存过的月份不预填任何默认时段：从空列表开始，或复制上月配置。
     fillRows(configured.value ? (res && res.periods) : []);
   } catch (e) {
     ElMessage.error(e.message || '加载时段设置失败');
   }
-  await loadMonths();
 }
 
 function validate() {
@@ -254,7 +236,6 @@ async function save() {
       updatedBy.value = res.updated_by || '';
       fillRows(res.periods);
       savedInfo.value = true;
-      await loadMonths();
     } else {
       ElMessage.error((res && res.error) || '保存失败');
     }
@@ -265,22 +246,27 @@ async function save() {
   }
 }
 
-async function copyMonth() {
-  if (!editable.value || !copyFrom.value) return;
-  if (copyFrom.value === month.value) {
-    ElMessage.warning('请选择与当前月份不同的月份');
-    return;
-  }
+/** 当前选中月份的上一个月（YYYY-MM），跨年自动回落到上年 12 月。 */
+function prevMonthOf(ym) {
+  const [y, m] = String(ym).split('-').map(Number);
+  const d = new Date(y, m - 2, 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
+/** 复制上月配置：载入上月已保存的时段列表，点「保存设置」后写入当前月。 */
+async function copyPrevMonth() {
+  if (!editable.value) return;
+  const src = prevMonthOf(month.value);
   try {
-    const res = await fetchPeriodConfig(copyFrom.value);
-    if (!res || !Array.isArray(res.periods)) {
-      ElMessage.error('读取来源月份配置失败');
+    const res = await fetchPeriodConfig(src);
+    if (!res || !res.configured || !Array.isArray(res.periods) || !res.periods.length) {
+      ElMessage.warning(`${src}（上月）尚未保存过配置，无可复制`);
       return;
     }
     fillRows(res.periods);
-    ElMessage.success(`已载入 ${copyFrom.value} 的配置，点击「保存设置」后生效`);
+    ElMessage.success(`已载入 ${src}（上月）的配置，点击「保存设置」后生效`);
   } catch (e) {
-    ElMessage.error(e.message || '复制配置失败');
+    ElMessage.error(e.message || '复制上月配置失败');
   }
 }
 
@@ -356,7 +342,6 @@ onMounted(load);
 .apv-card-h { font-weight: 600; }
 .apv-warn { font-size: var(--el-font-size-extra-small); color: var(--el-color-warning); }
 .apv-tools { margin-left: auto; display: flex; align-items: center; gap: var(--sp-8); }
-.apv-copy-sel { width: 168px; }
 .apv-table { flex: 1 1 auto; min-height: 0; --el-component-size: 32px; }
 .apv-table :deep(.cell) { white-space: nowrap; }
 .apv-table :deep(.el-table__cell) { padding: 8px 0; }
