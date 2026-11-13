@@ -826,13 +826,15 @@ export class ConfigService {
   }
   /** 该月服务质量页的天气列：按「天气设置 → 天气分层设置」该月配置的分层名展示（列表顺序即严重度）。
    *  键映射与评分侧 board.py weather_key 同规则：前 4 档沿用 normal/light/moderate/severe，
-   *  第 5 档起用 wx4/wx5/…（评分侧按层级序号一一对应）；该月未配置时回落默认四级。 */
+   *  第 5 档起用 wx4/wx5/…（评分侧按层级序号一一对应）。
+   *  该月未配置天气分层时**不回落默认四级**：仅保留单个「不分天气」列（key=normal，
+   *  与评分侧未配置时按 normal 档取阈值的口径一致），页面上天气维度即告消失。 */
   private sqWeatherCols(month: string): Array<{ key: string; name: string }> {
     const names = this.wlMonthTiers(month)
       .tiers
       .map((t) => String((t as any).name ?? '').trim())
       .filter(Boolean);
-    if (!names.length) return RT_WEATHER.map((w) => ({ ...w }));
+    if (!names.length) return [{ key: 'normal', name: '不分天气' }];
     return names.map((name, i) => ({
       key: i < RT_WEATHER.length ? RT_WEATHER[i].key : `wx${i}`,
       name,
@@ -850,6 +852,8 @@ export class ConfigService {
       metrics: RT_METRICS,
       date_types: RT_DATE_TYPES,
       weather: this.sqWeatherCols(month),
+      /** 该月是否配置了天气分层（false = 天气维度不参与，前端只展示周中/周末两列）。 */
+      weather_configured: this.wlMonthTiers(month).tiers.length > 0,
       targets: this.sqMonthCells(month),
       weights: this.sqMonthWeights(month),
       ranges: this.sqMonthRanges(month),

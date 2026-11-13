@@ -6,7 +6,11 @@
         v-model="month" type="month" value-format="YYYY-MM"
         placeholder="选择月份" class="asq-month" @change="load"
       />
-      <span class="asq-tip">各考核项在周中 / 周末、不同天气下的 0分 / 60分 / 100分 阈值</span>
+      <span class="asq-tip">
+        {{ weatherConfigured
+          ? '各考核项在周中 / 周末、不同天气下的 0分 / 60分 / 100分 阈值'
+          : '当月未配置天气分层，各考核项按周中 / 周末设置 0分 / 60分 / 100分 阈值' }}
+      </span>
       <span class="sp" />
       <span v-if="savedInfo" class="asq-saved">已保存</span>
       <span v-if="updatedAt" class="asq-updated">最后更新：{{ updatedAt }}（{{ updatedBy || '—' }}）</span>
@@ -91,33 +95,62 @@
           </template>
         </el-table-column>
 
-        <!-- 值列：物理固定 8 列（周中 4 + 周末 4），按每行「分层方式」由 span-method 合并单元格 -->
-        <el-table-column v-for="dt in dateTypes" :key="dt.key" :label="dt.name" align="center">
+        <!-- 值列：已配置天气分层 → 每日型下按天气档位再分列（周中 N + 周末 N）；
+             未配置 → 每日型仅 1 列（内部固定用 normal 键存取，天气维度不参与）。
+             按每行「分层方式」由 span-method 合并单元格 -->
+        <template v-if="weatherConfigured">
+          <el-table-column v-for="dt in dateTypes" :key="dt.key" :label="dt.name" align="center">
+            <el-table-column
+              v-for="wx in weather" :key="wx.key" :label="wx.name"
+              min-width="112" align="center"
+            >
+              <template #default="{ row }">
+                <div class="asq-cell">
+                  <el-input-number
+                    :model-value="tierValue(row.metricKey, dt.key, wx.key, row.tier)"
+                    :min="0"
+                    :max="row.unit === '%' ? 100 : undefined"
+                    :controls="false" size="small" placeholder="—"
+                    :disabled="!isEditable(row.metricKey, dt.key, wx.key)"
+                    @change="(v) => setTier(row.metricKey, dt.key, wx.key, row.tier, v)"
+                  />
+                  <span v-if="row.unit" class="asq-unit">{{ unitLabel(row.unit) }}</span>
+                </div>
+              </template>
+            </el-table-column>
+          </el-table-column>
+        </template>
+        <template v-else>
           <el-table-column
-            v-for="wx in weather" :key="wx.key" :label="wx.name"
+            v-for="dt in dateTypes" :key="'flat-' + dt.key" :label="dt.name"
             min-width="112" align="center"
           >
             <template #default="{ row }">
               <div class="asq-cell">
                 <el-input-number
-                  :model-value="tierValue(row.metricKey, dt.key, wx.key, row.tier)"
+                  :model-value="tierValue(row.metricKey, dt.key, 'normal', row.tier)"
                   :min="0"
                   :max="row.unit === '%' ? 100 : undefined"
                   :controls="false" size="small" placeholder="—"
-                  :disabled="!isEditable(row.metricKey, dt.key, wx.key)"
-                  @change="(v) => setTier(row.metricKey, dt.key, wx.key, row.tier, v)"
+                  :disabled="!isEditable(row.metricKey, dt.key, 'normal')"
+                  @change="(v) => setTier(row.metricKey, dt.key, 'normal', row.tier, v)"
                 />
                 <span v-if="row.unit" class="asq-unit">{{ unitLabel(row.unit) }}</span>
               </div>
             </template>
           </el-table-column>
-        </el-table-column>
+        </template>
       </el-table>
 
       <p class="asq-note">
         留空表示「未设置」；百分比类指标范围 0~100，时长类（秒）不限上限。三档全填时才会校验顺序。
         指标权重按计分方式取不同含义：<strong>权重项 = 百分比</strong>（所有权重项合计须 100%）；<strong>调分项 = 得分区间</strong>（可负，如 -5 ~ +5）。
-        「分层方式」按考核项设置：不分层（该行 8 格合并为 1 格，全部场景共用一套值）／日期分层（合并为周中、周末 2 格）／天气分层（周中 4 格可填，周末 4 格只读并随周中变化）／日期天气分层（8 格各自独立）。保存时按各自分层方式展开成完整矩阵。
+        <template v-if="weatherConfigured">
+          「分层方式」按考核项设置：不分层（该行 8 格合并为 1 格，全部场景共用一套值）／日期分层（合并为周中、周末 2 格）／天气分层（周中各天气格可填，周末各格只读并随周中变化）／日期天气分层（全部格子各自独立）。保存时按各自分层方式展开成完整矩阵。
+        </template>
+        <template v-else>
+          当月未配置天气分层（天气设置页保存分层判定链后此页将出现各天气档位列），目标值仅按周中 / 周末区分。
+        </template>
       </p>
     </el-card>
 
@@ -163,6 +196,8 @@ const month = ref(currentMonth());
 const metrics = ref([]);
 const dateTypes = ref([]);
 const weather = ref([]);
+/** 该月是否配置了天气分层（false = 天气维度不参与，仅展示周中/周末两列）。 */
+const weatherConfigured = ref(false);
 const targets = ref({});
 const weights = ref({});
 const ranges = ref({});
@@ -218,11 +253,22 @@ function unitLabel(u) {
 //   date_weather       → 8 格各自独立（默认）
 /** 值列定义（由整表「分层方式」决定，故所有考核项共用一套列）：
  *  none 不分层→ 1 列（全部场景）      date 日期分层 → 2 列（周中 / 周末）
- *  weather 天气分层 → 4 列（正常天…）  date_weather   → 8 列（周中/周末 × 4 天气）
- *  未分层的维度在保存时按此表展开成完整 8 格矩阵。 */
+ *  weather 天气分层 → N 列（各天气档） date_weather   → 2N 列（周中/周末 × 各天气档）
+ *  未分层的维度在保存时按此表展开成完整矩阵；
+ *  未配置天气分层时天气维度不参与（每日型仅 1 列，内部固定用 normal 键存取）。 */
 function layeringOf(mk) {
-  return layering.value[mk] || 'date_weather';
+  return layering.value[mk] || (weatherConfigured.value ? 'date_weather' : 'date');
 }
+/** 分层方式归一：未配置天气分层时天气维度不参与，weather / date_weather 一律按 date 展示与保存。 */
+function coerceLayering(v) {
+  const key = v || (weatherConfigured.value ? 'date_weather' : 'date');
+  if (!weatherConfigured.value && key !== 'none') return 'date';
+  return key;
+}
+/** 实际参与编辑/保存的天气列：未配置天气分层时只有内部固定列 normal（「不分天气」）。 */
+const wxList = computed(() =>
+  weatherConfigured.value ? weather.value : [{ key: 'normal', name: '不分天气' }]
+);
 /** 该 (dt, wx) 在本项分层方式下由哪个格子代表（未分层维度回落到 周中 / 正常天）。 */
 function repFor(mk, dtKey, wxKey) {
   const L = layeringOf(mk);
@@ -295,9 +341,9 @@ function rowKey(row) {
 /**
  * 单元格合并（两件事）：
  *  ① 前 4 列（考核项 / 计分方式 / 指标权重 / 分层方式）按 3 档行合并；
- *  ② 值列（index>=5，共 8 列：周中4 + 周末4）按**本行**分层方式合并：
- *     不层→ 1 格(colspan 8)；日期分层 → 2 格(各 colspan 4)；
- *     天气分层 → 8 格但周末 4 格只读镜像；日期天气分层 → 8 格各自独立。
+ *  ② 值列（index>=5，共 dateTypes × wxList 列）按**本行**分层方式合并：
+ *     不层→ 1 格；日期分层 → 每日型 1 格；
+ *     天气分层 → 全部格子但周末组只读镜像；日期天气分层 → 全部格子各自独立。
  */
 function spanMethod({ row, columnIndex }) {
   if (columnIndex <= 3) {
@@ -306,14 +352,14 @@ function spanMethod({ row, columnIndex }) {
   }
   if (columnIndex === 4) return { rowspan: 1, colspan: 1 }; // 档位列
   const L = layeringOf(row.metricKey);
-  const vi = columnIndex - 5; // 值列序号 0..7
+  const wxCount = wxList.value.length;
+  const vi = columnIndex - 5; // 值列序号 0..(dateTypes*wxCount-1)
   if (L === 'none') {
-    if (vi === 0) return { rowspan: 1, colspan: 8 };
+    if (vi === 0) return { rowspan: 1, colspan: dateTypes.value.length * wxCount };
     return { rowspan: 0, colspan: 0 };
   }
   if (L === 'date') {
-    if (vi === 0) return { rowspan: 1, colspan: 4 };
-    if (vi === 4) return { rowspan: 1, colspan: 4 };
+    if (vi % wxCount === 0) return { rowspan: 1, colspan: wxCount };
     return { rowspan: 0, colspan: 0 };
   }
   return { rowspan: 1, colspan: 1 };
@@ -328,7 +374,7 @@ function buildEditable(raw) {
     for (const dt of dateTypes.value) {
       editable[m.key][dt.key] = {};
       const srcDt = src[dt.key] || {};
-      for (const wx of weather.value) {
+      for (const wx of wxList.value) {
         const cell = srcDt[wx.key] || {};
         const cellOut = {};
         for (const tier of TIERS) {
@@ -348,6 +394,7 @@ async function load() {
     metrics.value = (res && res.metrics) || [];
     dateTypes.value = (res && res.date_types) || [];
     weather.value = (res && res.weather) || [];
+    weatherConfigured.value = !!(res && res.weather_configured);
     configured.value = !!(res && res.configured);
     targets.value = buildEditable(res && res.targets);
     const w = (res && res.weights) || {};
@@ -368,10 +415,13 @@ async function load() {
     }
     ranges.value = rgEdit;
     kindOptions.value = (res && res.kinds_meta) || [];
-    layeringOptions.value = (res && res.layering_meta) || [];
+    // 未配置天气分层时，天气维度不参与 → 分层方式只保留「不分层 / 日期分层」
+    layeringOptions.value = weatherConfigured.value
+      ? (res && res.layering_meta) || []
+      : ((res && res.layering_meta) || []).filter((l) => l.key === 'none' || l.key === 'date');
     const lv = (res && res.layering) || {};
     const lvEdit = {};
-    for (const m of metrics.value) lvEdit[m.key] = lv[m.key] || 'date_weather';
+    for (const m of metrics.value) lvEdit[m.key] = coerceLayering(lv[m.key]);
     layering.value = lvEdit;
     const k = (res && res.kinds) || {};
     const kEdit = {};
@@ -419,7 +469,7 @@ async function save() {
       const perMetric = {};
       for (const dt of dateTypes.value) {
         const perWx = {};
-        for (const wx of weather.value) {
+        for (const wx of wxList.value) {
           const [rDt, rWx] = repFor(m.key, dt.key, wx.key);
           perWx[wx.key] = {
             t0: tierValue(m.key, rDt, rWx, 't0'),

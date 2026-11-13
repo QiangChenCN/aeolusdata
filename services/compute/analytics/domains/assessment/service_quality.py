@@ -29,7 +29,8 @@
 本模块**不回落任何默认目标值**（与页面「没保存就提示」的口径一致）。
 
 天气维度说明：天气档位按「天气设置」该月天气分层动态取（weather_cols），
-未配置时回落默认四级 SQ_WEATHER；调用方拿不到真实天气时通常按 'normal' 取值。
+未配置时天气维度不参与（仅 normal 单列，不回落默认四级 SQ_WEATHER）；
+调用方拿不到真实天气时通常按 'normal' 取值。
 """
 
 from analytics.core.paths import ROOT, PY_HOME, _ROOT, dirs# noqa: E402,F401 <<<
@@ -239,11 +240,12 @@ def weather_cols(month=None):
 
     键映射与 board.py weather_key 同规则：前 4 档沿用 WEATHER_KEYS
     （normal/light/moderate/severe），第 5 档起用 wx4/wx5/…（序号一一对应，不钳制）；
-    该月未配置天气分层时回落默认四级。
+    该月未配置天气分层时**不回落默认四级**，仅返回单个「不分天气」列
+    （key=normal，与评分侧未配置时按 normal 档取阈值的口径一致）。
     """
     names = [t.get("name") for t in weather_tiers(month) if t.get("name")]
     if not names:
-        return [dict(w) for w in SQ_WEATHER]
+        return [{"key": "normal", "name": "不分天气"}]
     return [
         {"key": WEATHER_KEYS[i] if i < len(WEATHER_KEYS) else f"wx{i}", "name": nm}
         for i, nm in enumerate(names)
