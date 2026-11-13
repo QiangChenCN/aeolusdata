@@ -18,7 +18,7 @@
         <span v-if="!configured" class="apv-warn">{{ month }} 月份尚未保存过配置，请添加时段或复制上月配置，保存后生效</span>
         <span v-if="!editable" class="apv-warn">历史月份只读，不可修改</span>
         <div class="apv-tools">
-          <el-button size="small" :disabled="!editable" @click="copyPrevMonth">复制上月配置</el-button>
+          <el-button type="primary" :disabled="!editable" @click="copyPrevMonth">复制上月配置</el-button>
           <el-button size="small" :disabled="!editable" @click="clearRows">恢复默认</el-button>
         </div>
       </template>
