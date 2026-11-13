@@ -184,8 +184,8 @@ export class AssessmentDetailStoreService implements OnModuleInit {
 
   // ───────────────────────── 实时违规处罚明细 violation_realtime ─────────────────────────
 
-  /** 写入某天的考核违规明细（按 violation_no 幂等 UPSERT）。 */
-  async replaceViolationDay(date: string, rows: Record<string, unknown>[]): Promise<number> {
+  /** 写入某天的考核违规明细（按 violation_no 幂等 UPSERT，只增改不删）。 */
+  async upsertViolationDay(date: string, rows: Record<string, unknown>[]): Promise<number> {
     if (!this.pg.isEnabled) throw new Error('PG 未启用：无法写入实时违规处罚明细');
     return this.upsertViolation('violation_realtime', date, rows);
   }
@@ -201,8 +201,8 @@ export class AssessmentDetailStoreService implements OnModuleInit {
 
   // ───────────────────────── 历史违规处罚明细 violation ─────────────────────────
 
-  /** 写入某天的考核违规历史（按 violation_no 幂等 UPSERT）。 */
-  async replaceViolationHistoryDay(date: string, rows: Record<string, unknown>[]): Promise<number> {
+  /** 写入某天的考核违规历史（按 violation_no 幂等 UPSERT，只增改不删）。 */
+  async upsertViolationHistoryDay(date: string, rows: Record<string, unknown>[]): Promise<number> {
     if (!this.pg.isEnabled) throw new Error('PG 未启用：无法写入历史违规处罚明细');
     return this.upsertViolation('violation', date, rows);
   }

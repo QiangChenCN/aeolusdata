@@ -111,10 +111,14 @@ export class AssessmentViolationFetchService {
   ) {}
 
   /**
-   * 拉取 date 全天违规明细 → 写入 PG（全站所有站点，与前端是否选中无关）：
-   *   · `violation_realtime` 实时违规处罚明细（当天覆盖写，source='assessment'）；
-   *   · `violation`          历史违规处罚明细（回写历史，供历史区间聚合）。
-   * opts.historyOnly=true：只写历史表（回填用，防止破坏今日看板）。
+   * 拉取 date 全天违规明细 → 写入 PG（全站所有站点，与前端是否选中无关）。
+   * 2026-11-13 修订：实时 / 历史两表写入解耦 ——
+   *   · 默认（手动 / 自动刷新）：只写 `violation_realtime` 实时违规处罚明细
+   *     （当天覆盖写，source='assessment'），**不再写历史表**；
+   *   · opts.historyOnly=true（回补任务）：只写 `violation` 历史违规处罚明细
+   *     （供历史区间聚合），不碰实时表，防止破坏今日看板。
+   * 历史表统一由每日 04:00 回补任务写完结后的全天数据
+   * （见 `AssessmentViolationHistorySchedulerService`）。
    * 失败时不写表（保留上一版数据），仅记日志。
    */
   async fetchAndLand(_teams: string[], date: string, opts?: { historyOnly?: boolean }): Promise<{ ok: boolean; msg: string }> {
@@ -145,7 +149,7 @@ export class AssessmentViolationFetchService {
     await this.writeOk(date, rows, historyOnly);
     const msg =
       `违规 ${rows.length} 条` +
-      (historyOnly ? '（已写 violation）' : '（已写 violation_realtime + violation）');
+      (historyOnly ? '（已写历史表 violation）' : '（已写实时表 violation_realtime）');
     this.logger.log(`考核看板违规取数 ${date}：${msg}`);
     return { ok: true, msg };
   }
@@ -155,12 +159,15 @@ export class AssessmentViolationFetchService {
     rows: Record<string, string>[],
     historyOnly = false,
   ): Promise<void> {
-    // 实时违规处罚明细（当天覆盖写，source='assessment' 与违规看板数据隔离）。
-    if (!historyOnly) {
-      await this.detail.replaceViolationDay(date, rows);
+    if (historyOnly) {
+      // 历史回补：只写历史表 violation（供历史区间聚合），不碰实时表（防止破坏今日看板）。
+      await this.detail.upsertViolationHistoryDay(date, rows);
+      return;
     }
-    // 历史违规处罚明细（供历史区间聚合读）。
-    await this.detail.replaceViolationHistoryDay(date, rows);
+    // 手动 / 自动刷新：只写实时违规处罚明细表（当天覆盖写，source='assessment'，
+    // 与违规看板数据隔离）。历史表不再随刷写入 —— 当天最后一次刷新之前的处罚明细
+    // 残缺且跨天无人回补；历史表统一由每日 04:00 回补任务写全天数据。
+    await this.detail.upsertViolationDay(date, rows);
   }
 
   /** 取数失败：不写表（保留上一版数据），仅记日志；读侧当天无数据即判「需刷新」。 */

@@ -14,7 +14,9 @@ build_period 的核心口径（遵循 assessment_overview.py 的「拼计数再�
   · 电联率 / IM 回复率：从 im_contact.db 按送达日期累积（区间求和分子分母，线性可加）。
   · 商家拜访率：从 assessment_history.db 的 visit_history 读区间真实值（缺失则降级 +15）。
 
-历史原始明细来自 assessment_history.db（Nest 取数落盘），今天且历史缺失时回退到实时 JSON 层。
+违规明细归属口径（2026-11-13）：历史日的违规处罚明细按「运单号」JOIN 运单明细取
+运单完成日（delivery.date，完成口径）归日计算 —— 12 号完成的单在 13 号才被投诉 /
+差评，计入 12 号；运单未命中时兜底归违规时间当天。
 """
 from __future__ import annotations
 
@@ -61,25 +63,34 @@ def _read_history_rows(table: str, team_id: str, date: str):
         con.close()
 
 
-def _read_violation_history_rows(team_id: str, date: str):
-    """读某队某日的历史违规明细（表 `violation`）；无/不可用返回 None。
+def _read_violation_history_range(team_id: str, start: str, end: str):
+    """读区间内某队的历史违规明细（表 `violation`），返回 (stat_date, row) 列表。
 
-    与 `_read_history_rows` 的差异：历史违规表列名是 `stat_date` + `raw_json`
-    （历史运单表是 `date` + `payload`），且没有 team_id 列 —— 明细行自带「团队ID」，
-    按站点过滤在此解析行内容完成（与实时明细同口径）。
+    违规明细的考核归属日**不取违规时间当天**，而是按「运单号」JOIN 运单明细的完成日
+    （运单导出为完成口径，delivery.date 即完成日期）。违规时间可能晚于运单完成日
+    （投诉/差评滞后数日），故一次性读 [start, end] 的全量行（end 传今天，确保
+    「晚到的违规」也能被归回其运单完成日），站点过滤按行内「团队ID」在 Python 完成。
+    无/不可用返回 None。
     """
     con = connect()
     if con is None:
         return None
     try:
         with con.cursor() as cur:
-            cur.execute("SELECT raw_json FROM violation WHERE stat_date = %s", (date,))
-            rows = [json.loads(r[0]) for r in cur.fetchall()]
+            cur.execute(
+                "SELECT stat_date, raw_json FROM violation "
+                "WHERE stat_date >= %s AND stat_date <= %s",
+                (start, end),
+            )
+            pairs = [(sd, json.loads(rj)) for sd, rj in cur.fetchall()]
     except Exception:
         return None
     finally:
         con.close()
-    return [r for r in rows if RV._pick(r, RV.TEAM_ID_KEYS) == str(team_id)]
+    return [
+        (sd, r) for sd, r in pairs
+        if RV._pick(r, RV.TEAM_ID_KEYS) == str(team_id)
+    ]
 
 
 def _date_iter(start: str, end: str):
@@ -231,30 +242,43 @@ def build_period(team_id: str, start: str, end: str) -> dict:
         "visit_rate": visit_rate,
     }
 
-    # 按单元格池化
+    # ── 第一遍：逐日装载运单明细（完成口径），并建「运单标识 → 完成日」映射 ──
     cells: dict[tuple, dict] = {}
+    day_key: dict[str, tuple] = {}
+    waybill_date: dict[str, str] = {}
     for d in _date_iter(start, end):
         delivery_rows = _read_history_rows("delivery", team_id, d)
         if delivery_rows is None:
             delivery_rows = DS.load_delivery_orders(team_id) if d == today else []
-        # 历史违规处罚明细：PG 表 `violation`（由考核违规取数按天写入）。
-        violation_rows = _read_violation_history_rows(team_id, d)
-        if violation_rows is None:
-            violation_rows = RV.load_team(team_id, d) if d == today else []
-        if violation_rows is None:
-            violation_rows = []
-
-        if not delivery_rows and not violation_rows:
+        if not delivery_rows:
             continue
+        for o in delivery_rows:
+            w = str(OR.order_val(o, RV.WAYBILL_JOIN_KEYS) or "").strip()
+            if w:
+                waybill_date[w] = d
 
         date_type = SQ.resolve_date_type(d, settings.get("date_overrides"))
-        wx_label = RTB.weather_level(delivery_rows, d) if delivery_rows else None
+        wx_label = RTB.weather_level(delivery_rows, d)
         key = (date_type, wx_label)
-        bucket = cells.setdefault(
-            key, {"orders": [], "violations": []}
+        day_key[d] = key
+        cells.setdefault(key, {"orders": [], "violations": []})["orders"].extend(
+            delivery_rows
         )
-        bucket["orders"].extend(delivery_rows)
-        bucket["violations"].extend(violation_rows)
+
+    # ── 第二遍：违规明细按「运单完成日」归属（不再按违规时间当天归日）──
+    # 违规行用「运单号」JOIN 运单明细：命中 → 归到运单完成日；未命中（运单不在本区间 /
+    # 运单号缺失）→ 兜底归到违规时间当天（当日不在区间或无运单数据则不计入）。
+    # 违规时间可晚于完成日（投诉/差评滞后），故违规读取范围延伸到今天。
+    vio_pairs = _read_violation_history_range(team_id, start, today) or []
+    day_violations: dict[str, list] = {}
+    for sd, r in vio_pairs:
+        w = str(r.get("运单号", "") or "").strip()
+        day = waybill_date.get(w) or str(r.get("违规时间", "") or "")[:10] or sd
+        if day not in day_key:
+            continue
+        day_violations.setdefault(day, []).append(r)
+    for d, lst in day_violations.items():
+        cells[day_key[d]]["violations"].extend(lst)
 
     if not cells:
         return _empty_period(team_id, start, end, settings, extra_values)
@@ -325,7 +349,9 @@ def build_period(team_id: str, start: str, end: str) -> dict:
         "pushed_order_volume": agg["pushed"],
         "delivery_completed": agg["completed"],
         "t8": agg["t8"],
+        "t8_timeout": agg["t8"],
         "gaobi": agg["gaobi"],
+        "gaobi_order": agg["gaobi"],
         "weather_level": weather_level,
         "adverse_ratio": adverse_ratio,
         "complaint": agg["complaint"],
@@ -370,7 +396,8 @@ def _empty_period(team_id, start, end, settings, extra_values):
         "team_name": TC.TEAM_NAMES.get(team_id, team_id),
         "pushed_order_volume": 0,
         "delivery_completed": 0,
-        "t8": 0, "gaobi": 0, "weather_level": None, "adverse_ratio": 0.0,
+        "t8": 0, "t8_timeout": 0, "gaobi": 0, "gaobi_order": 0,
+        "weather_level": None, "adverse_ratio": 0.0,
         "complaint": 0, "bad_review": 0, "claim": 0, "cancel_liable": 0,
         "early_delivered": 0, "gaobi_cancel_liable": 0,
         "false_report_slow_unfinished": 0,

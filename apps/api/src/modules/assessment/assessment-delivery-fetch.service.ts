@@ -5,11 +5,19 @@ import { AssessmentHistoryStoreService } from './assessment-history-store.servic
 import { AssessmentDetailStoreService } from './assessment-detail-store.service';
 
 /**
- * 考核看板 —— 运单明细「自有取数入库」（2026-10-23 起：不再落盘 JSON，改写 PG）。
+ * 考核看板 —— 运单明细「自有取数入库」（2026-10-23 起：不再落盘 JSON，改写 PG；
+ * 2026-11-13 修订：实时 / 历史两表写入解耦）。
  *
  * 写入两张表（读写入口都在 `AssessmentDetailStoreService`）：
- *   · `delivery_realtime` 实时运单明细（全站当天快照，覆盖写）—— 今日看板计算源；
- *   · `delivery`          历史运单明细（按 order_id + date 幂等 UPSERT）—— 历史区间聚合源。
+ *   · `delivery_realtime` 实时运单明细（全站当天快照，覆盖写）—— 今日看板计算源，
+ *     手动 / 自动刷新写入；
+ *   · `delivery`          历史运单明细（按 order_id + date 幂等 UPSERT）—— 历史区间聚合源，
+ *     **仅**由每日 04:00 回补任务写全天数据
+ *     （`AssessmentDeliveryHistorySchedulerService`，historyOnly=true）。
+ *
+ * 为什么刷新不再写历史表：刷新时间窗是「今日 00:00 ~ 刷新时刻」，落进历史表的是残缺
+ * 快照（例：22:33 刷新 → 当天只入 5753/6345 条），跨天后无人回补，历史聚合就永久带着
+ * 残缺口径。改为凌晨统一回补全天数据，保证历史表只含已完结的完整日。
  *
  * 取数复用底层 primitive `OrdersFetchService.fetchOrders`（导出优先 + 分页兜底 + 会话重登，
  * 属取数基础设施，等同 cache 数据层，按需复用）；解析 / 入库本服务独立实现。
@@ -17,7 +25,8 @@ import { AssessmentDetailStoreService } from './assessment-detail-store.service'
  * 时间窗：实时 = 北京当日 00:00:00 ~ 当前（截至此刻的今日运单）。
  *
  * 触发：前端「考核看板」刷新（拉运单）→ `POST /api/assessment-fetch/delivery`。
- * 读侧：Python `analytics/domains/assessment/delivery_source.py` 经内部端点读 `delivery_realtime`。
+ * 读侧：Python `analytics/domains/assessment/delivery_source.py` 经内部端点读 `delivery_realtime`；
+ *       历史区间由 Python `period.py` 直读 PG `delivery`。
  */
 
 /** 运单稳定主键：优先 trackingId / 运单id / orderNo，缺失则回退整行哈希（保底，幂等）。 */
@@ -77,23 +86,26 @@ export class AssessmentDeliveryFetchService {
     await this.writeOk(d, rows, historyOnly);
     const msg =
       `运单 ${rows.length} 条` +
-      (historyOnly ? '，已写历史表 delivery' : '，已写 delivery_realtime + delivery');
+      (historyOnly ? '，已写历史表 delivery' : '，已写实时表 delivery_realtime');
     this.logger.log(`考核看板运单取数 ${d}：${msg}`);
     return { ok: true, msg };
   }
 
   private async writeOk(date: string, rows: OrderRow[], historyOnly = false): Promise<void> {
-    // 实时运单明细表（全站当天快照，覆盖写）—— 今日看板计算源。
-    if (!historyOnly) {
-      await this.detail.replaceDeliveryDay(date, rows as unknown as Record<string, unknown>[]);
+    if (historyOnly) {
+      // 历史回补：只写历史表 delivery（幂等 UPSERT），不碰实时表（防止破坏今日看板）。
+      await this.history.upsertDeliveries(rows.map((o) => ({
+        id: deliveryId(o),
+        teamId: deliveryTeam(o),
+        date,
+        payload: o,
+      })));
+      return;
     }
-    // 历史运单明细表（按 order_id + date 幂等 UPSERT）—— 历史区间聚合源。
-    await this.history.upsertDeliveries(rows.map((o) => ({
-      id: deliveryId(o),
-      teamId: deliveryTeam(o),
-      date,
-      payload: o,
-    })));
+    // 手动 / 自动刷新：只写实时表 delivery_realtime（全站当天快照，覆盖写）。
+    // 历史表不再随刷快照写入 —— 刷新时间窗只到「当前时刻」，写进历史的是残缺数据
+    // 且跨天无人回补；历史表统一由每日 04:00 回补任务写全天数据。
+    await this.detail.replaceDeliveryDay(date, rows as unknown as Record<string, unknown>[]);
   }
 
   /** 取数失败：不写表（保留上一版数据），仅记日志；读侧当天无数据即判「需刷新」。 */

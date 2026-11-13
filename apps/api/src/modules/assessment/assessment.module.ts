@@ -1,7 +1,9 @@
 import { Module } from '@nestjs/common';
 import { FetchModule } from '../../infra/fetch/fetch.module';
 import { AssessmentViolationFetchService } from './assessment-violation-fetch.service';
+import { AssessmentViolationHistorySchedulerService } from './assessment-violation-history-scheduler.service';
 import { AssessmentDeliveryFetchService } from './assessment-delivery-fetch.service';
+import { AssessmentDeliveryHistorySchedulerService } from './assessment-delivery-history-scheduler.service';
 import { AssessmentCooldownService } from './assessment-cooldown.service';
 import { AssessmentEventsService } from './assessment-events.service';
 import { AssessmentAutoRefreshService } from './assessment-auto-refresh.service';
@@ -26,7 +28,9 @@ import { AssessmentInternalController } from './assessment-internal.controller';
   controllers: [AssessmentInternalController, AssessmentController],
   providers: [
     AssessmentViolationFetchService,
+    AssessmentViolationHistorySchedulerService,
     AssessmentDeliveryFetchService,
+    AssessmentDeliveryHistorySchedulerService,
     AssessmentCooldownService,
     AssessmentEventsService,
     AssessmentAutoRefreshService,
