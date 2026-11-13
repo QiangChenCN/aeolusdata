@@ -162,6 +162,10 @@ def _cell_scores(pooled_orders, pooled_violations, team_id, date_type, settings,
         "compound_overtime_score": scores.get("compound_overtime"),
         "total_score": scores.get("total_score"),
         "tiers": _cell_tiers(settings, date_type, wx),
+        "tier_scores": {
+            m: {t["key"]: t["score"] for t in lst}
+            for m, lst in (settings.get("tiers") or {}).items() if lst
+        },
         "date_type": date_type,
         "weather_label": weather_label,
         "weather": wx,
@@ -178,7 +182,8 @@ def _extra_contribution(settings, metric, value, date_type, weather):
         return float(w)  # 实时 +15 假设的等价：该项记满分
     tiers = SQ.metric_tiers(settings, metric, date_type, weather)
     direction = SQ.metric_direction(metric)
-    sc = SQ.score_metric(value, tiers, direction) if tiers else None
+    tier_map = settings.get("tiers") if isinstance(settings.get("tiers"), dict) else {}
+    sc = SQ.score_metric(value, tiers, direction, scores=tier_map.get(metric)) if tiers else None
     if sc is None:
         return float(w)
     return float(sc) * (float(w) / 100.0)

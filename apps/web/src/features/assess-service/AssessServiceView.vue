@@ -6,11 +6,6 @@
         v-model="month" type="month" value-format="YYYY-MM"
         placeholder="选择月份" class="asq-month" @change="load"
       />
-      <span class="asq-tip">
-        {{ weatherConfigured
-          ? '各考核项在周中 / 周末、不同天气下的 0分 / 60分 / 100分 阈值'
-          : '当月未配置天气分层，各考核项按周中 / 周末设置 0分 / 60分 / 100分 阈值' }}
-      </span>
       <span class="sp" />
       <span v-if="savedInfo" class="asq-saved">已保存</span>
       <span v-if="updatedAt" class="asq-updated">最后更新：{{ updatedAt }}（{{ updatedBy || '—' }}）</span>
@@ -24,10 +19,6 @@
         <span v-if="weightSum.filled" class="asq-sum" :class="{ 'is-bad': Math.abs(weightSum.sum - 100) > 0.1 }">
           权重项合计 {{ weightSum.sum }}%
         </span>
-        <span class="asq-legend">
-          <span class="asq-legend-item"><i class="asq-dot is-pos" />越高越好（0&lt;60&lt;100）</span>
-          <span class="asq-legend-item"><i class="asq-dot is-neg" />越低越好（0&gt;60&gt;100）</span>
-        </span>
       </template>
 
       <el-table
@@ -38,9 +29,10 @@
           <template #default="{ row }">
             <div class="asq-metric">
               <span class="asq-metric-name">{{ row.name }}</span>
-              <el-tag size="small" :type="row.direction === 'pos' ? 'success' : 'danger'" effect="plain">
-                {{ row.direction === 'pos' ? '越高越好' : '越低越好' }}
-              </el-tag>
+              <el-button
+                size="small" text type="primary" class="asq-metric-add"
+                @click="addTier(row.metricKey)"
+              >+ 档位</el-button>
             </div>
           </template>
         </el-table-column>
@@ -89,9 +81,22 @@
           </template>
         </el-table-column>
 
-        <el-table-column label="档位" fixed="left" min-width="88" align="center">
+        <el-table-column label="档位（得分）" fixed="left" min-width="140" align="center">
           <template #default="{ row }">
-            <span class="asq-tier" :class="'is-' + row.tier">{{ row.tierLabel }}</span>
+            <span v-if="!row.tier" class="asq-unit">未设置，点「+ 档位」添加</span>
+            <div v-else class="asq-tier-cell">
+              <el-input-number
+                :model-value="tierScoreOf(row.metricKey, row.tier)" :min="0" :max="100"
+                :controls="false" size="small" placeholder="得分"
+                class="asq-tier-score"
+                @change="(v) => setTierScore(row.metricKey, row.tier, v)"
+              />
+              <span class="asq-unit">分档</span>
+              <el-button
+                v-if="tiersOf(row.metricKey).length > 2" size="small" text type="danger"
+                class="asq-tier-del" @click="removeTier(row.metricKey, row.tier)"
+              >删除</el-button>
+            </div>
           </template>
         </el-table-column>
 
@@ -107,6 +112,7 @@
               <template #default="{ row }">
                 <div class="asq-cell">
                   <el-input-number
+                    v-if="row.tier"
                     :model-value="tierValue(row.metricKey, dt.key, wx.key, row.tier)"
                     :min="0"
                     :max="row.unit === '%' ? 100 : undefined"
@@ -114,7 +120,7 @@
                     :disabled="!isEditable(row.metricKey, dt.key, wx.key)"
                     @change="(v) => setTier(row.metricKey, dt.key, wx.key, row.tier, v)"
                   />
-                  <span v-if="row.unit" class="asq-unit">{{ unitLabel(row.unit) }}</span>
+                  <span v-if="row.tier && row.unit" class="asq-unit">{{ unitLabel(row.unit) }}</span>
                 </div>
               </template>
             </el-table-column>
@@ -128,6 +134,7 @@
             <template #default="{ row }">
               <div class="asq-cell">
                 <el-input-number
+                  v-if="row.tier"
                   :model-value="tierValue(row.metricKey, dt.key, 'normal', row.tier)"
                   :min="0"
                   :max="row.unit === '%' ? 100 : undefined"
@@ -135,29 +142,18 @@
                   :disabled="!isEditable(row.metricKey, dt.key, 'normal')"
                   @change="(v) => setTier(row.metricKey, dt.key, 'normal', row.tier, v)"
                 />
-                <span v-if="row.unit" class="asq-unit">{{ unitLabel(row.unit) }}</span>
+                <span v-if="row.tier && row.unit" class="asq-unit">{{ unitLabel(row.unit) }}</span>
               </div>
             </template>
           </el-table-column>
         </template>
       </el-table>
 
-      <p class="asq-note">
-        留空表示「未设置」；百分比类指标范围 0~100，时长类（秒）不限上限。三档全填时才会校验顺序。
-        指标权重按计分方式取不同含义：<strong>权重项 = 百分比</strong>（所有权重项合计须 100%）；<strong>调分项 = 得分区间</strong>（可负，如 -5 ~ +5）。
-        <template v-if="weatherConfigured">
-          「分层方式」按考核项设置：不分层（该行 8 格合并为 1 格，全部场景共用一套值）／日期分层（合并为周中、周末 2 格）／天气分层（周中各天气格可填，周末各格只读并随周中变化）／日期天气分层（全部格子各自独立）。保存时按各自分层方式展开成完整矩阵。
-        </template>
-        <template v-else>
-          当月未配置天气分层（天气设置页保存分层判定链后此页将出现各天气档位列），目标值仅按周中 / 周末区分。
-        </template>
-      </p>
     </el-card>
 
     <el-card class="asq-card asq-card--fixed" shadow="never">
       <template #header>
         <span class="asq-card-h">特殊日期设置</span>
-        <span class="asq-tip">标记当月需「反着算」的日期：原本周中按周末算、原本周末按周中算。评分接入后，这些日期将走覆盖后的日型阈值。</span>
       </template>
       <div class="asq-sp">
         <div v-for="(o, i) in dateOverrides" :key="o.id" class="asq-sp-row">
@@ -172,7 +168,7 @@
           <el-button size="small" text type="danger" @click="removeOverride(i)">删除</el-button>
         </div>
         <div class="asq-sp-actions">
-          <el-button size="small" @click="addOverride">+ 添加特殊日期</el-button>
+          <el-button type="primary" size="default" @click="addOverride">+ 添加特殊日期</el-button>
           <span v-if="!dateOverrides.length" class="asq-tip">暂无特殊日期</span>
         </div>
       </div>
@@ -186,11 +182,13 @@ import {
   fetchServiceQualityTargets, saveServiceQualityTargets,
 } from '../../api/dashboards.js';
 
-const TIERS = [
-  { key: 't0', label: '0 分档' },
-  { key: 't60', label: '60 分档' },
-  { key: 't100', label: '100 分档' },
-];
+/** 档位（得分锚点）：按月、按考核项可配 {metricKey: [{key, score}]}；
+ *  key 为阈值存储键；无固定/默认档位，空列表 = 该项未设置（由用户自行添加）。 */
+const tiersMap = ref({});
+let _tierSeq = 0;
+function tiersOf(mk) {
+  return tiersMap.value[mk] || [];
+}
 
 const month = ref(currentMonth());
 const metrics = ref([]);
@@ -236,8 +234,51 @@ function fmtTime(v) {
   return String(v).replace('T', ' ').slice(0, 19);
 }
 
-function emptyTiers() {
-  return { t0: null, t60: null, t100: null };
+function emptyTiers(mk) {
+  const out = {};
+  for (const t of tiersOf(mk)) out[t.key] = null;
+  return out;
+}
+
+// ===================== 档位编辑（按考核项独立） =====================
+function tierIndex(mk, key) {
+  return tiersOf(mk).findIndex((t) => t.key === key);
+}
+function tierScoreOf(mk, key) {
+  const t = tiersOf(mk).find((x) => x.key === key);
+  return t && Number.isFinite(Number(t.score)) ? Number(t.score) : null;
+}
+function setTierScore(mk, key, v) {
+  const t = tiersOf(mk).find((x) => x.key === key);
+  if (!t) return;
+  t.score = _num(v);
+}
+function addTier(mk) {
+  _tierSeq += 1;
+  if (!tiersMap.value[mk]) tiersMap.value[mk] = [];
+  tiersMap.value[mk].push({ key: `tx${_tierSeq}_${Date.now()}`, score: null });
+}
+function removeTier(mk, key) {
+  const list = tiersMap.value[mk] || [];
+  const i = tierIndex(mk, key);
+  if (i < 0 || list.length <= 2) return; // 每个考核项至少保留 2 档
+  list.splice(i, 1);
+}
+/** 档位合法性（逐考核项）：留空 = 未设置放行；非空须 ≥2 档且每档得分 0~100 互不相同。 */
+function tierListError() {
+  for (const m of metrics.value) {
+    const list = tiersOf(m.key);
+    if (!list.length) continue; // 未设置：放行
+    if (list.length < 2) return `${m.name}：至少需要 2 个档位（或全部删除表示未设置）`;
+    const scores = [];
+    for (const t of list) {
+      const s = Number(t.score);
+      if (!Number.isFinite(s) || s < 0 || s > 100) return `${m.name}：每个档位的得分须为 0~100 的数值`;
+      scores.push(Math.round(s * 100) / 100);
+    }
+    if (new Set(scores).size !== scores.length) return `${m.name}：各档位的得分不能重复`;
+  }
+  return null;
 }
 
 /** 单位显示：'%'→%，'s'→秒 */
@@ -293,7 +334,7 @@ function tierValue(mk, dtKey, wxKey, tier) {
 function setTier(mk, dtKey, wxKey, tier, v) {
   if (!targets.value[mk]) targets.value[mk] = {};
   if (!targets.value[mk][dtKey]) targets.value[mk][dtKey] = {};
-  if (!targets.value[mk][dtKey][wxKey]) targets.value[mk][dtKey][wxKey] = { t0: null, t60: null, t100: null };
+  if (!targets.value[mk][dtKey][wxKey]) targets.value[mk][dtKey][wxKey] = emptyTiers(mk);
   targets.value[mk][dtKey][wxKey][tier] = _num(v);
 }
 
@@ -312,17 +353,31 @@ const weightSum = computed(() => {
   return { sum: Math.round(sum * 100) / 100, filled };
 });
 
-/** 行 = 考核项 × 档位（7 × 3 = 21 行）；考核项列按3 行合并 */
+/** 行 = 考核项 × 该项档位；考核项列按该项档位行数合并（各考核项行数可不同）。
+ *  该项未添加任何档位时生成一条占位行（tier=null），用于承载「+ 档位」入口与「未设置」提示。 */
 const rows = computed(() => {
   const out = [];
   for (const m of metrics.value) {
     const cells = targets.value[m.key] || {};
-    TIERS.forEach((t, i) => {
+    const list = tiersOf(m.key);
+    if (!list.length) {
+      out.push({
+        rowKey: `${m.key}__placeholder`,
+        metricKey: m.key,
+        tier: null,
+        tierIndex: 0,
+        name: m.name,
+        unit: m.unit,
+        direction: m.direction,
+        cells,
+      });
+      continue;
+    }
+    list.forEach((t, i) => {
       out.push({
         rowKey: `${m.key}__${t.key}`,
         metricKey: m.key,
         tier: t.key,
-        tierLabel: t.label,
         tierIndex: i,
         name: m.name,
         unit: m.unit,
@@ -340,14 +395,14 @@ function rowKey(row) {
 
 /**
  * 单元格合并（两件事）：
- *  ① 前 4 列（考核项 / 计分方式 / 指标权重 / 分层方式）按 3 档行合并；
+ *  ① 前 4 列（考核项 / 计分方式 / 指标权重 / 分层方式）按档位行数合并；
  *  ② 值列（index>=5，共 dateTypes × wxList 列）按**本行**分层方式合并：
  *     不层→ 1 格；日期分层 → 每日型 1 格；
  *     天气分层 → 全部格子但周末组只读镜像；日期天气分层 → 全部格子各自独立。
  */
 function spanMethod({ row, columnIndex }) {
   if (columnIndex <= 3) {
-    if (row.tierIndex === 0) return { rowspan: TIERS.length, colspan: 1 };
+    if (row.tierIndex === 0) return { rowspan: Math.max(1, tiersOf(row.metricKey).length), colspan: 1 };
     return { rowspan: 0, colspan: 0 };
   }
   if (columnIndex === 4) return { rowspan: 1, colspan: 1 }; // 档位列
@@ -377,7 +432,7 @@ function buildEditable(raw) {
       for (const wx of wxList.value) {
         const cell = srcDt[wx.key] || {};
         const cellOut = {};
-        for (const tier of TIERS) {
+        for (const tier of tiersOf(m.key)) {
           const v = cell[tier.key];
           cellOut[tier.key] = v === null || v === undefined ? null : Number(v);
         }
@@ -394,6 +449,14 @@ async function load() {
     metrics.value = (res && res.metrics) || [];
     dateTypes.value = (res && res.date_types) || [];
     weather.value = (res && res.weather) || [];
+    // 档位配置（按考核项 {metric: [{key,score}]}；空 = 该项未设置，不注入默认档位）
+    const tRes = (res && res.tiers) || {};
+    const tMap = {};
+    for (const m of metrics.value) {
+      const list = Array.isArray(tRes) ? tRes : (tRes[m.key] || []);
+      tMap[m.key] = list.map((t) => ({ key: t.key, score: Number(t.score) }));
+    }
+    tiersMap.value = tMap;
     weatherConfigured.value = !!(res && res.weather_configured);
     configured.value = !!(res && res.configured);
     targets.value = buildEditable(res && res.targets);
@@ -450,14 +513,23 @@ async function save() {
   saving.value = true;
   savedInfo.value = false;
   try {
+    // 档位合法性先校验（≥2 档、得分 0~100 且互不相同）
+    const tierErr = tierListError();
+    if (tierErr) {
+      ElMessage.error(tierErr);
+      return;
+    }
     const body = {
-      month: month.value, targets: {}, weights: {}, ranges: {}, kinds: {}, layering: {},
+      month: month.value, tiers: {}, targets: {}, weights: {}, ranges: {}, kinds: {}, layering: {},
       date_overrides: {},
     };
     for (const m of metrics.value) {
       const kind = kinds.value[m.key] ?? null;
       const w = weights.value[m.key];
       const r = ranges.value[m.key] || {};
+      const metricTiers = tiersOf(m.key);
+      // 该考核项的档位列表（key 稳定，分值可改；增删不影响其他考核项）
+      body.tiers[m.key] = metricTiers.map((t) => ({ key: t.key, score: Number(t.score) }));
       body.kinds[m.key] = kind;
       body.layering[m.key] = layeringOf(m.key);
       // 权重项存百分比；调分项存得分区间（权重留空）
@@ -465,17 +537,15 @@ async function save() {
       body.ranges[m.key] = kind === 'adjust'
         ? { min: _num(r.min), max: _num(r.max) }
         : { min: null, max: null };
-      // 按分层方式展开成完整 8 格矩阵（非代表格取其代表列的值）
+      // 按分层方式展开成完整矩阵（非代表格取其代表列的值）；阈值键 = 该考核项档位 key
       const perMetric = {};
       for (const dt of dateTypes.value) {
         const perWx = {};
         for (const wx of wxList.value) {
           const [rDt, rWx] = repFor(m.key, dt.key, wx.key);
-          perWx[wx.key] = {
-            t0: tierValue(m.key, rDt, rWx, 't0'),
-            t60: tierValue(m.key, rDt, rWx, 't60'),
-            t100: tierValue(m.key, rDt, rWx, 't100'),
-          };
+          const cell = {};
+          for (const t of metricTiers) cell[t.key] = tierValue(m.key, rDt, rWx, t.key);
+          perWx[wx.key] = cell;
         }
         perMetric[dt.key] = perWx;
       }
@@ -531,11 +601,6 @@ onMounted(load);
 .asq-sum.is-bad { color: var(--el-color-danger); font-weight: 600; }
 /* 分层方式下拉 */
 .asq-layer { width: 112px; }
-.asq-legend { margin-left: auto; display: flex; gap: var(--sp-12); }
-.asq-legend-item { display: inline-flex; align-items: center; gap: 4px; font-size: var(--el-font-size-extra-small); color: var(--el-text-color-secondary); }
-.asq-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
-.asq-dot.is-pos { background: var(--el-color-success); }
-.asq-dot.is-neg { background: var(--el-color-danger); }
 .asq-tip { font-size: var(--el-font-size-extra-small); color: var(--el-text-color-secondary); }
 .asq-table { flex: 1 1 auto; min-height: 0; --el-component-size: 28px; }
 .asq-table :deep(.el-table__cell) { padding: 6px 0; }
@@ -557,10 +622,10 @@ onMounted(load);
 .asq-weight-cell :deep(.el-input-number) { width: 64px; }
 .asq-range-cell :deep(.el-input-number) { width: 52px; }
 .asq-tilde { color: var(--el-text-color-secondary); font-size: 12px; }
-.asq-tier { font-size: 12px; color: var(--el-text-color-secondary); }
-.asq-tier.is-t100 { color: var(--el-color-success); }
-.asq-tier.is-t0 { color: var(--el-color-danger); }
-.asq-note { margin: var(--sp-8) 0 0; font-size: var(--el-font-size-extra-small); color: var(--el-text-color-secondary); }
+/* 档位列：得分可编辑 + 删除按钮；考核项合并格内加「+ 档位」 */
+.asq-tier-cell { display: flex; align-items: center; justify-content: center; gap: 4px; }
+.asq-tier-cell :deep(.el-input-number) { width: 56px; }
+.asq-metric-add { padding: 0 4px; height: 20px; font-size: 12px; }
 .asq-updated { font-size: var(--el-font-size-extra-small); color: var(--el-text-color-secondary); }
 .asq-saved { font-size: var(--el-font-size-extra-small); color: #1aac5a; }
 /* 特殊日期设置：卡片不撑满，按内容高度；列表行内联排列 */

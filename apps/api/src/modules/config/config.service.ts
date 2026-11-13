@@ -728,15 +728,17 @@ export class ConfigService {
 
   // ============================================================ 服务质量考核设置
   // 考核项 / 日期类型 / 天气 三维与 assessment 口径一致（同一批 RT_METRICS 等常量），
-  // 差别只有两点：① 按月份独立；② 每格是 t0/t60/t100 三档阈值（0分/60分/100分）而非单值。
+  // 差别只有两点：① 按月份独立；② 每格是各档位阈值（档位 = 得分锚点，档位列表按月可配，
+  // 如 0/60/100 或 0/60/80/100），而非固定三档。
   //
   // 落盘：{ version, updated_at, updated_by, months: { "<YYYY-MM>": {
+  //     tiers:   { "<metric>": [ { key, score } ] }, // 档位配置（按考核项独立增减；score 升序；空 = 未设置，无默认档位）
   //     weights: { "<metric>": number|null },        // 权重项：百分比 0~100
   //     ranges:  { "<metric>": { min, max } },      // 调分项：得分区间（可负）
   //     kinds:   { "<metric>": "weight"|"adjust"|null },
   //     layering:     { "<metric>": "none"|"date"|"weather"|"date_weather" }, // 按考核项
   //     date_overrides: { "<YYYY-MM-DD>": "weekday"|"weekend" }, // 特殊日期：强制按周中/周末算
-  //     "<metric>": { "<date_type>": { "<weather>": { t0, t60, t100 } } } } } }
+  //     "<metric>": { "<date_type>": { "<weather>": { "<tierKey>": number|null } } } } } }
   private sqPath(): string {
     // 后端本地状态统一落 apps/api/runtime/（带点前缀，与 .users.json / cron.db 等同目录）
     return dirs.runtime('.service_quality_targets.json');
@@ -745,7 +747,10 @@ export class ConfigService {
     const d = this.readJson(this.sqPath());
     return d && typeof d === 'object' ? d : {};
   }
-  private static readonly SQ_TIERS = ['t0', 't60', 't100'] as const;
+  /** 旧月份兼容：固定三档时代的历史口径（仅用于识别旧数据键集，不再作为默认档位注入）。 */
+  private static readonly SQ_LEGACY_TIERS: Array<{ key: string; score: number }> = [
+    { key: 't0', score: 0 }, { key: 't60', score: 60 }, { key: 't100', score: 100 },
+  ];
   /** 单个阈值归一化：空 → null（未设置）；负数/超范围（%）→ null（丢弃脏值）。 */
   private sqNormNum(v: unknown, metric: string): number | null {
     if (v === null || v === undefined || v === '') return null;
@@ -755,44 +760,94 @@ export class ConfigService {
     if (m && m.unit === '%' && f > 100) return null;
     return Math.round(f * 100) / 100;
   }
-  private sqNormTiers(src: any, metric: string): { t0: number | null; t60: number | null; t100: number | null } {
+  /** 档位列表归一化：[{key,score}]，score 0~100、key 非空且唯一，按 score 升序；脏条目剔除；
+   *  不足 2 档 → []（未设置；不再注入默认三档）。 */
+  private sqNormTierList(src: unknown): Array<{ key: string; score: number }> {
+    const seen = new Set<string>();
+    const out: Array<{ key: string; score: number }> = [];
+    if (Array.isArray(src)) {
+      for (const t of src) {
+        if (!t || typeof t !== 'object') continue;
+        const key = String((t as any).key ?? '').trim();
+        const score = Number((t as any).score);
+        if (!key || seen.has(key) || !Number.isFinite(score) || score < 0 || score > 100) continue;
+        seen.add(key);
+        out.push({ key, score: Math.round(score * 100) / 100 });
+      }
+    }
+    out.sort((a, b) => a.score - b.score);
+    return out;
+  }
+  /** 档位配置（**按考核项**）：{ "<metric>": [{key,score}] }，各考核项可独立增减档位；
+   *  空列表 = 该项未设置（不注入默认档位）。兼容旧形态：数组（历史全员共用一份）→ 平铺给所有指标。 */
+  private sqNormTierMap(src: unknown): Record<string, Array<{ key: string; score: number }>> {
+    const out: Record<string, Array<{ key: string; score: number }>> = {};
+    if (Array.isArray(src)) {
+      const shared = this.sqNormTierList(src);
+      for (const m of RT_METRICS) out[m.key] = shared.map((t) => ({ ...t }));
+      return out;
+    }
+    const d = src && typeof src === 'object' && !Array.isArray(src) ? (src as Record<string, unknown>) : {};
+    for (const m of RT_METRICS) out[m.key] = this.sqNormTierList(d[m.key]);
+    return out;
+  }
+  /** 该月档位配置（按考核项；空 = 未设置，无默认档位）。 */
+  private sqMonthTiers(month: string): Record<string, Array<{ key: string; score: number }>> {
+    const all = this.sqLoadAll();
+    const months = all.months && typeof all.months === 'object' ? all.months : {};
+    const entry = months[month] && typeof months[month] === 'object' ? months[month] : {};
+    return this.sqNormTierMap(entry.tiers);
+  }
+  /** 逐档位归一化某格阈值（键集 = 该月档位 key 列表）。 */
+  private sqNormTiers(src: any, metric: string, tierKeys: string[]): Record<string, number | null> {
     const s = src && typeof src === 'object' ? src : {};
-    const out: { t0: number | null; t60: number | null; t100: number | null } = {
-      t0: null, t60: null, t100: null,
-    };
-    for (const k of ConfigService.SQ_TIERS) out[k] = this.sqNormNum(s[k], metric);
+    const out: Record<string, number | null> = {};
+    for (const k of tierKeys) out[k] = this.sqNormNum(s[k], metric);
     return out;
   }
   /**
-   * 校验三档顺序（正向 t0<t60<t100、负向反之；与服务质量页面的口径一致）：
-   * 正向指标需 t0 < t60 < t100，负向指标需 t0 > t60 > t100。
-   * 仅当三档都填了才校验（允许只填部分档位）。
+   * 校验各档位顺序（与服务质量页面的口径一致）：
+   * 正向指标：得分越高的档位阈值须越大（阈值随 score 严格递增）；
+   * 负向指标：得分越高的档位阈值须越小。
+   * 仅当该格全部档位都填了才校验（允许只填部分档位）。
    */
   private sqValidateTiers(
-    tiers: { t0: number | null; t60: number | null; t100: number | null },
+    cell: Record<string, number | null>,
     direction: string,
+    tiers: Array<{ key: string; score: number }>,
   ): string | null {
-    const { t0, t60, t100 } = tiers;
-    if (t0 === null || t60 === null || t100 === null) return null; // 部分档位不校验顺序
-    if (direction === 'pos') {
-      return t0 < t60 && t60 < t100 ? null : `需 0分<60分<100分（当前 ${t0}/${t60}/${t100}）`;
+    const vals = tiers.map((t) => cell[t.key]);
+    if (vals.some((v) => v === null || v === undefined)) return null; // 部分档位不校验顺序
+    const pairs = tiers.map((t, i) => ({ score: t.score, v: vals[i] as number }));
+    for (let i = 1; i < pairs.length; i++) {
+      const prev = pairs[i - 1];
+      const cur = pairs[i];
+      const ok = direction === 'pos' ? cur.v > prev.v : cur.v < prev.v;
+      if (!ok) {
+        const shown = tiers.map((t) => `${t.score}分=${cell[t.key]}`).join(' / ');
+        return direction === 'pos'
+          ? `高分档阈值须大于低分档（当前 ${shown}）`
+          : `高分档阈值须小于低分档（当前 ${shown}）`;
+      }
     }
-    return t0 > t60 && t60 > t100 ? null : `需 0分>60分>100分（当前 ${t0}/${t60}/${t100}）`;
+    return null;
   }
-  /** 某月各考核项的 8 个格子（2 日期类型 × 4 天气），每格三档；缺省全 null（未设置）。 */
-  private sqMonthCells(month: string): Record<string, Record<string, Record<string, { t0: number | null; t60: number | null; t100: number | null }>>> {
-    const out: Record<string, Record<string, Record<string, { t0: number | null; t60: number | null; t100: number | null }>>> = {};
+  /** 某月各考核项的格子（2 日期类型 × N 天气），每格各档位阈值；缺省全 null（未设置）。 */
+  private sqMonthCells(month: string): Record<string, Record<string, Record<string, Record<string, number | null>>>> {
+    const out: Record<string, Record<string, Record<string, Record<string, number | null>>>> = {};
     const all = this.sqLoadAll();
     const months = all.months && typeof all.months === 'object' ? all.months : {};
     const entry = months[month] && typeof months[month] === 'object' ? months[month] : {};
     const wxCols = this.sqWeatherCols(month);
+    const tierMap = this.sqMonthTiers(month);
     for (const m of RT_METRICS) {
-      const perMetric: Record<string, Record<string, { t0: number | null; t60: number | null; t100: number | null }>> = {};
+      const tierKeys = (tierMap[m.key] || []).map((t) => t.key);
+      const perMetric: Record<string, Record<string, Record<string, number | null>>> = {};
       for (const dt of RT_DATE_TYPES) {
-        const perWx: Record<string, { t0: number | null; t60: number | null; t100: number | null }> = {};
+        const perWx: Record<string, Record<string, number | null>> = {};
         for (const wx of wxCols) {
           const cell = entry[m.key] && entry[m.key][dt.key] ? entry[m.key][dt.key] : {};
-          perWx[wx.key] = this.sqNormTiers(cell[wx.key], m.key);
+          perWx[wx.key] = this.sqNormTiers(cell[wx.key], m.key, tierKeys);
         }
         perMetric[dt.key] = perWx;
       }
@@ -854,6 +909,8 @@ export class ConfigService {
       weather: this.sqWeatherCols(month),
       /** 该月是否配置了天气分层（false = 天气维度不参与，前端只展示周中/周末两列）。 */
       weather_configured: this.wlMonthTiers(month).tiers.length > 0,
+      /** 档位配置（按考核项：{ "<metric>": [{key,score}] }；空 = 该项未设置，无默认档位）。 */
+      tiers: this.sqMonthTiers(month),
       targets: this.sqMonthCells(month),
       weights: this.sqMonthWeights(month),
       ranges: this.sqMonthRanges(month),
@@ -870,18 +927,55 @@ export class ConfigService {
     const month = String((body && body.month) || '').trim();
     if (!/^\d{4}-\d{2}$/.test(month)) return { ok: false, error: 'month 须为 YYYY-MM 格式' };
     const incoming = (body && body.targets) || {};
+    // 档位配置（body.tiers，按考核项）：空 = 该项未设置（允许）；非空时须 ≥2 档、
+    // key 非空唯一、score 0~100 且互不相等；不合法 → 报错返回
+    const tSrc = body && body.tiers && typeof body.tiers === 'object' && !Array.isArray(body.tiers)
+      ? body.tiers as Record<string, unknown> : {};
+    const tiersMap: Record<string, Array<{ key: string; score: number }>> = {};
+    const tierErr: string[] = [];
+    for (const m of RT_METRICS) {
+      const raw = Array.isArray(tSrc[m.key]) ? (tSrc[m.key] as any[]) : [];
+      if (!raw.length) {
+        tiersMap[m.key] = []; // 未设置：不注入默认档位
+        continue;
+      }
+      const list: Array<{ key: string; score: number }> = [];
+      const keys = new Set<string>();
+      const scores: number[] = [];
+      let dirty = false;
+      for (const t of raw) {
+        const key = t && typeof t === 'object' ? String((t as any).key ?? '').trim() : '';
+        const score = t && typeof t === 'object' ? Number((t as any).score) : NaN;
+        if (!key || keys.has(key) || !Number.isFinite(score) || score < 0 || score > 100) {
+          dirty = true;
+          break;
+        }
+        keys.add(key);
+        scores.push(Math.round(score * 100) / 100);
+        list.push({ key, score: Math.round(score * 100) / 100 });
+      }
+      if (dirty || list.length < 2 || new Set(scores).size !== scores.length) {
+        tierErr.push(`${m.name}：档位不合法（需 ≥2 个档位且各档得分为 0~100 内互不相同的数值，或整体留空表示未设置）`);
+        continue;
+      }
+      list.sort((a, b) => a.score - b.score);
+      tiersMap[m.key] = list;
+    }
+    if (tierErr.length) return { ok: false, error: tierErr[0], errors: tierErr };
     const errors: string[] = [];
     const wxCols = this.sqWeatherCols(month);
-    const out: Record<string, Record<string, Record<string, { t0: number | null; t60: number | null; t100: number | null }>>> = {};
+    const out: Record<string, Record<string, Record<string, Record<string, number | null>>>> = {};
     for (const m of RT_METRICS) {
-      const perMetric: Record<string, Record<string, { t0: number | null; t60: number | null; t100: number | null }>> = {};
+      const tiersIn = tiersMap[m.key];
+      const tierKeys = tiersIn.map((t) => t.key);
+      const perMetric: Record<string, Record<string, Record<string, number | null>>> = {};
       const src = incoming[m.key] && typeof incoming[m.key] === 'object' ? incoming[m.key] : {};
       for (const dt of RT_DATE_TYPES) {
-        const perWx: Record<string, { t0: number | null; t60: number | null; t100: number | null }> = {};
+        const perWx: Record<string, Record<string, number | null>> = {};
         const srcDt = src[dt.key] && typeof src[dt.key] === 'object' ? src[dt.key] : {};
         for (const wx of wxCols) {
-          const tiers = this.sqNormTiers(srcDt[wx.key], m.key);
-          const bad = this.sqValidateTiers(tiers, m.direction);
+          const tiers = this.sqNormTiers(srcDt[wx.key], m.key, tierKeys);
+          const bad = this.sqValidateTiers(tiers, m.direction, tiersIn);
           if (bad) errors.push(`${m.name} / ${dt.name} / ${wx.name}：${bad}`);
           perWx[wx.key] = tiers;
         }
@@ -954,7 +1048,7 @@ export class ConfigService {
     // （如天气分层 weather_layering —— 与「天气设置」页共用同一条目，不能被服务质量保存抹掉）。
     const prev = all.months[month] && typeof all.months[month] === 'object' ? all.months[month] : {};
     all.months[month] = {
-      ...out, weights, ranges, kinds, layering, date_overrides: dateOverrides,
+      tiers: tiersMap, ...out, weights, ranges, kinds, layering, date_overrides: dateOverrides,
       ...(prev.weather_layering && typeof prev.weather_layering === 'object'
         ? { weather_layering: prev.weather_layering } : {}),
     };

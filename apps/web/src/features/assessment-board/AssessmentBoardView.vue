@@ -166,37 +166,37 @@
         <el-table-column label="达成率" className="dv-grp-rate">
           <el-table-column label="T8准时率" align="center" sortable :sort-method="rateSort('t8_ontime_rate')" className="dv-g-rate">
             <template #default="{ row }">
-              <span class="rt" :class="targetCls(row.t8_ontime_rate, row.t8_ontime_tiers, 'pos')">{{ fmtRate(row.t8_ontime_rate, 2) }}</span>
+              <span class="rt" :class="targetCls(row.t8_ontime_rate, row.t8_ontime_tiers, 'pos', row.tier_scores && row.tier_scores.ontime_rate)">{{ fmtRate(row.t8_ontime_rate, 2) }}</span>
             </template>
           </el-table-column>
           <el-table-column label="物流妥投率" align="center" sortable :sort-method="rateSort('fulfillment_rate')" className="dv-g-rate">
             <template #default="{ row }">
-              <span class="rt" :class="targetCls(row.fulfillment_rate, row.fulfillment_tiers, 'pos')">{{ fmtRate(row.fulfillment_rate) }}</span>
+              <span class="rt" :class="targetCls(row.fulfillment_rate, row.fulfillment_tiers, 'pos', row.tier_scores && row.tier_scores.delivery_rate)">{{ fmtRate(row.fulfillment_rate) }}</span>
             </template>
           </el-table-column>
           <el-table-column label="不满意率" align="center" sortable :sort-method="rateSort('unsat_rate')" className="dv-g-rate">
             <template #default="{ row }">
-              <span class="rt" :class="targetCls(row.unsat_rate, row.unsat_tiers, 'neg')">{{ fmtRate(row.unsat_rate) }}</span>
+              <span class="rt" :class="targetCls(row.unsat_rate, row.unsat_tiers, 'neg', row.tier_scores && row.tier_scores.unsat_rate)">{{ fmtRate(row.unsat_rate) }}</span>
             </template>
           </el-table-column>
           <el-table-column label="复合超时时长(秒)" align="center" sortable :sort-method="rateSort('avg_compound_overtime_sec')" className="dv-g-rate">
             <template #default="{ row }">
-              <el-text :class="['rt', targetCls(row.avg_compound_overtime_sec, row.compound_tiers, 'neg'), { 'dv-zero': num(row.avg_compound_overtime_sec) === 0 }]">{{ fmtMin(row.avg_compound_overtime_sec) }}</el-text>
+              <el-text :class="['rt', targetCls(row.avg_compound_overtime_sec, row.compound_tiers, 'neg', row.tier_scores && row.tier_scores.compound_overtime), { 'dv-zero': num(row.avg_compound_overtime_sec) === 0 }]">{{ fmtMin(row.avg_compound_overtime_sec) }}</el-text>
             </template>
           </el-table-column>
           <el-table-column label="电联率" align="center" sortable :sort-method="rateSort('call_rate')" className="dv-g-rate">
             <template #default="{ row }">
-              <span class="rt" :class="targetCls(row.call_rate, row.call_rate_tiers, 'pos')">{{ fmtRate(row.call_rate) }}</span>
+              <span class="rt" :class="targetCls(row.call_rate, row.call_rate_tiers, 'pos', row.tier_scores && row.tier_scores.call_rate)">{{ fmtRate(row.call_rate) }}</span>
             </template>
           </el-table-column>
           <el-table-column label="IM及时回复率" align="center" sortable :sort-method="rateSort('im_reply_rate')" className="dv-g-rate">
             <template #default="{ row }">
-              <span class="rt" :class="targetCls(row.im_reply_rate, row.im_reply_rate_tiers, 'pos')">{{ fmtRate(row.im_reply_rate) }}</span>
+              <span class="rt" :class="targetCls(row.im_reply_rate, row.im_reply_rate_tiers, 'pos', row.tier_scores && row.tier_scores.im_reply_rate)">{{ fmtRate(row.im_reply_rate) }}</span>
             </template>
           </el-table-column>
           <el-table-column label="商家拜访率" align="center" sortable :sort-method="rateSort('visit_rate')" className="dv-g-rate">
             <template #default="{ row }">
-              <span class="rt" :class="targetCls(row.visit_rate, row.visit_rate_tiers, 'pos')">{{ fmtRate(row.visit_rate) }}</span>
+              <span class="rt" :class="targetCls(row.visit_rate, row.visit_rate_tiers, 'pos', row.tier_scores && row.tier_scores.visit_rate)">{{ fmtRate(row.visit_rate) }}</span>
             </template>
           </el-table-column>
         </el-table-column>
@@ -565,7 +565,8 @@ const cards = computed(() => {
   const dateType = resolveDateType(rangeEnd());
   const weather = worstWeatherKey();
   const clsOf = (metric, value, direction) =>
-    targetCls(value, metricTiers(metric, dateType, weather), direction);
+    targetCls(value, metricTiers(metric, dateType, weather), direction,
+      sqTierScores.value[metric] || sqTierScores.value.__all__ || null);
   const mk = (label, raw, digits, cls, delta = '') => ({
     label,
     value: raw == null ? 0 : raw,
@@ -729,36 +730,63 @@ const teamNameMinWidth = computed(() => {
   return Math.max(120, Math.ceil(max) + 28);
 });
 /* 达成列/卡片着色：**直接与「分层目标线」比较**(不经过得分公式)。
-   目标线 = 考核设置里该指标在「今日日型 × 天气档位」下的 t0/t60/t100：
-   · 达到 t100 满分目标线        → 绿 is-ok
-   · 达到 t60 及格线、未到 t100   → 橙 is-warn
-   · 超过 t0 零分线、未到 t60     → 红 is-bad
-   · 未达 t0 零分线               → 深红 is-deep
-   · 目标未配置 / 无数据          → 灰 is-none(不着色，不臆断好坏)
-   direction: 'pos' 越高越好(准时率/妥投率，t0<t60<t100)；'neg' 越低越好(不满意率/复合超时，t0>t60>t100)。
+   目标线 = 考核设置里该指标在「今日日型 × 天气档位」下的各档阈值（键 = 档位 key，
+   档位按考核项独立可配）；各档得分由调用方传入 scores（{tierKey: score}，取自
+   row.tier_scores[metric] 或卡片侧 sqTierScores），缺键时按默认三档 t0/t60/t100 回落。
+   先把达成值按「档位得分锚点」分段线性映射为得分 s（与 Python score_metric 同口径），再按带着色：
+   · 达到最高档目标线（s = 最高档得分） → 绿 is-ok
+   · 达到次高档及格线、未到最高档       → 橙 is-warn
+   · 高于最低档、未到次高档             → 红 is-bad
+   · 未达最低档                         → 深红 is-deep
+   · 目标未配置 / 无数据                → 灰 is-none(不着色，不臆断好坏)
+   direction: 'pos' 越高越好(阈值随得分递增)；'neg' 越低越好(递减)。
    取代原先按固定阈值(95/90、2/5)着色的口径：目标随月份/日型/天气变，固定阈值会给出错误信号。 */
-function targetCls(value, tiers, direction) {
+function targetCls(value, tiers, direction, scores) {
   if (value == null || !tiers) return 'is-none';
-  const t0 = Number(tiers.t0), t60 = Number(tiers.t60), t100 = Number(tiers.t100);
-  if (![t0, t60, t100].every(Number.isFinite)) return 'is-none';
   const v = Number(value);
   if (!Number.isFinite(v)) return 'is-none';
-  if (direction === 'pos') {
-    if (v >= t100) return 'is-ok';
-    if (v >= t60) return 'is-warn';
-    return v > t0 ? 'is-bad' : 'is-deep';
+  const scoreMap = { t0: 0, t60: 60, t100: 100, ...(scores || {}) };
+  const anchors = Object.entries(tiers)
+    .filter(([, thr]) => thr != null && Number.isFinite(Number(thr)))
+    .map(([k, thr]) => ({ score: Number(scoreMap[k]), thr: Number(thr) }))
+    .filter((a) => Number.isFinite(a.score))
+    .sort((a, b) => a.score - b.score);
+  if (anchors.length < 2) return 'is-none';
+  // 分段线性得分（区间外夹取到两端锚点得分；相邻阈值相等视为退化跳过）
+  let s;
+  const lo = anchors[0];
+  const hi = anchors[anchors.length - 1];
+  if ((lo.thr < hi.thr && v <= lo.thr) || (lo.thr > hi.thr && v >= lo.thr)) {
+    s = lo.score;
+  } else if ((lo.thr < hi.thr && v >= hi.thr) || (lo.thr > hi.thr && v <= hi.thr)) {
+    s = hi.score;
+  } else {
+    s = hi.score;
+    for (let i = 1; i < anchors.length; i++) {
+      const a = anchors[i - 1];
+      const b = anchors[i];
+      if (b.thr === a.thr) continue;
+      if (Math.min(a.thr, b.thr) <= v && v <= Math.max(a.thr, b.thr)) {
+        s = a.score + (b.score - a.score) * (v - a.thr) / (b.thr - a.thr);
+        break;
+      }
+    }
   }
-  if (v <= t100) return 'is-ok';
-  if (v <= t60) return 'is-warn';
-  return v < t0 ? 'is-bad' : 'is-deep';
+  const top = hi.score;
+  const second = anchors[anchors.length - 2].score;
+  const lowest = lo.score;
+  if (s >= top - 1e-9) return 'is-ok';
+  if (s >= second - 1e-9) return 'is-warn';
+  return s > lowest + 1e-9 ? 'is-bad' : 'is-deep';
 }
 
 /* ── 分层目标（考核设置：日期类型 × 天气）前端取数 ───────────────────────────
    表格列用后端随行返回的命中目标线(row.*_tiers)；顶部卡片是全站/多站聚合值，
    后端不按聚合算目标，故前端持有一份目标配置自行取格比较。
    天气键以后端随行返回的 row.weather_key 为准（与 board.py weather_key 一致）。 */
-const sqTargets = ref(null);      // targets[metric][date_type][weather] = {t0,t60,t100}
+const sqTargets = ref(null);      // targets[metric][date_type][weather] = {tierKey: 阈值}
 const sqDateOverrides = ref({});  // 特殊日期覆盖表 { 'YYYY-MM-DD': 'weekday'|'weekend' }
+const sqTierScores = ref({});     // 档位→得分映射（按考核项 {metric: {tierKey: score}}；__all__ 为旧共享形态回落）
 /* 旧缓存行无 weather_key 时的固定标签映射回落（默认四级） */
 const WEATHER_KEY_MAP = { 正常天: 'normal', 轻微恶天: 'light', 一般恶天: 'moderate', 严重恶天: 'severe' };
 /* 日型：周六/周日 → weekend，其余 weekday；再套特殊日期覆盖表（与后端 resolve_date_type 一致） */
@@ -836,6 +864,17 @@ async function loadSqTargets(month) {
     if (sq && sq.ok) {
       sqTargets.value = sq.targets || null;
       sqDateOverrides.value = sq.date_overrides || {};
+      // 档位→得分映射（按考核项 {metric: {tierKey: score}}）；后端缺省回落默认三档。
+      // 兼容旧形态：数组（历史全员共用一份）→ 存到 __all__ 供所有指标回落。
+      const tIn = sq.tiers || {};
+      const toMap = (list) => Object.fromEntries((list || []).map((t) => [t.key, Number(t.score)]));
+      if (Array.isArray(tIn)) {
+        sqTierScores.value = { __all__: toMap(tIn) };
+      } else if (tIn && typeof tIn === 'object') {
+        sqTierScores.value = Object.fromEntries(
+          Object.entries(tIn).map(([m, list]) => [m, toMap(list)]),
+        );
+      }
     }
   } catch (e) { /* ignore：目标配置不可用时卡片不着色 */ }
 }

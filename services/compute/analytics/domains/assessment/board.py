@@ -104,7 +104,8 @@ def attach_extra_metrics(result, team_id, start, end, settings, date_type, weath
             result[metric] = val
             tiers = SQ.metric_tiers(settings, metric, date_type, weather)
             direction = SQ.metric_direction(metric)
-            sc = SQ.score_metric(val, tiers, direction) if (val is not None and tiers) else None
+            tier_map = settings.get("tiers") if isinstance(settings.get("tiers"), dict) else {}
+            sc = SQ.score_metric(val, tiers, direction, scores=tier_map.get(metric)) if (val is not None and tiers) else None
             result[metric + "_score"] = None if sc is None else round(sc, 2)
             result[metric + "_tiers"] = tiers if isinstance(tiers, dict) else {}
     except Exception as e:  # 三项为附加展示，绝不因它拖垮主看板
@@ -324,25 +325,33 @@ def weather_key(level_label, month=None):
     return "normal"
 
 
-def _tiers_or_empty(cell):
-    """目标格 → {t0,t60,t100}；非 dict 或任一端缺失 → {}（调用方按「未配置」处理）。"""
-    if not isinstance(cell, dict):
+def _tiers_or_empty(cell, tiers=None):
+    """目标格 → {tierKey: 阈值}（键 = 该考核项档位 key）；
+    非 dict / 未设置档位 / 任一档阈值缺失 → {}（按「未配置」处理）。"""
+    if not isinstance(cell, dict) or not cell:
         return {}
-    t0, t60, t100 = cell.get("t0"), cell.get("t60"), cell.get("t100")
-    if t0 is None or t60 is None or t100 is None:
-        return {}
-    return {"t0": t0, "t60": t60, "t100": t100}
+    tier_list = tiers if isinstance(tiers, (list, tuple)) and tiers else []
+    out = {}
+    for t in tier_list:
+        v = cell.get(t.get("key"))
+        if v is None:
+            return {}
+        out[t.get("key")] = v
+    return out
 
 
 def _compute_scores(result, orders, date):
-    """按当天日型 × 天气取对应档位，用配置的 t0/t60/t100 算各指标 0~100 得分与总分。
+    """按当天日型 × 天气取对应档位，用配置的各档阈值算各指标得分与总分。
 
     看板仅计算 4 项可取自订单/违规明细的指标（准时率/妥投率/不满意率/复合超时时长，权重合计 85），
     其余 3 项考核（电联率/IM回复率/新专送拜访，权重合计 15）看板不取数、按满分计入总分。
     故看板总分 = 4 项算得加权和(满分 85) + 15(其余项满分)，封顶 100。
+    档位按考核项独立（settings["tiers"] 为 {metric: [{key,score}]}）。
     """
     month = SQ.month_of(date)
     settings = SQ.quality_settings(month)
+    tier_map = settings.get("tiers") if isinstance(settings.get("tiers"), dict) else {}
+    tiers_of = lambda metric: tier_map.get(metric) or []
     date_type = SQ.resolve_date_type(date, settings.get("date_overrides"))
     wx_label = weather_level(orders, date)
     wx = weather_key(wx_label, date)
@@ -357,8 +366,8 @@ def _compute_scores(result, orders, date):
     result["fulfillment_score"] = scores.get("delivery_rate")
     result["unsat_score"] = scores.get("unsat_rate")
     result["compound_overtime_score"] = scores.get("compound_overtime")
-    # 同时回出各指标**实际命中的三档目标线**（该日型 × 该天气档位下的 t0/t60/t100），
-    # 供前端按「目标线」直接比较着色（≥t100 绿 / ≥t60 橙 / >t0 红 / ≤t0 深红），
+    # 同时回出各指标**实际命中的各档目标线**（该日型 × 该天气档位下的全部档位阈值，键 = 档位 key），
+    # 以及各考核项的档位→得分映射（tier_scores，按指标），供前端按「目标线 + 档位得分」直接比较着色，
     # 不经过得分公式——得分口径若调整，着色不受影响。阈值不齐 → {}（前端按未配置处理）。
     for out_key, metric in (
         ("t8_ontime_tiers", "ontime_rate"),
@@ -366,7 +375,11 @@ def _compute_scores(result, orders, date):
         ("unsat_tiers", "unsat_rate"),
         ("compound_tiers", "compound_overtime"),
     ):
-        result[out_key] = _tiers_or_empty(SQ.metric_tiers(settings, metric, date_type, wx))
+        result[out_key] = _tiers_or_empty(SQ.metric_tiers(settings, metric, date_type, wx), tiers_of(metric))
+    result["tier_scores"] = {
+        m: {t["key"]: t["score"] for t in lst}
+        for m, lst in tier_map.items() if lst
+    }
     # 其余 3 项（电联率/IM回复率/新专送拜访，合计 15 分）看板不考核、按满分计入。
     _total = scores.get("total_score")
     if _total is not None:

@@ -13,15 +13,18 @@
           "kinds":   { "<metric>": "weight"|"adjust"|null },# 计分方式：权重项 / 调分项
           "layering":{ "<metric>": "none"|"date"|"weather"|"date_weather" },  # 按考核项
           "date_overrides": { "<YYYY-MM-DD>": "weekday"|"weekend" },  # 特殊日期：强制按周中/周末算
-          "<metric>": { "<date_type>": { "<weather>": { "t0","t60","t100" } } }
+          "tiers": { "<metric>": [ {"key","score"} ] },     # 档位配置（按考核项独立增减；score 升序；空 = 未设置）
+          "<metric>": { "<date_type>": { "<weather>": { "<tierKey>": number|null } } }
         }
       }
     }
 
 本模块只读不写（写入一律走 Nest，避免双份实现），对外：
-  quality_settings(month)   → {configured, month, weights, ranges, kinds, layering, targets}
+  quality_settings(month)   → {configured, month, tiers, weights, ranges, kinds, layering, targets}
+  month_tiers(month[, metric]) → 该月档位配置 {metric: [{key, score}]}（按考核项；
+                              传 metric 时只返回该项列表；未设置 → 空列表，不注入默认档位）
   target_rows(month)        → 扁平行 [{metric, date_type, weather, direction, unit,
-                                     t0, t60, t100, weight, kind}]，打分侧直接遍历
+                                     thresholds, weight, kind}]，打分侧直接遍历
   metric_direction(metric)  → 'pos' | 'neg'
   month_of(date_str)        → 'YYYY-MM'（从 YYYY-MM-DD 截取；非法入参回落当前北京时间月）
 
@@ -228,7 +231,106 @@ def weather_tiers(month=None):
             out.append({"name": name, "logic": logic, "conditions": conds})
     return out
 
-_TIERS = ("t0", "t60", "t100")
+# 档位（得分锚点）：按月、按考核项可配（months["<YYYY-MM>"].tiers，
+# Nest 服务质量设置页写入，形态 {"<metric>": [{"key","score"}]}，各考核项独立增减），
+# 每档 {key, score}：key 为该档阈值在 targets 格子里的键名，score 为该档对应的得分（0~100）。
+# 无固定/默认档位：未配置 → 空列表（该项不打分，看板显示「未设置」）。
+# 仅对「固定三档时代」的旧月份做推断兼容：已保存过 t0/t60/t100 格子但无 tiers 条目时，
+# 按旧口径（0/60/100 分）推断，避免历史月份打分中断。
+SQ_DEFAULT_TIERS = [
+    {"key": "t0", "score": 0},
+    {"key": "t60", "score": 60},
+    {"key": "t100", "score": 100},
+]
+
+
+def _norm_tier_list(raw):
+    """单条档位列表归一化：脏条目剔除、score 升序；不足 2 档 → []（未设置，无默认回落）。"""
+    out = []
+    seen = set()
+    if isinstance(raw, list):
+        for t in raw:
+            if not isinstance(t, dict):
+                continue
+            key = str(t.get("key") or "").strip()
+            try:
+                score = float(t.get("score"))
+            except (TypeError, ValueError):
+                continue
+            if not key or key in seen or score != score or score < 0 or score > 100:
+                continue
+            seen.add(key)
+            out.append({"key": key, "score": score})
+    out.sort(key=lambda t: t["score"])
+    return out
+
+
+def _legacy_tier_list(entry):
+    """旧月份推断：未存 tiers 但已按「固定三档」保存过阈值格子（键集恰为 t0/t60/t100）
+    → 返回旧口径档位列表（0/60/100 分）；否则 None（未配置）。"""
+    keys = set()
+    for m_src in (entry or {}).values():
+        if not isinstance(m_src, dict):
+            continue
+        for dt_src in m_src.values():
+            if not isinstance(dt_src, dict):
+                continue
+            for cell in dt_src.values():
+                if isinstance(cell, dict):
+                    keys.update(k for k in cell.keys() if isinstance(k, str))
+    if keys and keys <= {"t0", "t60", "t100"}:
+        return [dict(t) for t in SQ_DEFAULT_TIERS]
+    return None
+
+
+def month_tiers(month=None, metric=None):
+    """该月档位配置（按考核项）：{"<metric>": [{key, score}]}（score 升序）；
+    metric 给定时只返回该考核项的列表 [{key, score}]。
+
+    读取 months["<YYYY-MM>"].tiers：dict → 按考核项各取各的；
+    旧形态 list（历史全员共用一份）→ 平铺给所有考核项；
+    完全未存 tiers 但已保存过旧三档阈值格子 → 按旧口径推断（兼容历史月份）；
+    其余缺省/脏值/不足 2 档 → 空列表（该项未设置，不打分）。绝不抛异常打断看板。
+    """
+    month = month or current_month()
+    all_ = _read_all()
+    months = all_.get("months") if isinstance(all_.get("months"), dict) else {}
+    entry = months.get(month) if isinstance(months.get(month), dict) else {}
+    raw = entry.get("tiers")
+    per_metric = {}
+    if isinstance(raw, dict):
+        src = raw
+    elif isinstance(raw, list):
+        shared = _norm_tier_list(raw)
+        src = {m["key"]: shared for m in SQ_METRICS} if shared else {}
+    else:
+        legacy = _legacy_tier_list(entry)
+        src = {m["key"]: legacy for m in SQ_METRICS} if legacy else {}
+    for m in SQ_METRICS:
+        per_metric[m["key"]] = _norm_tier_list(src.get(m["key"]))
+    if metric is not None:
+        return per_metric.get(metric) or []
+    return per_metric
+
+
+def cell_anchors(cell, tiers=None):
+    """目标格 + 档位配置 → 打分锚点 [(score, threshold)]（score 升序）。
+
+    cell = {tierKey: threshold|null}；tiers = 该考核项的档位配置 [{key, score}]
+    （缺省/空 = 该项未设置 → 不打分）。任一档阈值缺失 / 有效锚点不足 2 个 → []。
+    """
+    if not isinstance(cell, dict):
+        return []
+    tier_list = tiers if isinstance(tiers, (list, tuple)) and tiers else []
+    pairs = []
+    for t in tier_list:
+        key = t.get("key") if isinstance(t, dict) else None
+        thr = _num(cell.get(key)) if key else None
+        if thr is None:
+            return []  # 任一档阈值缺失 → 该格不可打分
+        pairs.append((float(t.get("score")), thr))
+    pairs.sort(key=lambda p: p[0])
+    return pairs if len(pairs) >= 2 else []
 
 # 特殊日期覆盖表的日期键格式（YYYY-MM-DD）。
 _RE_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
@@ -321,41 +423,41 @@ def _read_all():
     return d if isinstance(d, dict) else {}
 
 
-def score_metric(value, tiers, direction):
-    """把考核项达成值按三档阈值映射为 0~100 得分（分段线性）。
+def score_metric(value, tiers, direction, scores=None):
+    """把考核项达成值按各档位阈值映射为得分（分段线性，档位数量不限）。
 
-    tiers = {"t0","t60","t100"}；任一为 None → 返回 None（阈值未配置，无法打分）。
-    direction = 'pos'（越高越好，要求 t0<t60<t100）或 'neg'（越低越好，要求 t0>t60>t100）。
-    锚点：t0→0 分、t60→60 分、t100→100 分；区间外夹取到 0/100，区间内线性插值。
+    tiers = {tierKey: threshold|null}（目标格）；任一档阈值缺失 → None（无法打分）。
+    scores = 该考核项的档位配置 [{key, score}]（缺省/空 = 未设置 → None，不打分）。
+    direction = 'pos'（越高越好，阈值随 score 递增）或 'neg'（越低越好，随 score 递减）；
+    相邻锚点阈值相等视为退化，返回 None。
+    锚点：各档阈值 → 各档得分；区间外夹取到两端锚点得分，区间内线性插值。
     """
     if value is None or not isinstance(tiers, dict):
         return None
-    t0, t60, t100 = tiers.get("t0"), tiers.get("t60"), tiers.get("t100")
-    if t0 is None or t60 is None or t100 is None:
+    anchors = cell_anchors(tiers, scores)
+    if not anchors:
         return None
     try:
-        if direction == "pos":
-            if t60 == t0 or t100 == t60:
-                return None  # 档位退化，无法插值
-            if value <= t0:
-                return 0.0
-            if value >= t100:
-                return 100.0
-            if value <= t60:
-                return 60.0 * (value - t0) / (t60 - t0)
-            return 60.0 + 40.0 * (value - t60) / (t100 - t60)
-        # neg：越高越差，锚点镜像（t0 最大→0 分，t100 最小→100 分）
-        if t0 == t60 or t60 == t100:
-            return None
-        if value >= t0:
-            return 0.0
-        if value <= t100:
-            return 100.0
-        if value >= t60:
-            return 60.0 * (t0 - value) / (t0 - t60)
-        return 60.0 + 40.0 * (t60 - value) / (t60 - t100)
-    except (TypeError, ZeroDivisionError):
+        v = float(value)
+    except (TypeError, ValueError):
         return None
+    # 阈值须随得分单调（pos 严格递增 / neg 严格递减），相邻相等 → 退化无法插值
+    for i in range(1, len(anchors)):
+        if anchors[i][1] == anchors[i - 1][1]:
+            return None
+    lo_score, lo_thr = anchors[0]
+    hi_score, hi_thr = anchors[-1]
+    if (lo_thr < hi_thr and v <= lo_thr) or (lo_thr > hi_thr and v >= lo_thr):
+        return lo_score  # 低于最低档（pos）/ 高于最低档（neg）→ 夹取到最低得分
+    if (lo_thr < hi_thr and v >= hi_thr) or (lo_thr > hi_thr and v <= hi_thr):
+        return hi_score  # 超过最高档（pos）/ 低于最高档（neg）→ 夹取到最高得分
+    # 落在两端锚点之间：定位相邻锚点线性插值（thr 方向与 score 同向单调，公式两端通用）
+    for i in range(1, len(anchors)):
+        s0, t0 = anchors[i - 1]
+        s1, t1 = anchors[i]
+        if min(t0, t1) <= v <= max(t0, t1):
+            return s0 + (s1 - s0) * (v - t0) / (t1 - t0)
+    return anchors[-1][0]  # 理论不可达（已被两端夹取覆盖），兜底取最高档得分
 
 
 def metric_tiers(settings, metric, date_type, weather):
@@ -391,12 +493,13 @@ def compute_team_scores(raw, settings, date_type, weather):
     任一指标缺权重/区间或得分为 None → 总分 None（配置不完整，不臆造总分）。
     """
     scores = {}
+    tier_map = settings.get("tiers") if isinstance(settings.get("tiers"), dict) else {}
     for metric, value in raw.items():
         direction = metric_direction(metric)
         if direction is None:
             continue
         cell = metric_tiers(settings, metric, date_type, weather)
-        sc = score_metric(value, cell, direction)
+        sc = score_metric(value, cell, direction, scores=tier_map.get(metric))
         scores[metric] = None if sc is None else round(sc, 2)
     kinds = settings.get("kinds") if isinstance(settings.get("kinds"), dict) else {}
     weights = settings.get("weights") if isinstance(settings.get("weights"), dict) else {}
@@ -478,7 +581,9 @@ def quality_settings(month=None):
 
     targets = {}
     wx_cols = weather_cols(month)
+    tier_map = month_tiers(month)
     for m in metrics:
+        tier_keys = [t["key"] for t in tier_map.get(m["key"], [])]
         per_metric = {}
         m_src = entry.get(m["key"]) if isinstance(entry.get(m["key"]), dict) else {}
         for dt in SQ_DATE_TYPES:
@@ -486,13 +591,14 @@ def quality_settings(month=None):
             dt_src = m_src.get(dt["key"]) if isinstance(m_src.get(dt["key"]), dict) else {}
             for wx in wx_cols:
                 cell = dt_src.get(wx["key"]) if isinstance(dt_src.get(wx["key"]), dict) else {}
-                per_wx[wx["key"]] = {t: _num(cell.get(t)) for t in _TIERS}
+                per_wx[wx["key"]] = {t: _num(cell.get(t)) for t in tier_keys}
             per_metric[dt["key"]] = per_wx
         targets[m["key"]] = per_metric
 
     return {
         "configured": bool(months) and month in months,
         "month": month,
+        "tiers": tier_map,
         "weights": weights,
         "ranges": ranges,
         "kinds": kinds,
@@ -508,11 +614,12 @@ def target_rows(month=None):
     """把某月配置摊平成行列表，便于打分侧按 (日期类型, 天气, 指标) 遍历。
 
     每行 = {metric, metric_name, date_type, weather, direction, unit,
-            t0, t60, t100, weight, score_min, score_max, kind, layering}
+            thresholds, weight, score_min, score_max, kind, layering}
+    - thresholds = {tierKey: 阈值|null}（键 = 该月档位 key，见 month_tiers(month)）
     - kind == 'weight' → weight 为百分比（0~100），score_min/max 为 None
     - kind == 'adjust' → score_min/score_max 为得分区间（可负），weight 为 None
-    - 三档全为 None 表示该格未设置目标值，调用方须跳过
-    - layering 说明该指标的三档在两维上的区分粒度（打分时可跳过非锚点场景）
+    - thresholds 全为 None 表示该格未设置目标值，调用方须跳过
+    - layering 说明该指标的各档在两维上的区分粒度（打分时可跳过非锚点场景）
     """
     s = quality_settings(month)
     rows = []
@@ -528,9 +635,7 @@ def target_rows(month=None):
                     "weather": wx["key"],
                     "direction": m["direction"],
                     "unit": m["unit"],
-                    "t0": cell["t0"],
-                    "t60": cell["t60"],
-                    "t100": cell["t100"],
+                    "thresholds": dict(cell),
                     "weight": s["weights"].get(m["key"]),
                     "score_min": rg.get("min"),
                     "score_max": rg.get("max"),
