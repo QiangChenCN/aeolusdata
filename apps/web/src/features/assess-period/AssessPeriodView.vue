@@ -19,7 +19,6 @@
         <span v-if="!editable" class="apv-warn">历史月份只读，不可修改</span>
         <div class="apv-tools">
           <el-button type="primary" :disabled="!editable" @click="copyPrevMonth">复制上月配置</el-button>
-          <el-button size="small" :disabled="!editable" @click="clearRows">恢复默认</el-button>
         </div>
       </template>
 
@@ -96,7 +95,6 @@
 
 <script setup>
 import { onMounted, ref } from 'vue';
-import { ElMessageBox } from 'element-plus';
 import {
   fetchPeriodConfig, savePeriodConfig,
 } from '../../api/dashboards.js';
@@ -268,26 +266,6 @@ async function copyPrevMonth() {
   } catch (e) {
     ElMessage.error(e.message || '复制上月配置失败');
   }
-}
-
-/** 「恢复默认」= 清空该月所有时段（无内置默认模板需回填），危险操作先弹窗确认。 */
-async function clearRows() {
-  if (!editable.value) return;
-  if (!rows.value.length) {
-    ElMessage.info('当前没有时段');
-    return;
-  }
-  try {
-    await ElMessageBox.confirm(
-      `将清空 ${month.value} 月份的全部 ${rows.value.length} 个时段。清空后需点击「保存设置」才会生效，保存后该月不包含任何时段。`,
-      '清空时段配置',
-      { type: 'warning', confirmButtonText: '确定清空', cancelButtonText: '取消' },
-    );
-  } catch (e) {
-    return; // 取消
-  }
-  fillRows([]);
-  ElMessage.info('已清空，点击「保存设置」后生效');
 }
 
 function addRow() {
