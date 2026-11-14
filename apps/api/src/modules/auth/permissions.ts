@@ -49,6 +49,8 @@ export const GET_ROUTE_PERMS: Record<string, string> = {
   '/api/fetch/settings/aeolus': 'admin:aeolus',
   // MinIO 图床配置（系统设置「MinIO 设置」）：限管理员，secret_key 明文不外泄
   '/api/media/minio': 'admin:minio',
+  // 站点负责人映射（系统设置「站点负责人设置」）：限修改系统配置权限
+  '/api/notify/station-managers': 'config:write',
   // 钉钉授权（设备流发起 / 状态查询）：限管理员，绕过 /api/ding/.*→machine 前缀
   '/api/ding/auth/status': 'admin:bot',
   // 钉钉 DWS 配置读取（系统设置页）：限管理员机器人配置权限，绕过 machine 前缀
@@ -93,6 +95,9 @@ export const POST_ROUTE_PERMS: Record<string, string> = {
   // MinIO 图床配置保存 / 连通性验证：限管理员
   '/api/media/minio': 'admin:minio',
   '/api/media/minio/test': 'admin:minio',
+  // 站点负责人映射保存 / openDingTalkId 自动解析：限修改系统配置权限
+  '/api/notify/station-managers': 'config:write',
+  '/api/notify/station-managers/resolve': 'config:write',
   // 风神退出登录：限管理员（精确匹配，避免落入默认 'view'）
   '/api/fetch/settings/aeolus/logout': 'admin:aeolus',
   // 风神凭据验证（会真跑一次 SSO 登录）：限管理员，避免任何人拿它当撞库/顶号入口

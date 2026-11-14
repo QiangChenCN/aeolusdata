@@ -9,7 +9,8 @@ import { BoardFetchService } from '../../../infra/fetch/sources/board-fetch.serv
 import { ReportRenderService } from '../../render/report-render.service';
 import { MinioService } from '../../media/minio.service';
 import { DingtalkService } from '../../dingtalk/dingtalk.service';
-import { PRODUCTION_GROUP_NAME, resolveOpenIds } from '../../notify/notify-config';
+import { PRODUCTION_GROUP_NAME } from '../../notify/notify-config';
+import { StationManagersService } from '../../notify/station-managers.service';
 
 /** 测试目标群名（运行时按群名解析，不写死 cid）。 */
 const TEST_GROUP_QUERY = '机器人测试';
@@ -59,6 +60,7 @@ export class TaskBoardPipeline implements TaskHandler {
     private readonly render: ReportRenderService,
     private readonly minio: MinioService,
     private readonly dingtalk: DingtalkService,
+    private readonly stationManagers: StationManagersService,
     config: ConfigService,
   ) {
     this.handlers.register(this);
@@ -200,7 +202,7 @@ export class TaskBoardPipeline implements TaskHandler {
       ctx.log(`[render] -> ${this.imgPath}`);
     });
 
-    p.stage('resolve', '解析站长 openid', () => {
+    p.stage('resolve', '解析站长 openid', async () => {
       if (!state.allTasks) state.allTasks = loadRaw();
       const names = this.extractExecutorNames(state.allTasks);
       state.executorNames = names;
@@ -211,7 +213,7 @@ export class TaskBoardPipeline implements TaskHandler {
         state.missing = [];
         return;
       }
-      const { resolved, missing } = resolveOpenIds(names);
+      const { resolved, missing } = await this.stationManagers.resolveNamesAuto(names);
       state.resolved = resolved;
       state.missing = missing;
     });

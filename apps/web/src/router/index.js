@@ -28,6 +28,7 @@ import RbacView from '../features/rbac/RbacView.vue';
 import DingtalkSettingsView from '../features/dingtalk-settings/DingtalkSettingsView.vue';
 import AeolusSettingsView from '../features/aeolus-settings/AeolusSettingsView.vue';
 import MinioSettingsView from '../features/minio-settings/MinioSettingsView.vue';
+import StationManagersView from '../features/station-managers/StationManagersView.vue';
 import BotGlobalView from '../features/bot-global/BotGlobalView.vue';
 import BotRobotView from '../features/bot-robot/BotRobotView.vue';
 import BotInstanceView from '../features/bot-instance/BotInstanceView.vue';
@@ -72,6 +73,7 @@ const routes = [
       { path: 'settings/dingtalk', name: 'dingtalk-settings', component: DingtalkSettingsView, meta: { title: '钉钉设置', kind: 'sys-dingtalk' } },
       { path: 'settings/aeolus', name: 'aeolus-settings', component: AeolusSettingsView, meta: { title: '风神设置', kind: 'sys-aeolus' } },
       { path: 'settings/minio', name: 'minio-settings', component: MinioSettingsView, meta: { title: 'MinIO 设置', kind: 'sys-minio' } },
+      { path: 'settings/managers', name: 'station-managers', component: StationManagersView, meta: { title: '站点负责人设置', kind: 'sys-managers' } },
       {
         path: 'settings/rbac',
         name: 'rbac',

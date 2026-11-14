@@ -10,7 +10,8 @@ import { AeolusCookieService } from '../../../infra/fetch/creds/aeolus-cookie.se
 import { ReportRenderService, TeamItem } from '../../render/report-render.service';
 import { MinioService } from '../../media/minio.service';
 import { DingtalkService } from '../../dingtalk/dingtalk.service';
-import { ALL_MANAGER_IDS, PRODUCTION_GROUP_NAME } from '../../notify/notify-config';
+import { StationManagersService } from '../../notify/station-managers.service';
+import { PRODUCTION_GROUP_NAME } from '../../notify/notify-config';
 import { readKnownTeams } from '../../../infra/fetch/sources/teams-fetch.service';
 
 const REST_STATES = new Set([2]);
@@ -134,6 +135,7 @@ export class AttendancePipeline implements TaskHandler {
     private readonly render: ReportRenderService,
     private readonly minio: MinioService,
     private readonly dingtalk: DingtalkService,
+    private readonly stationManagers: StationManagersService,
     config: ConfigService,
   ) {
     this.handlers.register(this);
@@ -432,14 +434,67 @@ export class AttendancePipeline implements TaskHandler {
       const summary = this.loadSummary();
       // send 节点自己负责上传（兼容单独跑 send）
       const imgUrl = state.imgUrl || (await this.minio.upload(this.imgPath, 'attendance'));
-      const ids = noAt ? [] : ALL_MANAGER_IDS;
-      const mentions = ids.length ? ids.map((i) => `<@${i}>`).join(' ') : '';
       const tot = summary.total;
+
+      // ── 按站点精准 @：哪个站点有未上线骑手就 @ 哪个站点的负责人 ──
+      // 明细行（小休+下线）按站点聚合；站点名 = 图片里的站点名（团队名），
+      // 负责人映射来自「系统设置 → 站点负责人设置」（runtime JSON 热生效）。
+      const rows = state.allRows || this.rebuild(summary).allRows;
+      const siteCounts = new Map<string, number>();
+      for (const r of rows) siteCounts.set(r.site, (siteCounts.get(r.site) || 0) + 1);
+
+      const idToName = new Map<string, string>();
+      const siteMentions: string[] = [];
+      const unmappedSites: string[] = [];
+      const missingNames = new Set<string>();
+      for (const [site, count] of siteCounts) {
+        const names = this.stationManagers.managersForTeam(site);
+        // 按姓名自动解析 openDingTalkId（缓存命中零成本，未命中拉目标群成员解析并落缓存）
+        const { resolved, missing } = await this.stationManagers.resolveNamesAuto(names);
+        for (const m of missing) missingNames.add(m);
+        if (!resolved.length) {
+          unmappedSites.push(site);
+          ctx.log(`  ⚠ [${site}] ${count} 人未在线，但未配置负责人映射，跳过 @`);
+          continue;
+        }
+        for (const [n, oid] of resolved) idToName.set(oid, n);
+        const tag = noAt ? resolved.map(([n]) => n).join('、') : resolved.map(([, o]) => `<@${o}>`).join(' ');
+        siteMentions.push(`- ${site}（${count} 人未在线）：${tag}`);
+        ctx.log(`  [@] ${site}（${count} 人未在线）→ ${resolved.map(([n]) => n).join('、')}`);
+      }
+      if (missingNames.size) {
+        ctx.log(`[warn] 以下负责人未解析到 openDingTalkId，已跳过 @：${[...missingNames].sort().join('、')}`);
+      }
+
+      let ids: string[];
+      let tail: string;
+      if (!rows.length) {
+        // 全部在线 / 无未上线明细：不需要 @ 任何人
+        ids = [];
+        tail = `当前时段未发现有排班未在线人员，无需站长跟进。`;
+      } else if (siteMentions.length) {
+        ids = [...idToName.keys()];
+        tail =
+          `请以下站长关注当前时段有排班但未在线的人员（共 ${tot.detail_count} 人）：\n` +
+          siteMentions.join('\n') +
+          (unmappedSites.length
+            ? `\n\n⚠ ${unmappedSites.join('、')} 未配置负责人映射，未 @ 到人（请在「系统设置 → 站点负责人设置」维护）`
+            : '');
+      } else {
+        // 有未上线明细但没有任何站点匹配到负责人 → 不 @ 任何人，只发文本提醒去维护配置
+        ids = [];
+        ctx.log(`[warn] 没有任何站点匹配到负责人，本轮不 @（匹配不到的站点：${unmappedSites.join('、')}）`);
+        tail =
+          `当前时段有排班但未在线人员（共 ${tot.detail_count} 人）：\n` +
+          unmappedSites.map((s) => `- ${s}`).join('\n') +
+          `\n\n⚠ 以上站点未匹配到负责人，未 @ 到人（请在「系统设置 → 站点负责人设置」维护）`;
+      }
+      if (noAt) ids = [];
       const text =
         `## 实时在线\n` +
         `**时段：** ${summary.slot_name}（${summary.slot_range}）　**查询时间：** ${summary.query_time}\n\n` +
         `![实时在线明细](${imgUrl})\n\n` +
-        `请各站长关注当前时段有排班但未在线的人员（共 ${tot.detail_count} 人）：${mentions}`;
+        tail;
       const out = await this.dingtalk.sendMessage({ group: groupId, text, atOpenDingTalkIds: ids });
       ctx.log(`[send] 消息发送：${JSON.stringify(out).slice(0, 300)}`);
     });

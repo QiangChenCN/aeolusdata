@@ -379,6 +379,54 @@ export class DingtalkService {
     };
   }
 
+  /**
+   * 列出群成员（仅真人），返回 [{name, openDingTalkId}]。
+   * 「按姓名自动解析 openDingTalkId」的备用来源（通讯录搜索不可用时的兜底）。
+   */
+  async listMembers(group: string): Promise<{ name: string; openDingTalkId: string }[]> {
+    if (!group) throw new Error('缺少 group（群名或 openConversationId）');
+    const p = await this.run([
+      'chat', '+chat-members-list', '--group', group, '--member-types', 'user',
+    ]);
+    const rows = (p?.users as Record<string, any>[]) || [];
+    return rows
+      .filter((u) => u.openDingtalkId)
+      .map((u) => ({
+        name: String(u.memberEmpName || u.memberNick || u.name || u.nick || '').trim(),
+        openDingTalkId: String(u.openDingtalkId),
+      }))
+      .filter((u) => u.name);
+  }
+
+  /**
+   * 按姓名在通讯录搜索用户，返回候选 [{name, openDingTalkId, userId}]。
+   * 主解析来源：`contact +search-user` 直接返回 openDingTalkId，不依赖群/好友关系，
+   * 企业通讯录范围内即可查（实测与内置 ID 完全一致）。userId 供同名歧义时与
+   * 手机号反查结果（+by-mobile 的 orgUserId）比对定位唯一候选人。
+   */
+  async searchUserByName(name: string): Promise<{ name: string; openDingTalkId?: string; userId?: string }[]> {
+    if (!name) return [];
+    const p = await this.run(['contact', '+search-user', '--query', name]);
+    const rows = (p?.data?.users as Record<string, any>[]) || (p?.users as Record<string, any>[]) || [];
+    return rows
+      .map((u) => ({
+        name: String(u.name || '').trim(),
+        openDingTalkId: u.openDingTalkId ? String(u.openDingTalkId) : undefined,
+        userId: u.userId ? String(u.userId) : undefined,
+      }))
+      .filter((u) => u.name);
+  }
+
+  /** 手机号 → userId（`contact +by-mobile` 的 orgUserId），用于同名歧义时唯一定位。 */
+  async searchUserIdByMobile(mobile: string): Promise<string | undefined> {
+    if (!mobile) return undefined;
+    const p = await this.run(['contact', '+by-mobile', '--mobile', mobile]);
+    const prof = (p?.data?.profile as Record<string, any>) || {};
+    if (prof.orgUserId) return String(prof.orgUserId);
+    if (prof.userId) return String(prof.userId);
+    return undefined;
+  }
+
   /** 隐藏群号（chat-list-all 会漏的群），数据放在 common/groups.json。 */
   private knownGroupNumbers(): number[] {
     const root = this.config.get<string>('PROJECT_ROOT') || path.resolve(process.cwd(), '..');

@@ -9,12 +9,8 @@ import { ViolationFetchService } from '../../../infra/fetch/sources/violation-fe
 import { ReportRenderService } from '../../render/report-render.service';
 import { MinioService } from '../../media/minio.service';
 import { DingtalkService } from '../../dingtalk/dingtalk.service';
-import {
-  PRODUCTION_GROUP_NAME,
-  STATION_MANAGERS,
-  resolveOpenIds,
-  teamToStation,
-} from '../../notify/notify-config';
+import { StationManagersService } from '../../notify/station-managers.service';
+import { PRODUCTION_GROUP_NAME, teamToStation } from '../../notify/notify-config';
 import { csvToRecords } from '../../../common/csv';
 
 const APPEAL_COLS = [
@@ -62,6 +58,7 @@ export class AppealReminderPipeline implements TaskHandler {
     private readonly render: ReportRenderService,
     private readonly minio: MinioService,
     private readonly dingtalk: DingtalkService,
+    private readonly stationManagers: StationManagersService,
     config: ConfigService,
   ) {
     this.handlers.register(this);
@@ -123,12 +120,12 @@ export class AppealReminderPipeline implements TaskHandler {
     return rows;
   }
 
-  private collectAt(rows: Record<string, string>[]): { ids: string[]; missing: string[] } {
+  private async collectAt(rows: Record<string, string>[]): Promise<{ ids: string[]; missing: string[] }> {
     const names = new Set<string>();
     for (const r of rows) {
-      for (const m of STATION_MANAGERS[r['站点']] || []) names.add(m);
+      for (const m of this.stationManagers.managersForTeam(r['站点'])) names.add(m);
     }
-    const { resolved, missing } = resolveOpenIds(names);
+    const { resolved, missing } = await this.stationManagers.resolveNamesAuto(names);
     return { ids: resolved.map(([, oid]) => oid), missing: [...missing].sort() };
   }
 
@@ -200,7 +197,7 @@ export class AppealReminderPipeline implements TaskHandler {
 
     p.stage('send', '发送钉钉群', async () => {
       const rows = state.rows!;
-      const { ids, missing } = this.collectAt(rows);
+      const { ids, missing } = await this.collectAt(rows);
       if (missing.length && !noAt) {
         ctx.log(`[warn] 以下站长未解析到 openDingTalkId，已跳过 @：${missing.join('、')}`);
       }

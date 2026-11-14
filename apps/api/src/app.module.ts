@@ -17,6 +17,7 @@ import { FetchModule } from './infra/fetch/fetch.module';
 import { DingtalkModule } from './modules/dingtalk/dingtalk.module';
 import { GroupsModule } from './modules/groups/groups.module';
 import { MediaModule } from './modules/media/media.module';
+import { NotifyModule } from './modules/notify/notify.module';
 import { RenderModule } from './modules/render/render.module';
 import { TeamsModule } from './modules/teams/teams.module';
 import { StatusModule } from './modules/status/status.module';
@@ -50,6 +51,7 @@ import { OperationLogMiddleware } from './modules/operation-log/operation-log.mi
     DingtalkModule,
     GroupsModule,
     MediaModule,
+    NotifyModule,
     RenderModule,
     TeamsModule,
     StatusModule,

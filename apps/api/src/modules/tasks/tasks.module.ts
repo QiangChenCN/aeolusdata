@@ -3,6 +3,7 @@ import { StreamingModule } from '../streaming/streaming.module';
 import { FetchModule } from '../../infra/fetch/fetch.module';
 import { DingtalkModule } from '../dingtalk/dingtalk.module';
 import { MediaModule } from '../media/media.module';
+import { NotifyModule } from '../notify/notify.module';
 import { RenderModule } from '../render/render.module';
 import { JobsModule } from '../jobs/jobs.module';
 import { TaskRunnerService } from './task-runner.service';
@@ -22,6 +23,7 @@ import { TaskEquipmentPipeline } from './pipelines/task-equipment.pipeline';
     FetchModule,
     DingtalkModule,
     MediaModule,
+    NotifyModule,
     RenderModule,
     JobsModule,
   ],

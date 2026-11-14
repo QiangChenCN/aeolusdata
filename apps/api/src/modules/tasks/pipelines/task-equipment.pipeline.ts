@@ -9,11 +9,7 @@ import { EquipmentFetchService, defaultDates } from '../../../infra/fetch/source
 import { ReportRenderService } from '../../render/report-render.service';
 import { MinioService } from '../../media/minio.service';
 import { DingtalkService } from '../../dingtalk/dingtalk.service';
-import {
-  STATION_MANAGERS,
-  resolveOpenIds,
-  teamToStation,
-} from '../../notify/notify-config';
+import { StationManagersService } from '../../notify/station-managers.service';
 
 /** 默认目标群（tasks.json 亦可给 cid）。 */
 const DEFAULT_GROUP = '台账安全处理群';
@@ -63,6 +59,7 @@ export class TaskEquipmentPipeline implements TaskHandler {
     private readonly render: ReportRenderService,
     private readonly minio: MinioService,
     private readonly dingtalk: DingtalkService,
+    private readonly stationManagers: StationManagersService,
     config: ConfigService,
   ) {
     this.handlers.register(this);
@@ -204,10 +201,9 @@ export class TaskEquipmentPipeline implements TaskHandler {
       const kept = state.kept!;
       const names = new Set<string>();
       for (const r of kept) {
-        const station = teamToStation(String(r['站点名称'] ?? ''));
-        for (const m of STATION_MANAGERS[station] || []) names.add(m);
+        for (const m of this.stationManagers.managersForTeam(String(r['站点名称'] ?? ''))) names.add(m);
       }
-      const { resolved } = resolveOpenIds(names);
+      const { resolved, missing } = await this.stationManagers.resolveNamesAuto(names);
       const ids = resolved.map(([, oid]) => oid);
       const atIds = ids.length && !noAt ? ids : [];
       const dateStr = start;
@@ -220,6 +216,7 @@ export class TaskEquipmentPipeline implements TaskHandler {
         `请相关站点站长及时跟进装备点亮情况：${mentions}`;
       if (noSend) {
         ctx.log(`(--no-send) 未实际发送。目标群 ${groupId}；将 @ ${resolved.length} 人`);
+        if (missing.length) ctx.log(`[warn] 未解析到 openDingTalkId，跳过 @：${[...missing].sort().join('、')}`);
         ctx.log(text);
         return;
       }

@@ -37,7 +37,7 @@
       "id": "attendance",
       "name": "实时在线播报",
       "group": "attendance",
-      "desc": "拉取实时考勤 → 渲染图片 → 上传到MinIO → 发生产群 @站长",
+      "desc": "拉取实时考勤 → 渲染图片 → 上传到MinIO → 发生产群，按站点 @ 负责人（映射在系统设置维护）",
       "nodes": [
         {
           "id": "fetch",
@@ -57,7 +57,7 @@
         {
           "id": "send",
           "name": "发送消息到钉钉",
-          "desc": "组装 markdown 并发送（默认发生产群 + @站长）"
+          "desc": "组装 markdown 并发送（默认发生产群，按站点精准 @ 负责人）"
         }
       ],
       "params": [

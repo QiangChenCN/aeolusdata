@@ -288,3 +288,10 @@ export function fetchMinioConfig() { return request('/media/minio'); }
 export function saveMinioConfig(payload = {}) { return request('/media/minio', j(payload)); }
 // 连通性验证：真实连一次 MinIO，确认 bucket 可访问并应用 public-read 策略
 export function testMinioConfig() { return request('/media/minio/test', j({})); }
+
+/* ============ 站点负责人设置（任务播报按站点 @） ============ */
+export function fetchStationManagers() { return request('/notify/station-managers'); }
+// 整体覆盖保存：{ stations: [{name, teams[], managers[姓名]}] }；openDingTalkId 由后端自动解析
+export function saveStationManagers(payload = {}) { return request('/notify/station-managers', j(payload)); }
+// 一键解析：把配置里引用到的负责人姓名拿去目标群成员列表解析 openDingTalkId 并缓存
+export function resolveStationManagers(group) { return request('/notify/station-managers/resolve', j(group ? { group } : {})); }
