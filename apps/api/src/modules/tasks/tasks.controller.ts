@@ -1,9 +1,10 @@
 import { Body, Controller, Get, Post, Query, Res } from '@nestjs/common';
 import { Response } from 'express';
 import * as path from 'path';
-import { IsArray, IsObject, IsOptional, IsString, ValidateNested } from 'class-validator';
+import { IsArray, IsBoolean, IsObject, IsOptional, IsString, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
 import { JobQueueService, HistoryEntry } from '../jobs/job-queue.service';
+import { StreamingService } from '../streaming/streaming.service';
 import { TaskRunnerService } from './task-runner.service';
 import { TaskRegistryService } from './task-registry.service';
 
@@ -23,6 +24,16 @@ class RunTaskDto {
   items!: RunItemDto[];
 }
 
+class DeleteRunsDto {
+  @IsOptional()
+  @IsArray()
+  run_ids?: string[];
+
+  @IsOptional()
+  @IsBoolean()
+  all?: boolean;
+}
+
 type Row = Record<string, unknown>;
 
 /**
@@ -38,6 +49,7 @@ export class TasksController {
     private readonly jobQueue: JobQueueService,
     private readonly runner: TaskRunnerService,
     private readonly registry: TaskRegistryService,
+    private readonly streaming: StreamingService,
   ) {}
 
   @Post('run')
@@ -71,6 +83,24 @@ export class TasksController {
   async cancel(@Body() b: { run_id?: string }) {
     const ok = b.run_id ? await this.jobQueue.cancelQueued(b.run_id) : false;
     return { ok };
+  }
+
+  /** 删除运行记录：仅终态（成功/失败/停止/取消）可删，排队/执行中的记录不支持删除。 */
+  @Post('runs/delete')
+  async deleteRuns(@Body() b: DeleteRunsDto) {
+    let deleted = 0;
+    if (b.all) {
+      deleted = await this.jobQueue.deleteAllFinished();
+    } else if (Array.isArray(b.run_ids) && b.run_ids.length) {
+      for (const id of b.run_ids.slice(0, 200)) {
+        if (await this.jobQueue.deleteRun(String(id))) deleted++;
+      }
+    }
+    // 立即广播最新历史快照，前端无需等镜像器 1s 轮询兜底
+    if (deleted > 0) {
+      this.streaming.emit({ type: 'history', history: await this.jobQueue.listRecent(60) });
+    }
+    return { ok: true, deleted };
   }
 
   @Get('state')

@@ -21,6 +21,7 @@ export class TaskEventMirrorService implements OnModuleInit, OnModuleDestroy {
   private lastStatus = new Map<string, JobStatus>();
   private lastRunningId: string | null = null;
   private lastQueueSig = '';
+  private lastHistorySig = '';
   private logByte = new Map<string, number>();
 
   constructor(
@@ -95,7 +96,6 @@ export class TaskEventMirrorService implements OnModuleInit, OnModuleDestroy {
 
       // 终态任务 → run_end + 必要时 history
       const recent = await this.jobQueue.listRecent(60);
-      let historyDirty = false;
       for (const h of recent) {
         const id = h.run_id;
         const prev = this.lastStatus.get(id);
@@ -110,12 +110,14 @@ export class TaskEventMirrorService implements OnModuleInit, OnModuleDestroy {
               errorAdvice: h.error_advice || null,
             },
           });
-          historyDirty = true;
         }
         this.lastStatus.set(id, h.status);
       }
-      if (historyDirty) {
+      // 历史签名（id+status）变化即推送：覆盖「任务跑完」与「运行记录被删除」两类变化
+      const histSig = recent.map((h) => `${h.run_id}:${h.status}`).join(',');
+      if (histSig !== this.lastHistorySig) {
         this.streaming.emit({ type: 'history', history: recent });
+        this.lastHistorySig = histSig;
       }
     } catch (e) {
       // 轮询失败不打断主循环

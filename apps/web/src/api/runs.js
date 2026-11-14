@@ -18,6 +18,24 @@ export function stopRun(runId) {
   });
 }
 
+/** 删除运行记录（仅终态可删）。runIds 传 ['__all__'] 时用 all 分支清空全部。 */
+export function deleteRuns(runIds) {
+  return request('/runs/delete', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ run_ids: runIds }),
+  });
+}
+
+/** 清空全部终态运行记录。 */
+export function clearHistory() {
+  return request('/runs/delete', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ all: true }),
+  });
+}
+
 export function fetchLog(runId) {
   return request('/log?run_id=' + encodeURIComponent(runId));
 }

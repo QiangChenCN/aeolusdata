@@ -108,6 +108,7 @@
         <el-table-column label="操作">
           <template #default="{ row }">
             <el-button text size="small" @click="onOpenRun(row)">查看</el-button>
+            <el-button text size="small" type="danger" @click="onDeleteRun(row)">删除</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -119,6 +120,7 @@
 
 <script setup>
 import { ref, computed } from 'vue';
+import { ElMessage, ElMessageBox } from 'element-plus';
 import { ArrowRight } from '@element-plus/icons-vue';
 import TaskConfigDialog from '../../components/tasks/TaskConfigDialog.vue';
 import { useTasksStore } from '../../stores/tasks.js';
@@ -221,6 +223,23 @@ const recentRuns = computed(() =>
   }),
 );
 function onOpenRun(row) { if (row.run_id) runs.openLog(row.run_id); }
+
+async function onDeleteRun(row) {
+  if (!row.run_id) return;
+  try {
+    await ElMessageBox.confirm(`确定删除「${row.name}」这条运行记录吗？日志文件将一并删除。`, '删除运行记录', {
+      confirmButtonText: '删除',
+      cancelButtonText: '取消',
+      type: 'warning',
+    });
+  } catch { return; }
+  try {
+    await runs.deleteRun(row.run_id);
+    ElMessage.success('已删除');
+  } catch (e) {
+    ElMessage.error(e.message || '删除失败');
+  }
+}
 
 function openConfig(id) { cfgRef.value?.open(id); }
 async function onRun(task) {

@@ -228,6 +228,37 @@ export class JobQueueService implements OnModuleInit {
     return rows.length > 0;
   }
 
+  // ------------------------------------------------------------ 删除运行记录（仅终态可删）
+  /** 删除单条终态运行记录（queued/running 不可删，需先取消/停止）。 */
+  async deleteRun(id: string): Promise<boolean> {
+    const rows = await this.pg.query(
+      `DELETE FROM task_job WHERE id=$1 AND status IN ('success','failed','stopped','cancelled') RETURNING log_path`,
+      [id],
+    );
+    if (!rows.length) return false;
+    this.removeLogFile(rows[0]);
+    return true;
+  }
+
+  /** 清空全部终态运行记录（同 listRecent 的范围），返回删除条数。 */
+  async deleteAllFinished(): Promise<number> {
+    const rows = await this.pg.query(
+      `DELETE FROM task_job WHERE status IN ('success','failed','stopped','cancelled') RETURNING log_path`,
+    );
+    for (const r of rows) this.removeLogFile(r);
+    return rows.length;
+  }
+
+  private removeLogFile(row: Row): void {
+    const p = String(row['log_path'] || '');
+    if (!p || !fs.existsSync(p)) return;
+    try {
+      fs.unlinkSync(p);
+    } catch {
+      // 日志文件删除失败不影响记录删除
+    }
+  }
+
   async findRunning(): Promise<Row | null> {
     const rows = await this.pg.query(
       `SELECT * FROM task_job WHERE status='running' ORDER BY started_at ASC LIMIT 1`,

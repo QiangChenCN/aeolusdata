@@ -1,5 +1,12 @@
 import { defineStore } from 'pinia';
-import { fetchLog, fetchArtifacts, runTask as apiRun, stopRun as apiStop } from '../api/runs.js';
+import {
+  fetchLog,
+  fetchArtifacts,
+  runTask as apiRun,
+  stopRun as apiStop,
+  deleteRuns as apiDeleteRuns,
+  clearHistory as apiClearHistory,
+} from '../api/runs.js';
 import { useTasksStore } from './tasks.js';
 
 // 运行记录 / 实时日志 / 产物：接收 SSE 事件增量更新
@@ -120,6 +127,17 @@ export const useRunsStore = defineStore('runs', {
       return res;
     },
     async stop(runId) { return apiStop(runId); },
+    // 删除运行记录：先本地移除，随后 SSE history 快照会再对齐服务端
+    async deleteRun(runId) {
+      const res = await apiDeleteRuns([runId]);
+      this.history = (this.history || []).filter((x) => x.run_id !== runId);
+      return res;
+    },
+    async clearAllHistory() {
+      const res = await apiClearHistory();
+      this.history = [];
+      return res;
+    },
     async artifacts(taskId) { return fetchArtifacts(taskId); },
   },
 });
