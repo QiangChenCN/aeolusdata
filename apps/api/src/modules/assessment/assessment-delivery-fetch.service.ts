@@ -100,6 +100,8 @@ export class AssessmentDeliveryFetchService {
         date,
         payload: o,
       })));
+      // 打回补水位：该日期运单历史已完整落库（全天窗口），Python 读侧据此放行该日期。
+      await this.detail.markBackfill('delivery', date, rows.length);
       return;
     }
     // 手动 / 自动刷新：只写实时表 delivery_realtime（全站当天快照，覆盖写）。

@@ -88,6 +88,19 @@ export class AssessmentInternalController {
     }
   }
 
+  /** 历史回补水位（诊断）：区间内各日期的运单 / 违规历史回补完成标记（Python 读侧闸门同源）。 */
+  @Get('backfill-state')
+  async backfillState(@Query('start') start?: string, @Query('end') end?: string) {
+    if (!this.store.ready) return { ok: false, error: 'PG 未启用（DATABASE_URL 未配置）' };
+    const e = (end || '').trim() || todayYmd();
+    const s = (start || '').trim() || e;
+    try {
+      return { ok: true, start: s, end: e, days: await this.store.backfillStates(s, e) };
+    } catch (err) {
+      return { ok: false, error: (err as Error).message };
+    }
+  }
+
   /**
    * 诊断 + 前端「更新时间」来源：某天两路明细的入库行数与最近入库时间。
    * 取数失败现在不再写表（保留上一版数据），故 fetched_at 只反映真正落库的时间。

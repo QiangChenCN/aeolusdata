@@ -93,6 +93,29 @@ def _read_violation_history_range(team_id: str, start: str, end: str):
     ]
 
 
+def _backfill_state(start: str, end: str):
+    """读历史回补水位（Nest 维护的 `assessment_backfill_state` 表），date -> (delivery_ok, violation_ok)。
+
+    只有「运单 + 违规」两路都被回补任务完整落库（全天窗口）的日期才可信。
+    表不存在 / 连库失败返回 {}（视作全部未回补）：宁可不给数据，也不拿残缺快照冒充历史。
+    """
+    con = connect()
+    if con is None:
+        return {}
+    try:
+        with con.cursor() as cur:
+            cur.execute(
+                "SELECT stat_date, delivery_ok, violation_ok FROM assessment_backfill_state "
+                "WHERE stat_date >= %s AND stat_date <= %s",
+                (start, end),
+            )
+            return {r[0]: (bool(r[1]), bool(r[2])) for r in cur.fetchall()}
+    except Exception:
+        return {}
+    finally:
+        con.close()
+
+
 def _date_iter(start: str, end: str):
     s = _date.fromisoformat(start)
     e = _date.fromisoformat(end)
@@ -242,11 +265,36 @@ def build_period(team_id: str, start: str, end: str) -> dict:
         "visit_rate": visit_rate,
     }
 
+    # ── 回补水位闸门（2026-11-14）：历史日只有被回补任务完整落库（运单 + 违规两路都 ok）
+    # 才参与计算。未回补的日期宁可不给数据，也不能拿残缺快照冒充历史 —— 教训：本地服务
+    # 未跨 04:00，历史表残留昨日刷新的残缺快照（4472/6928 运单、142/271 违规）被当成
+    # 完整全天数据展示，13 号看板全错。
+    state = _backfill_state(start, end)
+    all_days = list(_date_iter(start, end))
+    missing = [
+        d for d in all_days
+        if not (state.get(d) or (False, False))[0]
+        or not (state.get(d) or (False, False))[1]
+    ]
+    if len(missing) >= len(all_days):
+        r = _empty_period(team_id, start, end, settings, extra_values)
+        r["data_status"] = "no_data"
+        r["need_refresh"] = False
+        r["data_note"] = (
+            f"历史数据尚未回补完成（{missing[0]} ~ {missing[-1]} 缺完整全天回补），"
+            "为避免展示残缺口径暂不提供数据；可在服务端调 "
+            "POST /api/assessment-fetch/backfill-history 手动回补，或等待每日 04:00 定时回补"
+        )
+        return r
+    missing_set = set(missing)
+
     # ── 第一遍：逐日装载运单明细（完成口径），并建「运单标识 → 完成日」映射 ──
     cells: dict[tuple, dict] = {}
     day_key: dict[str, tuple] = {}
     waybill_date: dict[str, str] = {}
     for d in _date_iter(start, end):
+        if d in missing_set:
+            continue  # 未回补日期不参与聚合（见上方水位闸门）
         delivery_rows = _read_history_rows("delivery", team_id, d)
         if delivery_rows is None:
             delivery_rows = DS.load_delivery_orders(team_id) if d == today else []
@@ -378,7 +426,11 @@ def build_period(team_id: str, start: str, end: str) -> dict:
         "score_settings": settings,
         "need_refresh": False,
         "data_status": "ok",
-        "data_note": f"历史区间 {start}~{end} 加权汇总（单量占比加权）",
+        "data_note": (
+            f"历史区间 {start}~{end} 加权汇总（单量占比加权）"
+            + (f"；{len(missing)} 天未回补未计入（{'、'.join(missing)}）" if missing else "")
+        ),
+        "backfill_missing": missing,
         "data_refreshed_at": None,
         "teams": [team_id],
         "meta": {"mode": "period", "start": start, "end": end},

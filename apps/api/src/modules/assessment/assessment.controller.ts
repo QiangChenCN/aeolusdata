@@ -146,6 +146,54 @@ export class AssessmentController {
   }
 
   /**
+   * 手动回补历史表（运单 delivery / 违规 violation）：与每日 04:00 定时回补同源
+   * （historyOnly=true 只写历史表、不碰实时表，UPSERT 幂等可重复执行）。
+   * 用于定时任务未执行的场景：本地开发机 / 服务器停机跨 04:00、单日回补失败等。
+   * 入参：dates（显式日期列表，YYYY-MM-DD）或 days（回补前 N 天 T-1~T-N，1~31，缺省 7）；
+   *       两者都缺省时按 days=7 回补。
+   * 返回 {ok, results:[{date, delivery, violation}]}；单日失败不影响其余日期。
+   */
+  @Post('backfill-history')
+  async backfillHistory(@Body() b: { dates?: string[]; days?: number }) {
+    const explicit = (b?.dates || []).map((s) => String(s).trim()).filter(Boolean);
+    const days = Math.max(1, Math.min(31, Number(b?.days) || 7));
+    const list: string[] = explicit.length
+      ? Array.from(new Set(explicit)).sort()
+      : Array.from({ length: days }, (_, i) =>
+          this.beijingDate(new Date(Date.now() - (i + 1) * 86400000)),
+        ).sort();
+    const results: Array<{
+      date: string;
+      delivery: { ok: boolean; msg?: string; error?: string };
+      violation: { ok: boolean; msg?: string; error?: string };
+    }> = [];
+    for (const ds of list) {
+      // 逐日串行取数，避免并发触发风神限流（与定时任务一致）。
+      const delivery = await this.deliverySvc
+        .fetchAndLand(ds, { historyOnly: true })
+        .catch((e: unknown) => ({ ok: false, error: (e as Error).message }));
+      const violation = await this.violationSvc
+        .fetchAndLand([], ds, { historyOnly: true })
+        .catch((e: unknown) => ({ ok: false, error: (e as Error).message }));
+      results.push({ date: ds, delivery, violation });
+      if (delivery.ok || violation.ok) {
+        // 回补落库后失效该日期的看板结果缓存，保证回读即新数据。
+        await this.notifyInvalidate(this.allTeamIds(), ds);
+      }
+    }
+    const okDays = results.filter((r) => r.delivery.ok && r.violation.ok).length;
+    this.logger.log(`手动历史回补：成功 ${okDays}/${list.length} 天（${list.join(', ')}）`);
+    return { ok: okDays === list.length, results };
+  }
+
+  /** 北京时间 YYYY-MM-DD。 */
+  private beijingDate(d: Date): string {
+    const b = new Date(d.getTime() + 8 * 3600 * 1000);
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${b.getUTCFullYear()}-${pad(b.getUTCMonth() + 1)}-${pad(b.getUTCDate())}`;
+  }
+
+  /**
    * SSE 端点：考核看板取数完成后推送 `{type:'updated', date, at}`。
    * 前端 `EventSource('/api/assessment-fetch/stream')` 订阅，收到后回读，
    * 替代固定间隔盲轮询，且任一端取数 → 所有在线前端实时刷新。

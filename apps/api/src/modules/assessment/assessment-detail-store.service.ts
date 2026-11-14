@@ -46,6 +46,18 @@ CREATE TABLE IF NOT EXISTS violation (
   raw_json     TEXT NOT NULL,
   created_at   TEXT,
   UNIQUE(stat_date, violation_no));
+
+-- 历史回补水位：记录每个日期的运单 / 违规历史表是否已被回补任务完整落库（全天）。
+-- 读侧（Python period.py）据此决定历史日期是否可信 —— 未回补的日期宁可不给数据，
+-- 也不能拿刷新时刻的残缺快照冒充历史（2026-11-14 教训：服务未跨 04:00，
+-- 历史表残留昨日 19:00 的残缺数据被当成全天展示）。
+CREATE TABLE IF NOT EXISTS assessment_backfill_state (
+  stat_date       TEXT PRIMARY KEY,
+  delivery_ok     BOOLEAN NOT NULL DEFAULT FALSE,
+  violation_ok    BOOLEAN NOT NULL DEFAULT FALSE,
+  delivery_count  INTEGER NOT NULL DEFAULT 0,
+  violation_count INTEGER NOT NULL DEFAULT 0,
+  updated_at      TEXT);
 `;
 
 /** 运单号取值键（与 Python order_rules 同口径）。风神真名 platformTrackingId / trackingId；旧数据或带 orderNo。 */
@@ -214,6 +226,35 @@ export class AssessmentDetailStoreService implements OnModuleInit {
       [date],
     );
     return rows.map((r) => JSON.parse(r.raw_json));
+  }
+
+  // ───────────────────────── 历史回补水位 assessment_backfill_state ─────────────────────────
+
+  /** 标记某天某类明细的历史回补已完成（回补任务 / 手动回补 historyOnly 写历史表成功后调用）。 */
+  async markBackfill(kind: 'delivery' | 'violation', date: string, count: number): Promise<void> {
+    if (!this.pg.isEnabled) return;
+    // kind 来自内部枚举而非用户输入，列名可安全内插。
+    const okCol = kind === 'delivery' ? 'delivery_ok' : 'violation_ok';
+    const cntCol = kind === 'delivery' ? 'delivery_count' : 'violation_count';
+    await this.pg.query(
+      `INSERT INTO assessment_backfill_state (stat_date, ${okCol}, ${cntCol}, updated_at) ` +
+        `VALUES ($1, TRUE, $2, $3) ` +
+        `ON CONFLICT (stat_date) DO UPDATE SET ${okCol} = TRUE, ${cntCol} = $2, updated_at = $3`,
+      [date, count, this.nowStr()],
+    );
+  }
+
+  /** 读区间内的回补水位（Python 计算侧直读同表作闸门；本方法主要供诊断/内部端点）。 */
+  async backfillStates(
+    start: string,
+    end: string,
+  ): Promise<{ stat_date: string; delivery_ok: boolean; violation_ok: boolean; updated_at: string | null }[]> {
+    if (!this.pg.isEnabled) return [];
+    return this.pg.query(
+      'SELECT stat_date, delivery_ok, violation_ok, updated_at FROM assessment_backfill_state ' +
+        'WHERE stat_date >= $1 AND stat_date <= $2 ORDER BY stat_date',
+      [start, end],
+    );
   }
 
   // ───────────────────────── 状态 ─────────────────────────

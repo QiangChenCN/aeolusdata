@@ -162,6 +162,8 @@ export class AssessmentViolationFetchService {
     if (historyOnly) {
       // 历史回补：只写历史表 violation（供历史区间聚合），不碰实时表（防止破坏今日看板）。
       await this.detail.upsertViolationHistoryDay(date, rows);
+      // 打回补水位：该日期违规历史已完整落库（全天窗口），Python 读侧据此放行该日期。
+      await this.detail.markBackfill('violation', date, rows.length);
       return;
     }
     // 手动 / 自动刷新：只写实时违规处罚明细表（当天覆盖写，source='assessment'，
