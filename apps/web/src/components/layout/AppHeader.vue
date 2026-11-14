@@ -4,7 +4,7 @@
       <el-icon><Menu /></el-icon>
     </button>
     <div class="hd-brand">
-      <span class="hd-logo">A</span>
+      <img class="hd-logo" src="/logo.png" alt="Aeolus" />
       <span class="hd-title">Aeolus WorkBench</span>
     </div>
     <span class="hd-spacer"></span>
@@ -93,7 +93,7 @@ const quarkTitle = computed(() => {
 }
 .hd-menu:hover { background: var(--el-fill-color-light); }
 .hd-brand { display: flex; align-items: center; gap: var(--sp-8); }
-.hd-logo { font-size: 20px; }
+.hd-logo { width: 24px; height: 24px; display: block; border-radius: 6px; }
 .hd-title { font-weight: var(--fw-bold); font-size: var(--el-font-size-medium); }
 .hd-spacer { flex: 1; }
 </style>

@@ -3,7 +3,7 @@
     <div class="login-card">
       <!-- 左侧品牌区 -->
       <aside class="login-brand">
-        <div class="lb-logo">A</div>
+        <img class="lb-logo" src="/logo.png" alt="Aeolus" />
         <h1 class="lb-title">Aeolus WorkBench</h1>
         <p class="lb-tag">一站式任务编排与数据看板</p>
         <ul class="lb-feats">
@@ -388,7 +388,7 @@ function openDingtalkOauth() {
   display: flex;
   flex-direction: column;
 }
-.lb-logo { font-size: 44px; line-height: 1; }
+.lb-logo { width: 64px; height: 64px; border-radius: 14px; box-shadow: 0 6px 18px rgba(0, 20, 60, 0.25); }
 .lb-title { margin: var(--sp-16) 0 var(--sp-8); font-size: 22px; font-weight: var(--fw-bold); }
 .lb-tag { margin: 0 0 var(--sp-32); font-size: var(--el-font-size-base); opacity: 0.92; }
 .lb-feats {
